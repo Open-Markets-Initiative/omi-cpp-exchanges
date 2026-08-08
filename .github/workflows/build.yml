@@ -1,0 +1,31 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Update Operating System
+        run: sudo apt-get update
+
+      - name: Install Dependencies
+        run: sudo apt-get install -y cmake g++ libboost-all-dev
+
+      - name: Configure
+        run: cmake -S iex/equities -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test Investors Exchange Equities Simulator
+        run: ./build/simulator_tests
+
+      - name: Run Investors Exchange Equities Simulator
+        working-directory: iex/equities
+        run: ../../build/iex_simulator
