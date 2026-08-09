@@ -29,3 +29,9 @@ jobs:
       - name: Run Investors Exchange Equities Simulator
         working-directory: iex/equities
         run: ../../build/iex_simulator
+
+      - name: Test Investors Exchange Equities Connections
+        working-directory: iex/equities
+        env:
+          IEX_SIMULATOR: ../../build/iex_simulator
+        run: python3 tests/Connections.py

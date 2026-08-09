@@ -18,6 +18,7 @@
 #include "SimulatorConfiguration.hpp"
 
 #include <charconv>
+#include <csignal>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -32,6 +33,8 @@
 
 #include "protocols/ipc/IpcBus.hpp"
 #include "protocols/ipc/IpcTransforms.hpp"
+
+#include "net/Network.hpp"
 
 using namespace iex::order_entry;
 
@@ -53,16 +56,19 @@ int main(int argc, char** argv) {
     sim::FixLog fixlog("recordings/fix/session.log");
     std::uint32_t out_seq = 0, in_seq = 0;
 
-    // Market-data feed servers — segments tee to the recorder + the Snap server.
-    sim::MarketDataLog tops_rec("recordings/md/Tops.dat");
+    // Market-data feed servers — segments tee to the recorder, Snap server, and real UDP multicast.
+    sim::MarketDataLog tops_rec("recordings/marketdata/Tops.dat");
     snap::SnapServer tops_snap;
-    feed::FeedServer tops(0x8003, 1, [&](const char* s, std::size_t n) { tops_rec(s, n); tops_snap.on_segment(s, n); });
-    sim::MarketDataLog deep_rec("recordings/md/Deep.dat");
+    net::UdpMulticastPublisher tops_mc(cfg.tops_feed.host, cfg.tops_feed.port);
+    feed::FeedServer tops(0x8003, 1, [&](const char* s, std::size_t n) { tops_rec(s, n); tops_snap.on_segment(s, n); tops_mc(s, n); });
+    sim::MarketDataLog deep_rec("recordings/marketdata/Deep.dat");
     snap::SnapServer deep_snap;
-    feed::FeedServer deep(0x8004, 1, [&](const char* s, std::size_t n) { deep_rec(s, n); deep_snap.on_segment(s, n); });
-    sim::MarketDataLog deepplus_rec("recordings/md/DeepPlus.dat");
+    net::UdpMulticastPublisher deep_mc(cfg.deep_feed.host, cfg.deep_feed.port);
+    feed::FeedServer deep(0x8004, 1, [&](const char* s, std::size_t n) { deep_rec(s, n); deep_snap.on_segment(s, n); deep_mc(s, n); });
+    sim::MarketDataLog deepplus_rec("recordings/marketdata/DeepPlus.dat");
     snap::SnapServer deepplus_snap;
-    feed::FeedServer deepplus(0x8005, 1, [&](const char* s, std::size_t n) { deepplus_rec(s, n); deepplus_snap.on_segment(s, n); });
+    net::UdpMulticastPublisher deepplus_mc(cfg.deepplus_feed.host, cfg.deepplus_feed.port);
+    feed::FeedServer deepplus(0x8005, 1, [&](const char* s, std::size_t n) { deepplus_rec(s, n); deepplus_snap.on_segment(s, n); deepplus_mc(s, n); });
 
     std::uint64_t trades = 0;
     // Event consumers: decode engine events off the Ipc bus -> market data + exec reports.
@@ -72,10 +78,14 @@ int main(int argc, char** argv) {
             std::printf("TRADE aggressor=%llu resting=%llu px=%lld qty=%llu\n",
                         (unsigned long long)t.aggressor_order_id.get().value(), (unsigned long long)t.resting_order_id.get().value(),
                         (long long)t.price.get().value(), (unsigned long long)t.quantity.get().value());
-            // DEEP Trade Report via the declared transform (Ipc.Transforms.xml).
+            // DEEP Trade Report via the declared transform (IexEquities.Ipc.Transforms.xml).
             auto dm = sim::to_deep_trade(t);
             deep.publish_message(reinterpret_cast<const char*>(&dm), sizeof dm);
             deep.flush();
+            // DEEP+ Trade (order-level) via the declared transform.
+            auto dpt = sim::to_deepplus_trade(t);
+            deepplus.publish_message(reinterpret_cast<const char*>(&dpt), sizeof dpt);
+            deepplus.flush();
 
             // Fill -> ExecutionReport (35=8) back to the client, logged inbound ('<').
             ExecutionReport er{};
@@ -100,6 +110,10 @@ int main(int argc, char** argv) {
             auto q = o.side.get().value() == 'B' ? sim::to_tops_quote_bid(o) : sim::to_tops_quote_ask(o);
             tops.publish_message(reinterpret_cast<const char*>(&q), sizeof q);
             tops.flush();
+            // DEEP+ Add Order (order-level) via the declared transform.
+            auto ao = sim::to_deepplus_add_order(o);
+            deepplus.publish_message(reinterpret_cast<const char*>(&ao), sizeof ao);
+            deepplus.flush();
         });
 
     // Engine -> consumers over the Ipc bus: events encode as framed ipc messages.
@@ -154,6 +168,38 @@ std::printf("iex-simulator: ran 20 ticks (maker+taker), %llu trades matched; MD 
         });
         std::printf("iex-simulator: snap replay served %llu messages (%llu segments) from Deep\n",
                     (unsigned long long)served, (unsigned long long)data_msgs);
+    }
+
+    // --serve: live venue. Tcp order entry + snapshot servers; Udp multicast market data.
+    bool serve = false;
+    for (int i = 1; i < argc; ++i) if (std::string_view(argv[i]) == "--serve") serve = true;
+    if (serve) {
+        std::signal(SIGPIPE, SIG_IGN);   // a client hanging up must not kill the venue
+        net::TcpServer order_entry(cfg.order_entry.host, cfg.order_entry.port);
+        net::TcpServer deep_snap_srv("0.0.0.0", cfg.deep_snap_port);
+        net::TcpServer tops_snap_srv("0.0.0.0", cfg.tops_snap_port);
+        net::TcpServer deepplus_snap_srv("0.0.0.0", cfg.deepplus_snap_port);
+        std::puts("iex-simulator: serving — order-entry + snapshot Tcp, market-data multicast (Ctrl-C to stop)");
+        for (;;) {
+            // Keep the market moving so multicast + snapshots stay live.
+            maker.step(orders);
+            taker.step(orders);
+
+            // External order entry over Tcp -> the gateway (decode ignores the framing tags).
+            order_entry.poll([&](int, std::string_view msg) {
+                char type = 'D';
+                auto at = msg.find("\x01" "35=");
+                if (at != std::string_view::npos && at + 4 < msg.size()) type = msg[at + 4];
+                else if (msg.size() > 3 && msg.compare(0, 3, "35=") == 0) type = msg[3];
+                gateway.on_app(type, msg);
+            });
+
+            // External snapshot requests over Tcp -> the feed's Snap server.
+            deep_snap_srv.poll([&](int fd, std::string_view request) { deep_snap.on_message(request, [&](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); }); });
+            tops_snap_srv.poll([&](int fd, std::string_view request) { tops_snap.on_message(request, [&](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); }); });
+            deepplus_snap_srv.poll([&](int fd, std::string_view request) { deepplus_snap.on_message(request, [&](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); }); });
+            ::usleep(50000);   // 20 Hz
+        }
     }
     return 0;
 }
