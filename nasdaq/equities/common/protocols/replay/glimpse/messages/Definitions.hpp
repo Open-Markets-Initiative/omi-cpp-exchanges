@@ -1,0 +1,25 @@
+#pragma once
+
+#include "../structs/ClientPacketHeader.hpp"
+#include "../structs/ServerPacketHeader.hpp"
+
+#include "DebugPacket.hpp"
+#include "LoginRequestPacket.hpp"
+#include "UnsequencedDataPacket.hpp"
+#include "LoginAcceptedPacket.hpp"
+#include "LoginRejectedPacket.hpp"
+#include "SequencedDataPacket.hpp"
+#include "SystemEventMessage.hpp"
+#include "AddOrderMessage.hpp"
+#include "AddOrderMpidAttributionMessage.hpp"
+#include "StockDirectoryMessage.hpp"
+#include "StockTradingActionMessage.hpp"
+#include "RegShoRestrictionMessage.hpp"
+#include "RetailInterestMessage.hpp"
+#include "EndOfSnapshotMessage.hpp"
+#include "OperationalHaltMessage.hpp"
+
+#include "../actions/ClientHeartbeat.hpp"
+#include "../actions/LogoutRequest.hpp"
+#include "../actions/ServerHeartbeat.hpp"
+#include "../actions/EndOfSession.hpp"

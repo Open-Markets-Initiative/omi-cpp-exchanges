@@ -1,0 +1,47 @@
+// Nasdaq Stock Market — the venue's components and the links between them.
+//
+// Generated from the exchange's own declaration, so it cannot disagree with what was
+// built. Render it with:  dot -Tsvg topology.dot -o topology.svg
+
+digraph nasdaq {
+    rankdir = LR;
+    graph [fontname = "Helvetica", bgcolor = "transparent", splines = true];
+    node  [fontname = "Helvetica", fontsize = 10, shape = box, style = "rounded,filled", fillcolor = "#eef2f7", color = "#5b6b7c"];
+    edge  [fontname = "Helvetica", fontsize = 9, color = "#5b6b7c"];
+
+    // The outside world: what reaches the venue and what leaves it.
+    clients [label = "clients", shape = note, fillcolor = "#fdf6e3"];
+    totalview_out [label = "TotalView\nUdp multicast", shape = note, fillcolor = "#fdf6e3"];
+
+    // The components, each its own process in the separated versions and its own thread in the single binary.
+    gateway [label = "gateway\norder entry"];
+    engine [label = "engine\nmatching"];
+    totalview [label = "totalview\nfeed"];
+    glimpse [label = "glimpse\nreplay"];
+    totalviewtcp [label = "totalviewtcp\nreplay"];
+    maker [label = "maker\ntrader"];
+    taker [label = "taker\ntrader"];
+    replay [label = "replay\ntrader"];
+    requests [label = "requests\ntrader"];
+
+    // Order entry arrives over Tcp, whichever version is running.
+    clients -> gateway [label = "SoupBin Tcp"];
+
+    // Between the components: a queue in one process, a ring across several, a socket across machines.
+    gateway -> engine [label = "ipc ring"];
+    engine -> gateway [label = "ipc ring"];
+    engine -> totalview [label = "ipc ring"];
+    totalview -> glimpse [label = "messages ring"];
+    totalview -> totalviewtcp [label = "messages ring"];
+    gateway -> maker [label = "messages ring"];
+    maker -> gateway [label = "messages ring"];
+    gateway -> taker [label = "messages ring"];
+    taker -> gateway [label = "messages ring"];
+    gateway -> replay [label = "messages ring"];
+    replay -> gateway [label = "messages ring"];
+    gateway -> requests [label = "messages ring"];
+    requests -> gateway [label = "messages ring"];
+
+    // And out: each feed publishes and records what it is given.
+    totalview -> totalview_out [style = dashed];
+}

@@ -17,21 +17,63 @@ jobs:
       - name: Install Dependencies
         run: sudo apt-get install -y cmake g++ libboost-all-dev
 
-      - name: Configure
-        run: cmake -S iex/equities -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Configure Investors Exchange Equities Simulator
+        run: cmake -S iex/equities -B build/iex -DCMAKE_BUILD_TYPE=Release
 
-      - name: Build
-        run: cmake --build build --parallel
+      - name: Build Investors Exchange Equities Simulator
+        run: cmake --build build/iex --parallel $(nproc)
 
       - name: Test Investors Exchange Equities Simulator
-        run: ./build/simulator_tests
+        run: ./build/iex/simulator_tests
 
       - name: Run Investors Exchange Equities Simulator
         working-directory: iex/equities
-        run: ../../build/iex_simulator
+        run: ../../build/iex/iex_simulator
 
       - name: Test Investors Exchange Equities Connections
         working-directory: iex/equities
         env:
-          IEX_SIMULATOR: ../../build/iex_simulator
-        run: python3 tests/Connections.py
+          IEX_SIMULATOR: ../../build/iex/iex_simulator
+        run: python3 common/tests/Connections.py
+
+      - name: Configure Nse Futures and Options Simulator
+        run: cmake -S nse/fo -B build/nse -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build Nse Futures and Options Simulator
+        run: cmake --build build/nse --parallel $(nproc)
+
+      - name: Test Nse Futures and Options Simulator
+        run: ./build/nse/simulator_tests
+
+      - name: Run Nse Futures and Options Simulator
+        working-directory: nse/fo
+        run: ../../build/nse/nse_simulator
+
+      - name: Verify Nse Futures and Options Components (system)
+        working-directory: nse/fo/system
+        run: bash verify.sh ../../../build/nse 8
+
+      - name: Verify Nse Futures and Options Components (cluster)
+        working-directory: nse/fo/cluster
+        run: bash verify.sh ../../../build/nse 8
+
+      - name: Configure Nasdaq Stock Market Simulator
+        run: cmake -S nasdaq/equities -B build/nasdaq -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build Nasdaq Stock Market Simulator
+        run: cmake --build build/nasdaq --parallel $(nproc)
+
+      - name: Test Nasdaq Stock Market Simulator
+        run: ./build/nasdaq/simulator_tests
+
+      - name: Run Nasdaq Stock Market Simulator
+        working-directory: nasdaq/equities
+        run: ../../build/nasdaq/nasdaq_simulator
+
+      - name: Verify Nasdaq Stock Market Components (system)
+        working-directory: nasdaq/equities/system
+        run: bash verify.sh ../../../build/nasdaq 8
+
+      - name: Verify Nasdaq Stock Market Components (cluster)
+        working-directory: nasdaq/equities/cluster
+        run: bash verify.sh ../../../build/nasdaq 8

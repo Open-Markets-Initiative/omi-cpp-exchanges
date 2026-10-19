@@ -1,0 +1,53 @@
+// Nse Futures and Options — the venue's components and the links between them.
+//
+// Generated from the exchange's own declaration, so it cannot disagree with what was
+// built. Render it with:  dot -Tsvg topology.dot -o topology.svg
+
+digraph nse {
+    rankdir = LR;
+    graph [fontname = "Helvetica", bgcolor = "transparent", splines = true];
+    node  [fontname = "Helvetica", fontsize = 10, shape = box, style = "rounded,filled", fillcolor = "#eef2f7", color = "#5b6b7c"];
+    edge  [fontname = "Helvetica", fontsize = 9, color = "#5b6b7c"];
+
+    // The outside world: what reaches the venue and what leaves it.
+    clients [label = "clients", shape = note, fillcolor = "#fdf6e3"];
+    mtbt_out [label = "Mtbt\nUdp multicast", shape = note, fillcolor = "#fdf6e3"];
+
+    // The components, each its own process in the separated versions and its own thread in the single binary.
+    subgraph cluster_entry {
+        label = "entry";
+        style = "rounded,dashed"; color = "#9aa7b4"; fontsize = 10;
+        gateway [label = "gateway\norder entry"];
+    }
+    subgraph cluster_matching {
+        label = "matching";
+        style = "rounded,dashed"; color = "#9aa7b4"; fontsize = 10;
+        engine [label = "engine\nmatching"];
+    }
+    subgraph cluster_data {
+        label = "data";
+        style = "rounded,dashed"; color = "#9aa7b4"; fontsize = 10;
+        mtbt [label = "mtbt\nfeed"];
+    }
+    subgraph cluster_clients {
+        label = "clients";
+        style = "rounded,dashed"; color = "#9aa7b4"; fontsize = 10;
+        maker [label = "maker\ntrader"];
+        taker [label = "taker\ntrader"];
+    }
+
+    // Order entry arrives over Tcp, whichever version is running.
+    clients -> gateway [label = "Nse Nnf Tcp"];
+
+    // Between the components: a queue in one process, a ring across several, a socket across machines.
+    gateway -> engine [label = "ipc Tcp"];
+    engine -> gateway [label = "ipc Tcp"];
+    engine -> mtbt [label = "ipc Tcp"];
+    gateway -> maker [label = "messages Tcp"];
+    maker -> gateway [label = "messages Tcp"];
+    gateway -> taker [label = "messages Tcp"];
+    taker -> gateway [label = "messages Tcp"];
+
+    // And out: each feed publishes and records what it is given.
+    mtbt -> mtbt_out [style = dashed];
+}

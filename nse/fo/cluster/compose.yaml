@@ -1,0 +1,75 @@
+# The Nse Futures and Options venue across containers: one per component, one image, one network.
+#
+# Generated from the venue's own declaration — the services are its components, the ports are
+# the ones it serves on, and a link's host is the name of the service that reads it, which is
+# what Docker's resolver turns into wherever that container is. Nothing here knows an address.
+#
+#   docker compose -f compose.yaml up --build
+#   docker compose -f compose.yaml stop engine     # a tier fails
+#   docker compose -f compose.yaml down
+
+name: nse-cluster
+
+# What every component shares: the image, built once from the venue's own tree, and how it is
+# stopped. SIGINT rather than SIGKILL because a component asked to stop drains what it is
+# holding and says what it saw, and that is most of what a run is read from.
+x-component: &component
+    build:
+        context: ..
+        dockerfile: Dockerfile
+    image: nse-venue:latest
+    init: true
+    # The image's own CMD is the single binary's; a service names its component instead.
+    command: []
+    stop_signal: SIGINT
+    stop_grace_period: 10s
+    networks: [venue]
+
+services:
+
+    # Order entry: the only service a firm outside can see, which is why it is the only one
+    # that publishes a port to the host.
+    gateway:
+        <<: *component
+        entrypoint: ["./nse_cluster_gateway"]
+        labels:
+            nse.tier: "entry"
+        ports:
+            - "10900:10900"   # order entry
+
+    # The book, on its own: what the venue matches should fail by itself.
+    engine:
+        <<: *component
+        entrypoint: ["./nse_cluster_engine"]
+        labels:
+            nse.tier: "matching"
+
+    # The Mtbt feed: engine events through its transforms and out as multicast on
+    # 239.70.70.61:17761, which a bridged network does not carry between hosts — a client
+    # elsewhere takes the stream off the recovery tier instead.
+    mtbt:
+        <<: *component
+        entrypoint: ["./nse_cluster_mtbt"]
+        labels:
+            nse.tier: "data"
+
+    # A trader of the venue's own: Maker, a maker. It reaches the gateway over a link
+    # like any other component, rather than dialling order entry as an outside firm would.
+    maker:
+        <<: *component
+        entrypoint: ["./nse_cluster_maker"]
+        labels:
+            nse.tier: "clients"
+
+    # A trader of the venue's own: Taker, a taker. It reaches the gateway over a link
+    # like any other component, rather than dialling order entry as an outside firm would.
+    taker:
+        <<: *component
+        entrypoint: ["./nse_cluster_taker"]
+        labels:
+            nse.tier: "clients"
+
+networks:
+    # A network of their own, so the only thing a component can reach is another component.
+    venue:
+        driver: bridge
