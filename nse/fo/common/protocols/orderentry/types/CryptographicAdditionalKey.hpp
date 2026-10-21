@@ -13,7 +13,7 @@ struct cryptographic_additional_key {
 
     static constexpr const char* name = "cryptographic_additional_key";
     static constexpr std::size_t size = 12;
-    static constexpr char fill_char = '\0';
+    static constexpr char fill_char = ' ';
     static constexpr bool is_optional = false;
 
     using result_type = required<std::string_view>;

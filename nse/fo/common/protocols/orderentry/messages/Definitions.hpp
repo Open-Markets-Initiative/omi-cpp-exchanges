@@ -63,3 +63,9 @@
 #include "OrderCancellationConfirmationMessage.hpp"
 #include "OrderCancellationConfirmationOrderEntryBody.hpp"
 #include "OrderCancellationConfirmationSpreadOrderBody.hpp"
+
+#include "../messages/SignOffRequestInMessage.hpp"
+#include "../messages/HeartbeatMessage.hpp"
+#include "../messages/HeaderRecordMessage.hpp"
+#include "../messages/TrailerRecordMessage.hpp"
+#include "../messages/SecureBoxRegistrationResponseOutMessage.hpp"

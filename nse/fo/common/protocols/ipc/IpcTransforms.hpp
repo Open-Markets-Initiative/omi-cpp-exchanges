@@ -35,7 +35,7 @@ inline std::uint64_t nanoseconds_since_midnight(std::uint64_t unix_nanoseconds, 
     return static_cast<std::uint64_t>((local - std::chrono::floor<std::chrono::days>(local)).count());
 }
 
-// The IST time zone a timestamp is counted in.
+// The Asia/Kolkata time zone a timestamp is counted in.
 inline const std::chrono::time_zone* kolkata() {
     static const auto* zone = std::chrono::locate_zone("Asia/Kolkata");
     return zone;

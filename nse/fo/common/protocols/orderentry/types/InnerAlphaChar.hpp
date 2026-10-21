@@ -13,7 +13,7 @@ struct inner_alpha_char {
 
     static constexpr const char* name = "inner_alpha_char";
     static constexpr std::size_t size = 2;
-    static constexpr char fill_char = '\0';
+    static constexpr char fill_char = ' ';
     static constexpr bool is_optional = false;
 
     using result_type = required<std::string_view>;

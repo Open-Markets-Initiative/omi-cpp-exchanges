@@ -25,7 +25,7 @@ inline std::uint64_t nanoseconds_since_midnight(std::uint64_t unix_nanoseconds, 
     return static_cast<std::uint64_t>((local - std::chrono::floor<std::chrono::days>(local)).count());
 }
 
-// The EST time zone a timestamp is counted in.
+// The America/New_York time zone a timestamp is counted in.
 inline const std::chrono::time_zone* new_york() {
     static const auto* zone = std::chrono::locate_zone("America/New_York");
     return zone;
