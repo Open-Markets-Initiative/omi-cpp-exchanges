@@ -7,7 +7,7 @@
 #include <string_view>
 #include "../cache/Required.hpp"
 
-namespace nse::nsefo::mtbt::binary::v7_1 {
+namespace nse::nsefo::mtbt::tbt::v7_1 {
 
 // message_type
 struct message_type {

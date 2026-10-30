@@ -4,6 +4,7 @@
 #include <cstdint>
 #include "../cache/Required.hpp"
 #include "../cache/Required.hpp"
+#include "../common/Day.hpp"
 
 namespace nasdaq::nsmequities::totalview::glimpse::v5_0 {
 
@@ -37,6 +38,16 @@ struct timestamp {
             set(value.value());
         else
             set(0);
+    }
+
+    // timestamp on a day: its nanoseconds since midnight, America/New_York, as UTC Unix nanoseconds;
+    // none where it has no value
+    [[nodiscard]] std::optional<std::int64_t> utc(const calendar::Day& day) const {
+        const auto held = get();
+        if (!held.has_value()) {
+            return std::nullopt;
+        }
+        return calendar::midnight(day, "America/New_York").utc(static_cast<std::int64_t>(held.value()));
     }
 
   protected:

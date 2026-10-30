@@ -3,7 +3,7 @@
 #include <cstddef>
 #include "../cache/Required.hpp"
 
-namespace nse::nsefo::mtbt::binary::v7_1 {
+namespace nse::nsefo::mtbt::tbt::v7_1 {
 
 // buy_order_id
 struct buy_order_id {

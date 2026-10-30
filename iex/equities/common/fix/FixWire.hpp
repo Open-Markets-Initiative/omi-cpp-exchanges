@@ -84,14 +84,16 @@ inline std::size_t frame(std::string_view begin_string, const char* body, std::s
 }
 
 }
-// Encode Logon body as tag=value (SOH-delimited). Returns bytes written.
+// Encode Logon body as tag=value (SOH-delimited).
+// Returns bytes written.
 inline std::size_t encode(const Logon& m, char* out) {
     char* p = out;
     p = detail::put_int(p, FixTag::HeartBtInt, m.heart_bt_int);
     return static_cast<std::size_t>(p - out);
 }
 
-// Decode a tag=value body into Logon. Returns false on a malformed field.
+// Decode a tag=value body into Logon.
+// Returns false on a malformed field.
 inline bool decode(std::string_view msg, Logon& out) {
     std::size_t i = 0;
     while (i < msg.size()) {
@@ -111,14 +113,16 @@ inline bool decode(std::string_view msg, Logon& out) {
     return true;
 }
 
-// Encode Heartbeat body as tag=value (SOH-delimited). Returns bytes written.
+// Encode Heartbeat body as tag=value (SOH-delimited).
+// Returns bytes written.
 inline std::size_t encode(const Heartbeat& m, char* out) {
     char* p = out;
     p = detail::put_str(p, FixTag::TestReqID, m.test_req_id, sizeof(m.test_req_id));
     return static_cast<std::size_t>(p - out);
 }
 
-// Decode a tag=value body into Heartbeat. Returns false on a malformed field.
+// Decode a tag=value body into Heartbeat.
+// Returns false on a malformed field.
 inline bool decode(std::string_view msg, Heartbeat& out) {
     std::size_t i = 0;
     while (i < msg.size()) {
@@ -138,14 +142,16 @@ inline bool decode(std::string_view msg, Heartbeat& out) {
     return true;
 }
 
-// Encode TestRequest body as tag=value (SOH-delimited). Returns bytes written.
+// Encode TestRequest body as tag=value (SOH-delimited).
+// Returns bytes written.
 inline std::size_t encode(const TestRequest& m, char* out) {
     char* p = out;
     p = detail::put_str(p, FixTag::TestReqID, m.test_req_id, sizeof(m.test_req_id));
     return static_cast<std::size_t>(p - out);
 }
 
-// Decode a tag=value body into TestRequest. Returns false on a malformed field.
+// Decode a tag=value body into TestRequest.
+// Returns false on a malformed field.
 inline bool decode(std::string_view msg, TestRequest& out) {
     std::size_t i = 0;
     while (i < msg.size()) {
@@ -165,7 +171,8 @@ inline bool decode(std::string_view msg, TestRequest& out) {
     return true;
 }
 
-// Encode ResendRequest body as tag=value (SOH-delimited). Returns bytes written.
+// Encode ResendRequest body as tag=value (SOH-delimited).
+// Returns bytes written.
 inline std::size_t encode(const ResendRequest& m, char* out) {
     char* p = out;
     p = detail::put_uint(p, FixTag::BeginSeqNo, m.begin_seq_no);
@@ -173,7 +180,8 @@ inline std::size_t encode(const ResendRequest& m, char* out) {
     return static_cast<std::size_t>(p - out);
 }
 
-// Decode a tag=value body into ResendRequest. Returns false on a malformed field.
+// Decode a tag=value body into ResendRequest.
+// Returns false on a malformed field.
 inline bool decode(std::string_view msg, ResendRequest& out) {
     std::size_t i = 0;
     while (i < msg.size()) {
@@ -194,7 +202,8 @@ inline bool decode(std::string_view msg, ResendRequest& out) {
     return true;
 }
 
-// Encode Reject body as tag=value (SOH-delimited). Returns bytes written.
+// Encode Reject body as tag=value (SOH-delimited).
+// Returns bytes written.
 inline std::size_t encode(const Reject& m, char* out) {
     char* p = out;
     p = detail::put_uint(p, FixTag::RefSeqNum, m.ref_seq_num);
@@ -203,7 +212,8 @@ inline std::size_t encode(const Reject& m, char* out) {
     return static_cast<std::size_t>(p - out);
 }
 
-// Decode a tag=value body into Reject. Returns false on a malformed field.
+// Decode a tag=value body into Reject.
+// Returns false on a malformed field.
 inline bool decode(std::string_view msg, Reject& out) {
     std::size_t i = 0;
     while (i < msg.size()) {
@@ -225,7 +235,8 @@ inline bool decode(std::string_view msg, Reject& out) {
     return true;
 }
 
-// Encode SequenceReset body as tag=value (SOH-delimited). Returns bytes written.
+// Encode SequenceReset body as tag=value (SOH-delimited).
+// Returns bytes written.
 inline std::size_t encode(const SequenceReset& m, char* out) {
     char* p = out;
     p = detail::put_uint(p, FixTag::NewSeqNo, m.new_seq_no);
@@ -233,7 +244,8 @@ inline std::size_t encode(const SequenceReset& m, char* out) {
     return static_cast<std::size_t>(p - out);
 }
 
-// Decode a tag=value body into SequenceReset. Returns false on a malformed field.
+// Decode a tag=value body into SequenceReset.
+// Returns false on a malformed field.
 inline bool decode(std::string_view msg, SequenceReset& out) {
     std::size_t i = 0;
     while (i < msg.size()) {
@@ -254,14 +266,16 @@ inline bool decode(std::string_view msg, SequenceReset& out) {
     return true;
 }
 
-// Encode Logout body as tag=value (SOH-delimited). Returns bytes written.
+// Encode Logout body as tag=value (SOH-delimited).
+// Returns bytes written.
 inline std::size_t encode(const Logout& m, char* out) {
     char* p = out;
     p = detail::put_str(p, FixTag::Text, m.text, sizeof(m.text));
     return static_cast<std::size_t>(p - out);
 }
 
-// Decode a tag=value body into Logout. Returns false on a malformed field.
+// Decode a tag=value body into Logout.
+// Returns false on a malformed field.
 inline bool decode(std::string_view msg, Logout& out) {
     std::size_t i = 0;
     while (i < msg.size()) {
@@ -281,7 +295,8 @@ inline bool decode(std::string_view msg, Logout& out) {
     return true;
 }
 
-// Encode NewOrderSingle body as tag=value (SOH-delimited). Returns bytes written.
+// Encode NewOrderSingle body as tag=value (SOH-delimited).
+// Returns bytes written.
 inline std::size_t encode(const NewOrderSingle& m, char* out) {
     char* p = out;
     p = detail::put_str(p, FixTag::ClOrdID, m.cl_ord_id, sizeof(m.cl_ord_id));
@@ -311,7 +326,8 @@ inline std::size_t encode(const NewOrderSingle& m, char* out) {
     return static_cast<std::size_t>(p - out);
 }
 
-// Decode a tag=value body into NewOrderSingle. Returns false on a malformed field.
+// Decode a tag=value body into NewOrderSingle.
+// Returns false on a malformed field.
 inline bool decode(std::string_view msg, NewOrderSingle& out) {
     std::size_t i = 0;
     while (i < msg.size()) {
@@ -354,7 +370,8 @@ inline bool decode(std::string_view msg, NewOrderSingle& out) {
     return true;
 }
 
-// Encode OrderCancelRequest body as tag=value (SOH-delimited). Returns bytes written.
+// Encode OrderCancelRequest body as tag=value (SOH-delimited).
+// Returns bytes written.
 inline std::size_t encode(const OrderCancelRequest& m, char* out) {
     char* p = out;
     p = detail::put_str(p, FixTag::ClOrdID, m.cl_ord_id, sizeof(m.cl_ord_id));
@@ -367,7 +384,8 @@ inline std::size_t encode(const OrderCancelRequest& m, char* out) {
     return static_cast<std::size_t>(p - out);
 }
 
-// Decode a tag=value body into OrderCancelRequest. Returns false on a malformed field.
+// Decode a tag=value body into OrderCancelRequest.
+// Returns false on a malformed field.
 inline bool decode(std::string_view msg, OrderCancelRequest& out) {
     std::size_t i = 0;
     while (i < msg.size()) {
@@ -393,7 +411,8 @@ inline bool decode(std::string_view msg, OrderCancelRequest& out) {
     return true;
 }
 
-// Encode OrderCancelReplaceRequest body as tag=value (SOH-delimited). Returns bytes written.
+// Encode OrderCancelReplaceRequest body as tag=value (SOH-delimited).
+// Returns bytes written.
 inline std::size_t encode(const OrderCancelReplaceRequest& m, char* out) {
     char* p = out;
     p = detail::put_str(p, FixTag::ClOrdID, m.cl_ord_id, sizeof(m.cl_ord_id));
@@ -415,7 +434,8 @@ inline std::size_t encode(const OrderCancelReplaceRequest& m, char* out) {
     return static_cast<std::size_t>(p - out);
 }
 
-// Decode a tag=value body into OrderCancelReplaceRequest. Returns false on a malformed field.
+// Decode a tag=value body into OrderCancelReplaceRequest.
+// Returns false on a malformed field.
 inline bool decode(std::string_view msg, OrderCancelReplaceRequest& out) {
     std::size_t i = 0;
     while (i < msg.size()) {
@@ -450,7 +470,8 @@ inline bool decode(std::string_view msg, OrderCancelReplaceRequest& out) {
     return true;
 }
 
-// Encode ExecutionReport body as tag=value (SOH-delimited). Returns bytes written.
+// Encode ExecutionReport body as tag=value (SOH-delimited).
+// Returns bytes written.
 inline std::size_t encode(const ExecutionReport& m, char* out) {
     char* p = out;
     p = detail::put_dec(p, FixTag::AvgPrice, m.avg_price);
@@ -489,7 +510,8 @@ inline std::size_t encode(const ExecutionReport& m, char* out) {
     return static_cast<std::size_t>(p - out);
 }
 
-// Decode a tag=value body into ExecutionReport. Returns false on a malformed field.
+// Decode a tag=value body into ExecutionReport.
+// Returns false on a malformed field.
 inline bool decode(std::string_view msg, ExecutionReport& out) {
     std::size_t i = 0;
     while (i < msg.size()) {
@@ -541,7 +563,8 @@ inline bool decode(std::string_view msg, ExecutionReport& out) {
     return true;
 }
 
-// Encode OrderCancelReject body as tag=value (SOH-delimited). Returns bytes written.
+// Encode OrderCancelReject body as tag=value (SOH-delimited).
+// Returns bytes written.
 inline std::size_t encode(const OrderCancelReject& m, char* out) {
     char* p = out;
     p = detail::put_str(p, FixTag::ClOrdID, m.cl_ord_id, sizeof(m.cl_ord_id));
@@ -556,7 +579,8 @@ inline std::size_t encode(const OrderCancelReject& m, char* out) {
     return static_cast<std::size_t>(p - out);
 }
 
-// Decode a tag=value body into OrderCancelReject. Returns false on a malformed field.
+// Decode a tag=value body into OrderCancelReject.
+// Returns false on a malformed field.
 inline bool decode(std::string_view msg, OrderCancelReject& out) {
     std::size_t i = 0;
     while (i < msg.size()) {
@@ -584,7 +608,8 @@ inline bool decode(std::string_view msg, OrderCancelReject& out) {
     return true;
 }
 
-// Encode IEXTradeBust body as tag=value (SOH-delimited). Returns bytes written.
+// Encode IEXTradeBust body as tag=value (SOH-delimited).
+// Returns bytes written.
 inline std::size_t encode(const IEXTradeBust& m, char* out) {
     char* p = out;
     p = detail::put_str(p, FixTag::ClOrdID, m.cl_ord_id, sizeof(m.cl_ord_id));
@@ -607,7 +632,8 @@ inline std::size_t encode(const IEXTradeBust& m, char* out) {
     return static_cast<std::size_t>(p - out);
 }
 
-// Decode a tag=value body into IEXTradeBust. Returns false on a malformed field.
+// Decode a tag=value body into IEXTradeBust.
+// Returns false on a malformed field.
 inline bool decode(std::string_view msg, IEXTradeBust& out) {
     std::size_t i = 0;
     while (i < msg.size()) {

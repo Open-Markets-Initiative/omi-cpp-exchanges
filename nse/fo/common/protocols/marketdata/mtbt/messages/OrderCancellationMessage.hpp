@@ -9,9 +9,9 @@
 #include "../types/Quantity.hpp"
 #include "../types/MessageType.hpp"
 
-namespace nse::nsefo::mtbt::binary::v7_1 {
+namespace nse::nsefo::mtbt::tbt::v7_1 {
 
-namespace binary_mtbt = ::nse::nsefo::mtbt::binary::v7_1;
+namespace tbt_mtbt = ::nse::nsefo::mtbt::tbt::v7_1;
 
 #pragma pack(push, 1)
 
@@ -19,15 +19,15 @@ namespace binary_mtbt = ::nse::nsefo::mtbt::binary::v7_1;
 struct order_cancellation_message {
 
     struct fields_type {
-        binary_mtbt::timestamp timestamp;
-        binary_mtbt::order_id order_id;
-        binary_mtbt::token token;
-        binary_mtbt::order_type order_type;
-        binary_mtbt::price price;
-        binary_mtbt::quantity quantity;
+        tbt_mtbt::timestamp timestamp;
+        tbt_mtbt::order_id order_id;
+        tbt_mtbt::token token;
+        tbt_mtbt::order_type order_type;
+        tbt_mtbt::price price;
+        tbt_mtbt::quantity quantity;
     };
 
-    binary_mtbt::message_type message_type = binary_mtbt::message_type::enum_type::order_cancellation_message;
+    tbt_mtbt::message_type message_type = tbt_mtbt::message_type::enum_type::order_cancellation_message;
 
     fields_type fields;
 
@@ -51,7 +51,7 @@ static_assert(offsetof(order_cancellation_message::fields_type, order_type) == 2
 static_assert(offsetof(order_cancellation_message::fields_type, price) == 21, "unexpected offset of order_cancellation_message::fields_type::price");
 static_assert(offsetof(order_cancellation_message::fields_type, quantity) == 25, "unexpected offset of order_cancellation_message::fields_type::quantity");
 static_assert(sizeof(order_cancellation_message::fields_type) == 29, "unexpected sizeof order_cancellation_message::fields_type");
-static_assert(sizeof(order_cancellation_message) == sizeof(binary_mtbt::message_type) + 29, "unexpected sizeof order_cancellation_message");
+static_assert(sizeof(order_cancellation_message) == sizeof(tbt_mtbt::message_type) + 29, "unexpected sizeof order_cancellation_message");
 
 #pragma pack(pop)
 }

@@ -14,9 +14,9 @@
 #include "TradeCancelMessage.hpp"
 #include "HeartbeatMessage.hpp"
 
-namespace nse::nsefo::mtbt::binary::v7_1 {
+namespace nse::nsefo::mtbt::tbt::v7_1 {
 
-namespace binary_mtbt = ::nse::nsefo::mtbt::binary::v7_1;
+namespace tbt_mtbt = ::nse::nsefo::mtbt::tbt::v7_1;
 
 inline std::ostream& operator<<(std::ostream& os, const stream_header& value) {
     os << "message_length=" << value.message_length.get().value()
@@ -27,7 +27,7 @@ inline std::ostream& operator<<(std::ostream& os, const stream_header& value) {
 }
 
 inline std::ostream& operator<<(std::ostream& os, const message& value) {
-    os << "message_type=\"" << binary_mtbt::message_type::to_string(value.message_type.get().value()) << '"'
+    os << "message_type=\"" << tbt_mtbt::message_type::to_string(value.message_type.get().value()) << '"'
        ;
     return os;
 }
@@ -36,7 +36,7 @@ inline std::ostream& operator<<(std::ostream& os, const new_order_message& msg) 
     os << "timestamp=" << msg.fields.timestamp.get().value()
        << ",order_id=" << msg.fields.order_id.get().value()
        << ",token=" << msg.fields.token.get().value()
-       << ",order_type=\"" << binary_mtbt::order_type::to_string(msg.fields.order_type.get().value()) << '"'
+       << ",order_type=\"" << tbt_mtbt::order_type::to_string(msg.fields.order_type.get().value()) << '"'
        << ",price=" << msg.fields.price.get().value()
        << ",quantity=" << msg.fields.quantity.get().value()
        ;
@@ -47,7 +47,7 @@ inline std::ostream& operator<<(std::ostream& os, const order_modification_messa
     os << "timestamp=" << msg.fields.timestamp.get().value()
        << ",order_id=" << msg.fields.order_id.get().value()
        << ",token=" << msg.fields.token.get().value()
-       << ",order_type=\"" << binary_mtbt::order_type::to_string(msg.fields.order_type.get().value()) << '"'
+       << ",order_type=\"" << tbt_mtbt::order_type::to_string(msg.fields.order_type.get().value()) << '"'
        << ",price=" << msg.fields.price.get().value()
        << ",quantity=" << msg.fields.quantity.get().value()
        ;
@@ -58,7 +58,7 @@ inline std::ostream& operator<<(std::ostream& os, const order_cancellation_messa
     os << "timestamp=" << msg.fields.timestamp.get().value()
        << ",order_id=" << msg.fields.order_id.get().value()
        << ",token=" << msg.fields.token.get().value()
-       << ",order_type=\"" << binary_mtbt::order_type::to_string(msg.fields.order_type.get().value()) << '"'
+       << ",order_type=\"" << tbt_mtbt::order_type::to_string(msg.fields.order_type.get().value()) << '"'
        << ",price=" << msg.fields.price.get().value()
        << ",quantity=" << msg.fields.quantity.get().value()
        ;
@@ -80,7 +80,7 @@ inline std::ostream& operator<<(std::ostream& os, const new_spread_order_message
     os << "timestamp=" << msg.fields.timestamp.get().value()
        << ",order_id=" << msg.fields.order_id.get().value()
        << ",token=" << msg.fields.token.get().value()
-       << ",order_type=\"" << binary_mtbt::order_type::to_string(msg.fields.order_type.get().value()) << '"'
+       << ",order_type=\"" << tbt_mtbt::order_type::to_string(msg.fields.order_type.get().value()) << '"'
        << ",price=" << msg.fields.price.get().value()
        << ",quantity=" << msg.fields.quantity.get().value()
        ;
@@ -91,7 +91,7 @@ inline std::ostream& operator<<(std::ostream& os, const spread_order_modificatio
     os << "timestamp=" << msg.fields.timestamp.get().value()
        << ",order_id=" << msg.fields.order_id.get().value()
        << ",token=" << msg.fields.token.get().value()
-       << ",order_type=\"" << binary_mtbt::order_type::to_string(msg.fields.order_type.get().value()) << '"'
+       << ",order_type=\"" << tbt_mtbt::order_type::to_string(msg.fields.order_type.get().value()) << '"'
        << ",price=" << msg.fields.price.get().value()
        << ",quantity=" << msg.fields.quantity.get().value()
        ;
@@ -102,7 +102,7 @@ inline std::ostream& operator<<(std::ostream& os, const spread_order_cancellatio
     os << "timestamp=" << msg.fields.timestamp.get().value()
        << ",order_id=" << msg.fields.order_id.get().value()
        << ",token=" << msg.fields.token.get().value()
-       << ",order_type=\"" << binary_mtbt::order_type::to_string(msg.fields.order_type.get().value()) << '"'
+       << ",order_type=\"" << tbt_mtbt::order_type::to_string(msg.fields.order_type.get().value()) << '"'
        << ",price=" << msg.fields.price.get().value()
        << ",quantity=" << msg.fields.quantity.get().value()
        ;

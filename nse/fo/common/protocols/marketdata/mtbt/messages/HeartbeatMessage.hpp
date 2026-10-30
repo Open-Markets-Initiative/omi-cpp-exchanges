@@ -4,9 +4,9 @@
 #include "../types/LastSequenceNo.hpp"
 #include "../types/MessageType.hpp"
 
-namespace nse::nsefo::mtbt::binary::v7_1 {
+namespace nse::nsefo::mtbt::tbt::v7_1 {
 
-namespace binary_mtbt = ::nse::nsefo::mtbt::binary::v7_1;
+namespace tbt_mtbt = ::nse::nsefo::mtbt::tbt::v7_1;
 
 #pragma pack(push, 1)
 
@@ -14,10 +14,10 @@ namespace binary_mtbt = ::nse::nsefo::mtbt::binary::v7_1;
 struct heartbeat_message {
 
     struct fields_type {
-        binary_mtbt::last_sequence_no last_sequence_no;
+        tbt_mtbt::last_sequence_no last_sequence_no;
     };
 
-    binary_mtbt::message_type message_type = binary_mtbt::message_type::enum_type::heartbeat_message;
+    tbt_mtbt::message_type message_type = tbt_mtbt::message_type::enum_type::heartbeat_message;
 
     fields_type fields;
 
@@ -36,7 +36,7 @@ struct heartbeat_message {
 // layout verification
 static_assert(offsetof(heartbeat_message::fields_type, last_sequence_no) == 0, "unexpected offset of heartbeat_message::fields_type::last_sequence_no");
 static_assert(sizeof(heartbeat_message::fields_type) == 4, "unexpected sizeof heartbeat_message::fields_type");
-static_assert(sizeof(heartbeat_message) == sizeof(binary_mtbt::message_type) + 4, "unexpected sizeof heartbeat_message");
+static_assert(sizeof(heartbeat_message) == sizeof(tbt_mtbt::message_type) + 4, "unexpected sizeof heartbeat_message");
 
 #pragma pack(pop)
 }

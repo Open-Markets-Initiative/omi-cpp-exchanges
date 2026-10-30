@@ -4,7 +4,7 @@
 #include <cstdint>
 #include "../cache/Required.hpp"
 
-namespace nse::nsefo::mtbt::binary::v7_1 {
+namespace nse::nsefo::mtbt::tbt::v7_1 {
 
 // last_sequence_no
 struct last_sequence_no {

@@ -9,9 +9,9 @@
 
 namespace sim::mtbt {
 
-namespace protocol = ::nse::nsefo::mtbt::binary::v7_1;
+namespace protocol = ::nse::nsefo::mtbt::tbt::v7_1;
 
-// Mtbt packets: Nse.NseFo.Mtbt.Binary.v7.1 'Packet', a 'Stream Header' then the messages it counts.
+// Mtbt packets: Nse.NseFo.Mtbt.Tbt.v7.1 'Packet', a 'Stream Header' then the messages it counts.
 // Messages arrive already encoded, each with the length its model frames it with; the header
 // is filled as the packet is flushed. `Publish` is a callable(const char*, std::size_t).
 template <typename Publish>

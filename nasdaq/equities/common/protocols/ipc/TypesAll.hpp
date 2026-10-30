@@ -13,3 +13,4 @@
 #include "types/AggressorOrderId.hpp"
 #include "types/RestingOrderId.hpp"
 #include "types/ExecutionId.hpp"
+#include "types/Announcement.hpp"

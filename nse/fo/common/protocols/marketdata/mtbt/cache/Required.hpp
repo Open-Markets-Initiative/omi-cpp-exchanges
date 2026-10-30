@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <type_traits>
 
-namespace nse::nsefo::mtbt::binary::v7_1 {
+namespace nse::nsefo::mtbt::tbt::v7_1 {
 
 /// Lightweight wrapper for required (non-optional) values.
 /// Provides std::optional-compatible interface: has_value(), value(), operator bool.

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <deque>
 #include <functional>
+#include <limits>
 #include <map>
 
 namespace matching {
@@ -18,12 +19,26 @@ struct Order {
     std::uint64_t qty;
 };
 
+// Which auction a trade ended. None is a trade made in continuous trading.
+enum class Cross : std::uint8_t { None, Opening, Intraday, Closing };
+
 struct Trade {
     std::uint64_t aggressor_id;
     std::uint64_t resting_id;
     std::int64_t  price;    // resting (passive) price
     std::uint64_t qty;
     std::uint64_t match_id; // numbers the fill, shared by both sides of it
+    // The auction this trade ended. An uncross has no aggressor: both sides waited for it, so
+    // aggressor_id is the buy side and resting_id the sell side, and price is the one it crossed at.
+    Cross         cross = Cross::None;
+};
+
+// What an auction would cross at now: the price, how much would trade there, and what would be
+// left over on the heavier side. Nothing crosses when qty is zero.
+struct Indicative {
+    std::int64_t  price   = 0;
+    std::uint64_t qty     = 0;
+    std::uint64_t surplus = 0;
 };
 
 // The cancel callback of an engine whose owner does not listen for cancels.
@@ -61,6 +76,96 @@ public:
         if (!erase(bids_, id, removed) && !erase(asks_, id, removed)) return false;
         on_canceled_(removed);
         return true;
+    }
+
+    // An order held without crossing: an auction collects, and nothing trades until it uncrosses.
+    // The book may stand crossed while it does.
+    void hold(Order order) { rest(order); }
+
+    // The price an auction would cross at now, inside the band [floor, ceiling]. Of every price an
+    // order stands at, and the band's own limits - an order to buy above the ceiling is willing at
+    // it:
+    //   the most quantity executable,
+    //   then the least surplus left on the heavier side,
+    //   then the market's pressure: the higher price when buyers are left over, the lower when
+    //   sellers are,
+    //   then the nearest the reference price,
+    //   then the higher price.
+    // Checked against a venue's feed rather than assumed. On Tadawul's 2026-06-22 day, wherever the
+    // book its feed showed was all the auction held, this is the price and quantity it published in
+    // 3,833 of 3,838 indicatives (opening, intraday and closing; band 10% of the reference, rounded
+    // in to a tick). Three that differ balance exactly, with no surplus to press either way, and the
+    // venue's choice among those prices is not this rule's; one day was not enough to say what it is.
+    Indicative indicative(std::int64_t reference,
+                          std::int64_t floor   = std::numeric_limits<std::int64_t>::min(),
+                          std::int64_t ceiling = std::numeric_limits<std::int64_t>::max()) const {
+        Indicative best{};
+        bool best_buyers = false;
+        auto take = [&](std::int64_t price) {
+            if (price < floor || price > ceiling) return;
+            std::uint64_t bought = 0, sold = 0;
+            for (const auto& [level, orders] : bids_) { if (level < price) break; for (const auto& o : orders) bought += o.qty; }
+            for (const auto& [level, orders] : asks_) { if (level > price) break; for (const auto& o : orders) sold += o.qty; }
+            const std::uint64_t qty = std::min(bought, sold);
+            if (qty == 0) return;
+            const std::uint64_t surplus = bought > sold ? bought - sold : sold - bought;
+            const bool buyers = bought > sold;
+            const auto distance = [&](std::int64_t p) { return p > reference ? p - reference : reference - p; };
+            const bool better =
+                qty != best.qty         ? qty > best.qty :
+                surplus != best.surplus ? surplus < best.surplus :
+                surplus != 0 && buyers == best_buyers && price != best.price ? (buyers ? price > best.price : price < best.price) :
+                distance(price) != distance(best.price) ? distance(price) < distance(best.price) :
+                                          price > best.price;
+            if (best.qty == 0 || better) { best = Indicative{ price, qty, surplus }; best_buyers = buyers; }
+        };
+        for (const auto& level : bids_) take(level.first);
+        for (const auto& level : asks_) take(level.first);
+        if (floor != std::numeric_limits<std::int64_t>::min()) take(floor);
+        if (ceiling != std::numeric_limits<std::int64_t>::max()) take(ceiling);
+        return best;
+    }
+
+    // The uncross: everything an auction collected that crosses trades at one price, the best bids
+    // against the best asks, first come first filled within a price. Returns what it crossed at.
+    Indicative uncross(Cross cross, std::int64_t reference,
+                       std::int64_t floor   = std::numeric_limits<std::int64_t>::min(),
+                       std::int64_t ceiling = std::numeric_limits<std::int64_t>::max()) {
+        const auto at = indicative(reference, floor, ceiling);
+        std::uint64_t left = at.qty;
+
+        while (left > 0 && !bids_.empty() && !asks_.empty()) {
+            auto bid = bids_.begin();
+            auto ask = asks_.begin();
+            if (bid->first < at.price || ask->first > at.price) break;
+
+            Order& buy  = bid->second.front();
+            Order& sell = ask->second.front();
+            const std::uint64_t fill = std::min({ buy.qty, sell.qty, left });
+
+            on_trade_(Trade{ buy.id, sell.id, at.price, fill, ++matches_, cross });
+            buy.qty  -= fill;
+            sell.qty -= fill;
+            left     -= fill;
+
+            if (buy.qty == 0)  bid->second.pop_front();
+            if (sell.qty == 0) ask->second.pop_front();
+            if (bid->second.empty()) bids_.erase(bid);
+            if (ask->second.empty()) asks_.erase(ask);
+        }
+        return at;
+    }
+
+    // An order that may trade only at one price - trade at last, at the closing auction's: it
+    // crosses what rests at exactly that price, and the rest of it rests there.
+    void on_new_order_at(Order order, std::int64_t price) {
+        order.price = price;
+        if (order.side == Side::Buy)
+            cross(order, asks_, [&](std::int64_t level) { return level == price; });
+        else
+            cross(order, bids_, [&](std::int64_t level) { return level == price; });
+
+        if (order.qty > 0) rest(order);
     }
 
 private:

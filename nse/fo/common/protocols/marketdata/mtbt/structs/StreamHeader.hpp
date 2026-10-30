@@ -5,17 +5,17 @@
 #include "../types/StreamId.hpp"
 #include "../types/SequenceNumber.hpp"
 
-namespace nse::nsefo::mtbt::binary::v7_1 {
+namespace nse::nsefo::mtbt::tbt::v7_1 {
 
-namespace binary_mtbt = ::nse::nsefo::mtbt::binary::v7_1;
+namespace tbt_mtbt = ::nse::nsefo::mtbt::tbt::v7_1;
 
 #pragma pack(push, 1)
 
 struct stream_header {
 
-    binary_mtbt::message_length message_length;
-    binary_mtbt::stream_id stream_id;
-    binary_mtbt::sequence_number sequence_number;
+    tbt_mtbt::message_length message_length;
+    tbt_mtbt::stream_id stream_id;
+    tbt_mtbt::sequence_number sequence_number;
 
     // parse method
     static stream_header* parse(std::byte* buffer) {

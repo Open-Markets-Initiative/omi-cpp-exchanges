@@ -3,15 +3,15 @@
 #include <cstddef>
 #include "../types/MessageType.hpp"
 
-namespace nse::nsefo::mtbt::binary::v7_1 {
+namespace nse::nsefo::mtbt::tbt::v7_1 {
 
-namespace binary_mtbt = ::nse::nsefo::mtbt::binary::v7_1;
+namespace tbt_mtbt = ::nse::nsefo::mtbt::tbt::v7_1;
 
 #pragma pack(push, 1)
 
 struct message {
 
-    binary_mtbt::message_type message_type;
+    tbt_mtbt::message_type message_type;
 
     // parse method
     static message* parse(std::byte* buffer) {

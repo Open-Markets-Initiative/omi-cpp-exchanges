@@ -8,10 +8,10 @@
 
 namespace nse::nsefo::orderentry::nnf::v9_50 {
 
-// brokernumber
-struct brokernumber {
+// broker_number
+struct broker_number {
 
-    static constexpr const char* name = "brokernumber";
+    static constexpr const char* name = "broker_number";
     static constexpr std::size_t size = 5;
     static constexpr char fill_char = ' ';
     static constexpr bool is_optional = false;
@@ -19,7 +19,7 @@ struct brokernumber {
     using result_type = required<std::string_view>;
     using storage_type = required<std::array<char, 5>>;
 
-    constexpr brokernumber() {
+    constexpr broker_number() {
         value.fill(fill_char);
     }
 
