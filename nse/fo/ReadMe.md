@@ -1,14 +1,12 @@
 # Nse Futures and Options Simulator
 
-Generated exchange simulator for Nse Futures and Options: an order-entry gateway, a continuous
-price-time matching engine, market data feed publishers
+Generated exchange simulator for Nse Futures and Options: an order-entry gateway, a continuous price-time matching engine,
+market data feed publishers
 and traders that exercise the exchange end to end. Every link between two components carries
 framed Nse.NseFo.MatchingEngine.Ipc.v1.0 messages: the gateway owns the client sockets, the engine owns the
 book, and each feed owns its market data.
 
-The components are generated once, into `common/`, and deployed three ways - `process/` as one
-binary, `system/` as a process per component on this host, `cluster/` as a process per component
-across machines. Each directory has a ReadMe of its own.
+The components are generated once, into `common/`, and deployed three ways - `process/`, one binary with a thread per component, `system/`, a process per component on this host, `cluster/`, a process per component across machines. Each directory has a ReadMe of its own.
 
 ## Layout
 
@@ -16,7 +14,7 @@ across machines. Each directory has a ReadMe of its own.
 CMakeLists.txt         every target: the single binary, a binary per component, the tests
 Dockerfile             the venue as one image; cluster/compose.yaml runs a component per container
 simulator.ini          runtime endpoints, read at process start (docker/ holds the container copy)
-common/                everything the three deployments share, generated once
+common/                everything the deployments share, generated once
   protocols/           the generated structs, messages and sessions of each protocol
   engine/ traders/     the matching engine and the venue's own traders
   run/                 the links: a queue, a ring in shared memory, a socket
@@ -25,16 +23,16 @@ system/                a process per component on one host, rings in shared memo
 cluster/               a process per component across machines, Tcp, tiers that fail apart
 ```
 
-Each of `process/`, `system/` and `cluster/` has a ReadMe saying what it is and what it is not;
-the separated two have a `launch.sh` and a `verify.sh` that runs the venue and checks what its
-components carried.
+Each of `process/`, `system/`, `cluster/` has a ReadMe saying what it is and what it is not; the separated ones have a `launch.sh`
+and a `verify.sh` that runs the venue and checks what its components carried.
 
 ## Protocols
 
 | Role | Model |
 | --- | --- |
 | Order Entry | Nse.NseFo.OrderEntry.Nnf.v9.50 |
-| Market Data (Mtbt) | Nse.NseFo.Mtbt.Binary.v7.1 |
+| Order Entry Session | Nse.Nnf |
+| Market Data (Mtbt) | Nse.NseFo.Mtbt.Tbt.v7.1 |
 | Internal Messaging | Nse.NseFo.MatchingEngine.Ipc.v1.0 |
 
 ## Build
@@ -60,7 +58,6 @@ Runtime endpoints are read from simulator.ini at process start:
 | --- | --- |
 | Order entry (Tcp) | 127.0.0.1:10900 |
 | Mtbt feed (Udp multicast) | 239.70.70.61:17761 |
-
 
 Recording output (order-entry log, market data captures) lands under `recordings/`.
 

@@ -82,7 +82,7 @@ An exchange whose declarations the generators cannot write is left out rather th
 written:
 
 - **Nse Futures and Options**: Session model not found: Nse.Nnf (under C:\Users\wwteg\Desktop\Scaled\OmiModels)
-- **Nasdaq Stock Market Continuous**: Session model not found: Nasdaq.SoupBinTcp (under C:\Users\wwteg\Desktop\Scaled\OmiModels)
-- **Nasdaq Stock Market Trading Day**: Session model not found: Nasdaq.SoupBinTcp (under C:\Users\wwteg\Desktop\Scaled\OmiModels)
+- **Nasdaq Stock Market Day**: Session model not found: Nasdaq.SoupBinTcp (under C:\Users\wwteg\Desktop\Scaled\OmiModels)
+- **Nasdaq Stock Market Open**: Session model not found: Nasdaq.SoupBinTcp (under C:\Users\wwteg\Desktop\Scaled\OmiModels)
 
 Any questions, comments or requests: Open-Markets-Initiative@outlook.com

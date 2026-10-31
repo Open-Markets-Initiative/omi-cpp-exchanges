@@ -39,12 +39,14 @@ struct Trade {
     Cross         cross = Cross::None;
 };
 
-// What an auction would cross at now: the price, how much would trade there, and what would be
-// left over on the heavier side. Nothing crosses when qty is zero.
+// What an auction would cross at now: the price, how much would trade there, what would be left
+// over on the heavier side, and whether that side is the buyers'. Nothing crosses when qty is zero,
+// and neither side is heavier when surplus is.
 struct Indicative {
     std::int64_t  price   = 0;
     std::uint64_t qty     = 0;
     std::uint64_t surplus = 0;
+    bool          buyers  = false;
 };
 
 // The cancel callback of an engine whose owner does not listen for cancels.
@@ -108,7 +110,6 @@ public:
                           std::int64_t floor   = std::numeric_limits<std::int64_t>::min(),
                           std::int64_t ceiling = std::numeric_limits<std::int64_t>::max()) const {
         Indicative best{};
-        bool best_buyers = false;
         auto take = [&](std::int64_t price) {
             std::uint64_t bought = 0, sold = 0;
             for (const auto& [level, orders] : bids_) { if (level < price) break; for (const auto& o : orders) bought += o.qty; }
@@ -121,10 +122,10 @@ public:
             const bool better =
                 qty != best.qty         ? qty > best.qty :
                 surplus != best.surplus ? surplus < best.surplus :
-                surplus != 0 && buyers == best_buyers && price != best.price ? (buyers ? price > best.price : price < best.price) :
+                surplus != 0 && buyers == best.buyers && price != best.price ? (buyers ? price > best.price : price < best.price) :
                 distance(price) != distance(best.price) ? distance(price) < distance(best.price) :
                                           price > best.price;
-            if (best.qty == 0 || better) { best = Indicative{ price, qty, surplus }; best_buyers = buyers; }
+            if (best.qty == 0 || better) best = Indicative{ price, qty, surplus, buyers };
         };
         for (const auto& level : bids_) {
             if (level.first != market(Side::Buy) && level.first >= floor) take(std::min(level.first, ceiling));

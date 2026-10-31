@@ -6,11 +6,20 @@
 #include "../types/Timestamp.hpp"
 #include "../types/UserRefNum.hpp"
 #include "../types/AppendageLength.hpp"
+#include "../types/OptionalFieldLength.hpp"
+#include "../types/CancelRejectOptionalField.hpp"
 #include "../types/SequencedMessageType.hpp"
 
 namespace nasdaq::nsmequities::orders::ouch::v5_0 {
 
 namespace ouch_orders = ::nasdaq::nsmequities::orders::ouch::v5_0;
+
+#pragma pack(push, 1)
+struct cancel_reject_message_cancel_reject_appendage_entry {
+    ouch_orders::optional_field_length optional_field_length;
+    ouch_orders::cancel_reject_optional_field cancel_reject_optional_field;
+};
+#pragma pack(pop)
 
 
 #pragma pack(push, 1)
@@ -43,7 +52,7 @@ struct cancel_reject_message {
     }
 
     // sequential access to variable-length regions
-    external_var_data cancel_reject_appendage() const {
+    external_count_iterator<cancel_reject_message_cancel_reject_appendage_entry> cancel_reject_appendage() const {
         return { tail_begin(), fields.appendage_length.get().value(), tail_end() };
     }
 

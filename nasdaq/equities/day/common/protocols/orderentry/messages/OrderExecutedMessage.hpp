@@ -10,11 +10,20 @@
 #include "../types/LiquidityFlag.hpp"
 #include "../types/MatchNumber.hpp"
 #include "../types/AppendageLength.hpp"
+#include "../types/OptionalFieldLength.hpp"
+#include "../types/OrderExecutedOptionalField.hpp"
 #include "../types/SequencedMessageType.hpp"
 
 namespace nasdaq::nsmequities::orders::ouch::v5_0 {
 
 namespace ouch_orders = ::nasdaq::nsmequities::orders::ouch::v5_0;
+
+#pragma pack(push, 1)
+struct order_executed_message_order_executed_appendage_entry {
+    ouch_orders::optional_field_length optional_field_length;
+    ouch_orders::order_executed_optional_field order_executed_optional_field;
+};
+#pragma pack(pop)
 
 
 #pragma pack(push, 1)
@@ -51,7 +60,7 @@ struct order_executed_message {
     }
 
     // sequential access to variable-length regions
-    external_var_data order_executed_appendage() const {
+    external_count_iterator<order_executed_message_order_executed_appendage_entry> order_executed_appendage() const {
         return { tail_begin(), fields.appendage_length.get().value(), tail_end() };
     }
 

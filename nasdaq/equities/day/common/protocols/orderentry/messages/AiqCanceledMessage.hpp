@@ -12,11 +12,20 @@
 #include "../types/LiquidityFlag.hpp"
 #include "../types/AiqStrategy.hpp"
 #include "../types/AppendageLength.hpp"
+#include "../types/OptionalFieldLength.hpp"
+#include "../types/AiqCanceledOptionalField.hpp"
 #include "../types/SequencedMessageType.hpp"
 
 namespace nasdaq::nsmequities::orders::ouch::v5_0 {
 
 namespace ouch_orders = ::nasdaq::nsmequities::orders::ouch::v5_0;
+
+#pragma pack(push, 1)
+struct aiq_canceled_message_aiq_canceled_appendage_entry {
+    ouch_orders::optional_field_length optional_field_length;
+    ouch_orders::aiq_canceled_optional_field aiq_canceled_optional_field;
+};
+#pragma pack(pop)
 
 
 #pragma pack(push, 1)
@@ -55,7 +64,7 @@ struct aiq_canceled_message {
     }
 
     // sequential access to variable-length regions
-    external_var_data aiq_canceled_appendage() const {
+    external_count_iterator<aiq_canceled_message_aiq_canceled_appendage_entry> aiq_canceled_appendage() const {
         return { tail_begin(), fields.appendage_length.get().value(), tail_end() };
     }
 

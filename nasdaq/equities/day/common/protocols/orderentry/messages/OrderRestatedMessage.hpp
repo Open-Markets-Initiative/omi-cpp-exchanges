@@ -7,11 +7,20 @@
 #include "../types/UserRefNum.hpp"
 #include "../types/OrderRestatedReason.hpp"
 #include "../types/AppendageLength.hpp"
+#include "../types/OptionalFieldLength.hpp"
+#include "../types/OrderRestatedOptionalField.hpp"
 #include "../types/SequencedMessageType.hpp"
 
 namespace nasdaq::nsmequities::orders::ouch::v5_0 {
 
 namespace ouch_orders = ::nasdaq::nsmequities::orders::ouch::v5_0;
+
+#pragma pack(push, 1)
+struct order_restated_message_order_restated_appendage_entry {
+    ouch_orders::optional_field_length optional_field_length;
+    ouch_orders::order_restated_optional_field order_restated_optional_field;
+};
+#pragma pack(pop)
 
 
 #pragma pack(push, 1)
@@ -45,7 +54,7 @@ struct order_restated_message {
     }
 
     // sequential access to variable-length regions
-    external_var_data order_restated_appendage() const {
+    external_count_iterator<order_restated_message_order_restated_appendage_entry> order_restated_appendage() const {
         return { tail_begin(), fields.appendage_length.get().value(), tail_end() };
     }
 

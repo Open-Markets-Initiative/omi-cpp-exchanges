@@ -43,8 +43,8 @@ BOOST_AUTO_TEST_CASE(mtbt_publishes_a_packet_its_model_reads) {
     const char message[] = { 'A', 'B', 'C', 'D' };
     publisher.publish_message(message, sizeof message);
 
-    BOOST_REQUIRE_EQUAL(packet.size(), sizeof(nse::nsefo::mtbt::binary::v7_1::stream_header) + sizeof message);
-    const auto* header = nse::nsefo::mtbt::binary::v7_1::stream_header::parse(reinterpret_cast<const std::byte*>(packet.data()));
+    BOOST_REQUIRE_EQUAL(packet.size(), sizeof(nse::nsefo::mtbt::tbt::v7_1::stream_header) + sizeof message);
+    const auto* header = nse::nsefo::mtbt::tbt::v7_1::stream_header::parse(reinterpret_cast<const std::byte*>(packet.data()));
     BOOST_CHECK_EQUAL(static_cast<std::uint64_t>(header->stream_id.get().value()), 1u);
     BOOST_CHECK_EQUAL(header->sequence_number.get().value(), 1u);
     BOOST_CHECK_EQUAL(publisher.next_seq(), 2u);

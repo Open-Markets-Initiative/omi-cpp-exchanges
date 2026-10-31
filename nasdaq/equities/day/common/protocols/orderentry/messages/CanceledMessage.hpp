@@ -8,11 +8,20 @@
 #include "../types/Quantity.hpp"
 #include "../types/CancelOrderReason.hpp"
 #include "../types/AppendageLength.hpp"
+#include "../types/OptionalFieldLength.hpp"
+#include "../types/CanceledMessageOptionalField.hpp"
 #include "../types/SequencedMessageType.hpp"
 
 namespace nasdaq::nsmequities::orders::ouch::v5_0 {
 
 namespace ouch_orders = ::nasdaq::nsmequities::orders::ouch::v5_0;
+
+#pragma pack(push, 1)
+struct canceled_message_appendage_entry {
+    ouch_orders::optional_field_length optional_field_length;
+    ouch_orders::canceled_message_optional_field canceled_message_optional_field;
+};
+#pragma pack(pop)
 
 
 #pragma pack(push, 1)
@@ -47,7 +56,7 @@ struct canceled_message {
     }
 
     // sequential access to variable-length regions
-    external_var_data canceled_message_appendage() const {
+    external_count_iterator<canceled_message_appendage_entry> canceled_message_appendage() const {
         return { tail_begin(), fields.appendage_length.get().value(), tail_end() };
     }
 

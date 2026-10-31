@@ -19,6 +19,12 @@ struct Order {
     std::uint64_t qty;
 };
 
+// The price a market order stands at: it trades at any price, so it is ahead of every limit on
+// its side, and it is no price an auction could cross at.
+constexpr std::int64_t market(Side side) {
+    return side == Side::Buy ? std::numeric_limits<std::int64_t>::max() : std::numeric_limits<std::int64_t>::min();
+}
+
 // Which auction a trade ended. None is a trade made in continuous trading.
 enum class Cross : std::uint8_t { None, Opening, Intraday, Closing };
 
@@ -83,8 +89,9 @@ public:
     void hold(Order order) { rest(order); }
 
     // The price an auction would cross at now, inside the band [floor, ceiling]. Of every price an
-    // order stands at, and the band's own limits - an order to buy above the ceiling is willing at
-    // it:
+    // order is limited to - one beyond the band at the limit it is willing at, a buy above the
+    // ceiling at the ceiling and a sell below the floor at the floor; a market order has no price
+    // of its own:
     //   the most quantity executable,
     //   then the least surplus left on the heavier side,
     //   then the market's pressure: the higher price when buyers are left over, the lower when
@@ -93,16 +100,16 @@ public:
     //   then the higher price.
     // Checked against a venue's feed rather than assumed. On Tadawul's 2026-06-22 day, wherever the
     // book its feed showed was all the auction held, this is the price and quantity it published in
-    // 3,833 of 3,838 indicatives (opening, intraday and closing; band 10% of the reference, rounded
-    // in to a tick). Three that differ balance exactly, with no surplus to press either way, and the
-    // venue's choice among those prices is not this rule's; one day was not enough to say what it is.
+    // 9,481 of 9,484 indicatives (opening, intraday and closing; band 10% of the reference, rounded
+    // in to a tick). Two that differ balance exactly, with no surplus to press either way, and the
+    // venue's choice between those prices is not this rule's; the third is not explained. One day
+    // was not enough to say more.
     Indicative indicative(std::int64_t reference,
                           std::int64_t floor   = std::numeric_limits<std::int64_t>::min(),
                           std::int64_t ceiling = std::numeric_limits<std::int64_t>::max()) const {
         Indicative best{};
         bool best_buyers = false;
         auto take = [&](std::int64_t price) {
-            if (price < floor || price > ceiling) return;
             std::uint64_t bought = 0, sold = 0;
             for (const auto& [level, orders] : bids_) { if (level < price) break; for (const auto& o : orders) bought += o.qty; }
             for (const auto& [level, orders] : asks_) { if (level > price) break; for (const auto& o : orders) sold += o.qty; }
@@ -119,10 +126,12 @@ public:
                                           price > best.price;
             if (best.qty == 0 || better) { best = Indicative{ price, qty, surplus }; best_buyers = buyers; }
         };
-        for (const auto& level : bids_) take(level.first);
-        for (const auto& level : asks_) take(level.first);
-        if (floor != std::numeric_limits<std::int64_t>::min()) take(floor);
-        if (ceiling != std::numeric_limits<std::int64_t>::max()) take(ceiling);
+        for (const auto& level : bids_) {
+            if (level.first != market(Side::Buy) && level.first >= floor) take(std::min(level.first, ceiling));
+        }
+        for (const auto& level : asks_) {
+            if (level.first != market(Side::Sell) && level.first <= ceiling) take(std::max(level.first, floor));
+        }
         return best;
     }
 

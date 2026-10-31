@@ -8,7 +8,7 @@
 #include "../types/Symbol.hpp"
 #include "../types/Price.hpp"
 #include "../types/Quantity.hpp"
-#include "../types/Cross.hpp"
+#include "../types/Auction.hpp"
 
 namespace nasdaq::nsmequities::matchingengine::ipc::v2026 {
 
@@ -25,7 +25,7 @@ struct trade_message {
     ipc_matchingengine::symbol symbol;
     ipc_matchingengine::price price;
     ipc_matchingengine::quantity quantity;
-    ipc_matchingengine::cross cross;
+    ipc_matchingengine::auction auction;
 
     // parse method
     static trade_message* parse(std::byte* buffer) {
@@ -46,7 +46,7 @@ static_assert(offsetof(trade_message, execution_id) == 24, "unexpected offset of
 static_assert(offsetof(trade_message, symbol) == 32, "unexpected offset of trade_message::symbol");
 static_assert(offsetof(trade_message, price) == 40, "unexpected offset of trade_message::price");
 static_assert(offsetof(trade_message, quantity) == 48, "unexpected offset of trade_message::quantity");
-static_assert(offsetof(trade_message, cross) == 52, "unexpected offset of trade_message::cross");
+static_assert(offsetof(trade_message, auction) == 52, "unexpected offset of trade_message::auction");
 static_assert(sizeof(trade_message) == 53, "unexpected sizeof trade_message");
 
 #pragma pack(pop)

@@ -19,11 +19,20 @@
 #include "../types/OrderState.hpp"
 #include "../types/Clordid.hpp"
 #include "../types/AppendageLength.hpp"
+#include "../types/OptionalFieldLength.hpp"
+#include "../types/ReplacedMessageOptionalField.hpp"
 #include "../types/SequencedMessageType.hpp"
 
 namespace nasdaq::nsmequities::orders::ouch::v5_0 {
 
 namespace ouch_orders = ::nasdaq::nsmequities::orders::ouch::v5_0;
+
+#pragma pack(push, 1)
+struct replaced_message_appendage_entry {
+    ouch_orders::optional_field_length optional_field_length;
+    ouch_orders::replaced_message_optional_field replaced_message_optional_field;
+};
+#pragma pack(pop)
 
 
 #pragma pack(push, 1)
@@ -69,7 +78,7 @@ struct replaced_message {
     }
 
     // sequential access to variable-length regions
-    external_var_data replaced_message_appendage() const {
+    external_count_iterator<replaced_message_appendage_entry> replaced_message_appendage() const {
         return { tail_begin(), fields.appendage_length.get().value(), tail_end() };
     }
 

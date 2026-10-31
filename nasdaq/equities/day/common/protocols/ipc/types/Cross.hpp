@@ -13,22 +13,19 @@ namespace nasdaq::nsmequities::matchingengine::ipc::v2026 {
 struct cross {
 
     enum class enum_type : char {
-        none = 'N',
         opening = 'O',
         intraday = 'I',
         closing = 'C'
     };
 
-    static constexpr std::array<std::pair<std::string_view, enum_type>, 4> from_string_map = {{
+    static constexpr std::array<std::pair<std::string_view, enum_type>, 3> from_string_map = {{
         {"Closing", enum_type::closing},
         {"Intraday", enum_type::intraday},
-        {"None", enum_type::none},
         {"Opening", enum_type::opening}
     }};
 
     static constexpr std::string_view to_string(enum_type value) {
         switch (value) {
-            case enum_type::none: return "None";
             case enum_type::opening: return "Opening";
             case enum_type::intraday: return "Intraday";
             case enum_type::closing: return "Closing";

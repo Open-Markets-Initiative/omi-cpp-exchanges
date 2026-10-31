@@ -7,11 +7,20 @@
 #include "../types/Side.hpp"
 #include "../types/Quantity.hpp"
 #include "../types/AppendageLength.hpp"
+#include "../types/OptionalFieldLength.hpp"
+#include "../types/ModifyOrderOptionalField.hpp"
 #include "../types/UnsequencedMessageType.hpp"
 
 namespace nasdaq::nsmequities::orders::ouch::v5_0 {
 
 namespace ouch_orders = ::nasdaq::nsmequities::orders::ouch::v5_0;
+
+#pragma pack(push, 1)
+struct modify_order_message_modify_order_appendage_entry {
+    ouch_orders::optional_field_length optional_field_length;
+    ouch_orders::modify_order_optional_field modify_order_optional_field;
+};
+#pragma pack(pop)
 
 
 #pragma pack(push, 1)
@@ -45,7 +54,7 @@ struct modify_order_message {
     }
 
     // sequential access to variable-length regions
-    external_var_data modify_order_appendage() const {
+    external_count_iterator<modify_order_message_modify_order_appendage_entry> modify_order_appendage() const {
         return { tail_begin(), fields.appendage_length.get().value(), tail_end() };
     }
 

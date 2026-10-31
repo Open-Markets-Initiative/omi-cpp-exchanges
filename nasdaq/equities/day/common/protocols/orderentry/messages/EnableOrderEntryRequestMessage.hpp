@@ -6,11 +6,20 @@
 #include "../types/UserRefNum.hpp"
 #include "../types/Firm.hpp"
 #include "../types/AppendageLength.hpp"
+#include "../types/OptionalFieldLength.hpp"
+#include "../types/EnableOrderEntryRequestOptionalField.hpp"
 #include "../types/UnsequencedMessageType.hpp"
 
 namespace nasdaq::nsmequities::orders::ouch::v5_0 {
 
 namespace ouch_orders = ::nasdaq::nsmequities::orders::ouch::v5_0;
+
+#pragma pack(push, 1)
+struct enable_order_entry_request_message_enable_order_entry_request_appendage_entry {
+    ouch_orders::optional_field_length optional_field_length;
+    ouch_orders::enable_order_entry_request_optional_field enable_order_entry_request_optional_field;
+};
+#pragma pack(pop)
 
 
 #pragma pack(push, 1)
@@ -43,7 +52,7 @@ struct enable_order_entry_request_message {
     }
 
     // sequential access to variable-length regions
-    external_var_data enable_order_entry_request_appendage() const {
+    external_count_iterator<enable_order_entry_request_message_enable_order_entry_request_appendage_entry> enable_order_entry_request_appendage() const {
         return { tail_begin(), fields.appendage_length.get().value(), tail_end() };
     }
 

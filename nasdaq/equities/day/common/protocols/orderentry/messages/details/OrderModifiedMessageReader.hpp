@@ -10,7 +10,7 @@ namespace nasdaq::nsmequities::orders::ouch::v5_0 {
 namespace ouch_orders = ::nasdaq::nsmequities::orders::ouch::v5_0;
 
 
-inline external_var_data read_order_modified_appendage(const order_modified_message& msg) {
+inline external_count_iterator<order_modified_message_order_modified_appendage_entry> read_order_modified_appendage(const order_modified_message& msg) {
     return { msg.tail_begin(), msg.fields.appendage_length.get().value(), msg.tail_end() };
 }
 

@@ -4,11 +4,20 @@
 #include "../structs/ClientPacketHeader.hpp"
 #include "../structs/SbeGroupSupport.hpp"
 #include "../types/AppendageLength.hpp"
+#include "../types/OptionalFieldLength.hpp"
+#include "../types/AccountQueryOptionalField.hpp"
 #include "../types/UnsequencedMessageType.hpp"
 
 namespace nasdaq::nsmequities::orders::ouch::v5_0 {
 
 namespace ouch_orders = ::nasdaq::nsmequities::orders::ouch::v5_0;
+
+#pragma pack(push, 1)
+struct account_query_message_account_query_appendage_entry {
+    ouch_orders::optional_field_length optional_field_length;
+    ouch_orders::account_query_optional_field account_query_optional_field;
+};
+#pragma pack(pop)
 
 
 #pragma pack(push, 1)
@@ -39,7 +48,7 @@ struct account_query_message {
     }
 
     // sequential access to variable-length regions
-    external_var_data account_query_appendage() const {
+    external_count_iterator<account_query_message_account_query_appendage_entry> account_query_appendage() const {
         return { tail_begin(), fields.appendage_length.get().value(), tail_end() };
     }
 

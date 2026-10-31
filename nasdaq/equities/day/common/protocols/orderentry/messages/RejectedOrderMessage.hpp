@@ -8,11 +8,20 @@
 #include "../types/RejectedOrderReason.hpp"
 #include "../types/Clordid.hpp"
 #include "../types/AppendageLength.hpp"
+#include "../types/OptionalFieldLength.hpp"
+#include "../types/RejectedOrderOptionalField.hpp"
 #include "../types/SequencedMessageType.hpp"
 
 namespace nasdaq::nsmequities::orders::ouch::v5_0 {
 
 namespace ouch_orders = ::nasdaq::nsmequities::orders::ouch::v5_0;
+
+#pragma pack(push, 1)
+struct rejected_order_message_rejected_order_appendage_entry {
+    ouch_orders::optional_field_length optional_field_length;
+    ouch_orders::rejected_order_optional_field rejected_order_optional_field;
+};
+#pragma pack(pop)
 
 
 #pragma pack(push, 1)
@@ -47,7 +56,7 @@ struct rejected_order_message {
     }
 
     // sequential access to variable-length regions
-    external_var_data rejected_order_appendage() const {
+    external_count_iterator<rejected_order_message_rejected_order_appendage_entry> rejected_order_appendage() const {
         return { tail_begin(), fields.appendage_length.get().value(), tail_end() };
     }
 

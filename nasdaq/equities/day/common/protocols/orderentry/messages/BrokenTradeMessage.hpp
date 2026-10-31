@@ -9,11 +9,20 @@
 #include "../types/BrokenTradeReason.hpp"
 #include "../types/Clordid.hpp"
 #include "../types/AppendageLength.hpp"
+#include "../types/OptionalFieldLength.hpp"
+#include "../types/BrokenTradeOptionalField.hpp"
 #include "../types/SequencedMessageType.hpp"
 
 namespace nasdaq::nsmequities::orders::ouch::v5_0 {
 
 namespace ouch_orders = ::nasdaq::nsmequities::orders::ouch::v5_0;
+
+#pragma pack(push, 1)
+struct broken_trade_message_broken_trade_appendage_entry {
+    ouch_orders::optional_field_length optional_field_length;
+    ouch_orders::broken_trade_optional_field broken_trade_optional_field;
+};
+#pragma pack(pop)
 
 
 #pragma pack(push, 1)
@@ -49,7 +58,7 @@ struct broken_trade_message {
     }
 
     // sequential access to variable-length regions
-    external_var_data broken_trade_appendage() const {
+    external_count_iterator<broken_trade_message_broken_trade_appendage_entry> broken_trade_appendage() const {
         return { tail_begin(), fields.appendage_length.get().value(), tail_end() };
     }
 
