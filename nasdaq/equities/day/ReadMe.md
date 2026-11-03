@@ -6,22 +6,25 @@ and traders that exercise the exchange end to end. Every link between two compon
 framed Nasdaq.NsmEquities.MatchingEngine.Ipc.v2026 messages: the gateway owns the client sockets, the engine owns the
 book, and each feed owns its market data.
 
-The components are generated once, into `common/`, and deployed as `process/`, one binary with a thread per component. Each directory has a ReadMe of its own.
+The components are generated once, into `common/`, and deployed three ways - `process/`, one binary with a thread per component, `system/`, a process per component on this host, `cluster/`, a process per component across machines. Each directory has a ReadMe of its own.
 
 ## Layout
 
 ```
-CMakeLists.txt         every target: the single binary and the tests
-Dockerfile             the venue as one image
+CMakeLists.txt         every target: the single binary, a binary per component, the tests
+Dockerfile             the venue as one image; cluster/compose.yaml runs a component per container
 simulator.ini          runtime endpoints, read at process start (docker/ holds the container copy)
 common/                everything the deployments share, generated once
   protocols/           the generated structs, messages and sessions of each protocol
   engine/ traders/     the matching engine and the venue's own traders
   run/                 the links: a queue, a ring in shared memory, a socket
 process/               one binary, a thread per component - deterministic, the reference
+system/                a process per component on one host, rings in shared memory
+cluster/               a process per component across machines, Tcp, tiers that fail apart
 ```
 
-`process/` has a ReadMe saying what it is and what it is not.
+Each of `process/`, `system/`, `cluster/` has a ReadMe saying what it is and what it is not; the separated ones have a `launch.sh`
+and a `verify.sh` that runs the venue and checks what its components carried.
 
 ## Protocols
 
@@ -54,6 +57,21 @@ shares that traded there. The day the simulator is generated with:
 
 A turn past the run's last is made after it. The startup run asks for each change between its
 turns, so it is the same every run; a served venue makes them on the clock.
+
+While an auction collects, the day asks the engine what it would cross at, and the engine
+answers on the internal messaging with the price, the shares that would pair there, and those
+left over and on which side. The startup run asks once a turn; a served venue asks on this
+cadence, in seconds:
+
+| Auction | First ask after the collection starts | Then every | Then every, over the last part | Last part |
+| --- | --- | --- | --- | --- |
+| Opening | 0 | 10 | 1 | 40% |
+| Intraday | 1 | 1 | - | - |
+| Closing | 0 | 10 | 1 | 40% |
+
+The engine keeps one book and one kind of order, so the price it would cross at is the only
+one it has: a feed that publishes several prices for an auction is given that one for each,
+which is an approximation.
 
 ## Build
 

@@ -17,6 +17,8 @@
 #include "structs/PhaseAnnouncedMessage.hpp"
 #include "structs/PhaseRequestMessage.hpp"
 #include "structs/CrossCompletedMessage.hpp"
+#include "structs/ImbalanceRequestMessage.hpp"
+#include "structs/ImbalanceIndicatedMessage.hpp"
 #include "MatchingEngine.hpp"
 #include "TradingPhases.hpp"
 
@@ -107,16 +109,18 @@ inline char auctioned(matching::Cross cross) {
 
 // Ipc message type codes (ascii) — mirror the Ipc specification.
 struct IpcType {
-    static constexpr char Heartbeat      = 'H';
-    static constexpr char NewOrder       = 'N';
-    static constexpr char CancelOrder    = 'C';
-    static constexpr char OrderRested    = 'R';
-    static constexpr char OrderCanceled  = 'X';
-    static constexpr char Trade          = 'T';
-    static constexpr char OrderRefused   = 'J';
-    static constexpr char PhaseAnnounced = 'S';
-    static constexpr char PhaseRequest   = 'P';
-    static constexpr char CrossCompleted = 'U';
+    static constexpr char Heartbeat          = 'H';
+    static constexpr char NewOrder           = 'N';
+    static constexpr char CancelOrder        = 'C';
+    static constexpr char OrderRested        = 'R';
+    static constexpr char OrderCanceled      = 'X';
+    static constexpr char Trade              = 'T';
+    static constexpr char OrderRefused       = 'J';
+    static constexpr char PhaseAnnounced     = 'S';
+    static constexpr char PhaseRequest       = 'P';
+    static constexpr char CrossCompleted     = 'U';
+    static constexpr char ImbalanceRequest   = 'Q';
+    static constexpr char ImbalanceIndicated = 'I';
 };
 
 // The instrument the engine trades — stamped on the symbol field of every Ipc message.
@@ -217,6 +221,15 @@ public:
                     return false;
                 }
             }
+            case IpcType::ImbalanceRequest: {
+                if constexpr (requires { engine_.indicate(); }) {
+                    if (bytes.size() < 3 + sizeof(ipc_ns::imbalance_request_message)) return false;
+                    engine_.indicate();
+                    return true;
+                } else {
+                    return false;
+                }
+            }
             default:
                 return false;
         }
@@ -234,7 +247,7 @@ struct IgnoreEvent {
 
 // Event-side endpoint: decodes engine events off the bus and hands them to the
 // consumers (feed publishers / gateway exec reports) as matching types.
-template <typename OnTrade, typename OnRest, typename OnCanceled = IgnoreEvent, typename OnRefused = IgnoreEvent, typename OnAnnounced = IgnoreEvent, typename OnCrossed = IgnoreEvent>
+template <typename OnTrade, typename OnRest, typename OnCanceled = IgnoreEvent, typename OnRefused = IgnoreEvent, typename OnAnnounced = IgnoreEvent, typename OnCrossed = IgnoreEvent, typename OnIndicated = IgnoreEvent>
 class IpcEventServer {
 public:
     IpcEventServer(OnTrade on_trade, OnRest on_rest)
@@ -243,8 +256,8 @@ public:
     IpcEventServer(OnTrade on_trade, OnRest on_rest, OnCanceled on_canceled)
         : on_trade_(on_trade), on_rest_(on_rest), on_canceled_(on_canceled) {}
 
-    IpcEventServer(OnTrade on_trade, OnRest on_rest, OnCanceled on_canceled, OnRefused on_refused, OnAnnounced on_announced, OnCrossed on_crossed)
-        : on_trade_(on_trade), on_rest_(on_rest), on_canceled_(on_canceled), on_refused_(on_refused), on_announced_(on_announced), on_crossed_(on_crossed) {}
+    IpcEventServer(OnTrade on_trade, OnRest on_rest, OnCanceled on_canceled, OnRefused on_refused, OnAnnounced on_announced, OnCrossed on_crossed, OnIndicated on_indicated)
+        : on_trade_(on_trade), on_rest_(on_rest), on_canceled_(on_canceled), on_refused_(on_refused), on_announced_(on_announced), on_crossed_(on_crossed), on_indicated_(on_indicated) {}
     bool on_message(std::string_view bytes) {
         if (bytes.size() < 3) return false;
         const std::byte* data = reinterpret_cast<const std::byte*>(bytes.data()) + 3;
@@ -280,6 +293,11 @@ public:
                 on_crossed_(*ipc_ns::cross_completed_message::parse(const_cast<std::byte*>(data)));
                 return true;
             }
+            case IpcType::ImbalanceIndicated: {
+                if (bytes.size() < 3 + sizeof(ipc_ns::imbalance_indicated_message)) return false;
+                on_indicated_(*ipc_ns::imbalance_indicated_message::parse(const_cast<std::byte*>(data)));
+                return true;
+            }
             default:
                 return false;
         }
@@ -292,6 +310,7 @@ private:
     OnRefused   on_refused_;
     OnAnnounced on_announced_;
     OnCrossed   on_crossed_;
+    OnIndicated on_indicated_;
 };
 
 // Event-side encoders: matching-engine events as Ipc messages (consumed by feed
@@ -336,7 +355,6 @@ inline void emit_refused(Emit& emit, const matching::Order& order) {
     ipc_ns::order_refused_message m{};
     m.timestamp.set(send_time_nanos());
     m.order_id.set(order.id);
-    m.symbol.set(instrument_symbol);
     detail_ipc::emit_framed(emit, IpcType::OrderRefused, m);
 }
 
@@ -368,13 +386,13 @@ template <typename Emit>
 inline void emit_phase_request(Emit& emit, PhaseChange change) {
     ipc_ns::phase_request_message m{};
     m.timestamp.set(send_time_nanos());
-    m.symbol.set(instrument_symbol);
     m.phase_change.set(static_cast<std::remove_cvref_t<decltype(m.phase_change.get().value())>>(requested(change)));
     detail_ipc::emit_framed(emit, IpcType::PhaseRequest, m);
 }
 
-// An auction the day uncrossed: which one, the price it crossed at, and the shares that traded
-// there - none when nothing crossed, which is still a cross completed.
+// An auction the day uncrossed: which one, the price it crossed at, the shares that traded there
+// - none when nothing crossed, which is still a cross completed - and the match number of its
+// print, where the internal messaging carries one.
 inline char crossed(matching::Cross cross) {
     switch (cross) {
         case matching::Cross::Opening: return 'O';
@@ -386,12 +404,43 @@ inline char crossed(matching::Cross cross) {
 }
 
 template <typename Emit>
-inline void emit_crossed(Emit& emit, matching::Cross cross, const matching::Indicative& at) {
+inline void emit_crossed(Emit& emit, matching::Cross cross, const matching::Indicative& at, std::uint64_t match) {
     ipc_ns::cross_completed_message m{};
     m.timestamp.set(send_time_nanos());
     m.symbol.set(instrument_symbol);
     m.cross.set(static_cast<std::remove_cvref_t<decltype(m.cross.get().value())>>(crossed(cross)));
     m.price.set(at.price);
     m.quantity.set(static_cast<std::uint32_t>(at.qty));
+    m.execution_id.set(match);
     detail_ipc::emit_framed(emit, IpcType::CrossCompleted, m);
+}
+
+// The day's question of the engine: what would the auction it collects for cross at now?
+template <typename Emit>
+inline void emit_imbalance_request(Emit& emit) {
+    ipc_ns::imbalance_request_message m{};
+    m.timestamp.set(send_time_nanos());
+    detail_ipc::emit_framed(emit, IpcType::ImbalanceRequest, m);
+}
+
+// The engine's answer: which auction, the price it would cross at, the shares that would pair
+// there, and those left over and on which side - insufficient when nothing would cross, and no
+// side when nothing is left over.
+inline char imbalanced(const matching::Indicative& at) {
+    if (at.qty == 0) return 'O';
+    if (at.surplus == 0) return 'N';
+    return at.buyers ? 'B' : 'S';
+}
+
+template <typename Emit>
+inline void emit_indicated(Emit& emit, matching::Cross cross, const matching::Indicative& at) {
+    ipc_ns::imbalance_indicated_message m{};
+    m.timestamp.set(send_time_nanos());
+    m.symbol.set(instrument_symbol);
+    m.cross.set(static_cast<std::remove_cvref_t<decltype(m.cross.get().value())>>(crossed(cross)));
+    m.price.set(at.price);
+    m.paired_quantity.set(at.qty);
+    m.imbalance_quantity.set(at.surplus);
+    m.imbalance_direction.set(static_cast<std::remove_cvref_t<decltype(m.imbalance_direction.get().value())>>(imbalanced(at)));
+    detail_ipc::emit_framed(emit, IpcType::ImbalanceIndicated, m);
 }}

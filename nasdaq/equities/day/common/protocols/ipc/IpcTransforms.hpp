@@ -7,11 +7,13 @@
 #include "../marketdata/totalview/messages/SystemEventMessage.hpp"
 #include "../marketdata/totalview/messages/StockTradingActionMessage.hpp"
 #include "../marketdata/totalview/messages/CrossTradeMessage.hpp"
+#include "../marketdata/totalview/messages/NetOrderImbalanceIndicatorMessage.hpp"
 #include "structs/OrderRestedMessage.hpp"
 #include "structs/TradeMessage.hpp"
 #include "structs/OrderCanceledMessage.hpp"
 #include "structs/PhaseAnnouncedMessage.hpp"
 #include "structs/CrossCompletedMessage.hpp"
+#include "structs/ImbalanceIndicatedMessage.hpp"
 #include <type_traits>
 #include <utility>
 #include <chrono>
@@ -131,6 +133,43 @@ inline nasdaq::nsmequities::totalview::itch::v5_0_2026::cross_trade_message to_t
     out.fields.cross_shares.set(static_cast<value_of<decltype(out.fields.cross_shares)>>(m.quantity.get().value()));
     out.fields.stock.set(m.symbol.get().value());
     out.fields.cross_price.set(static_cast<value_of<decltype(out.fields.cross_price)>>(m.price.get().value()));
+    out.fields.match_number.set(m.execution_id.get().value());
+    out.fields.cross_type.set(static_cast<value_of<decltype(out.fields.cross_type)>>([](char value) { switch (value) { case 'I': return 'H'; default: return value; } }(static_cast<char>(m.cross.get().value()))));
+    return out;
+}
+
+// imbalance_indicated_message -> totalview:net_order_imbalance_indicator_message  (NsmEquities.Ipc.Transforms.xml: totalview_noii)
+inline nasdaq::nsmequities::totalview::itch::v5_0_2026::net_order_imbalance_indicator_message to_totalview_noii(const ipc_ns::imbalance_indicated_message& m) {
+    nasdaq::nsmequities::totalview::itch::v5_0_2026::net_order_imbalance_indicator_message out{};
+    out.fields.stock_locate.set(static_cast<value_of<decltype(out.fields.stock_locate)>>(1));
+    out.fields.tracking_number.set(static_cast<value_of<decltype(out.fields.tracking_number)>>(0));
+    out.fields.price_variation_indicator.set(static_cast<value_of<decltype(out.fields.price_variation_indicator)>>('L'));
+    out.fields.timestamp.set(static_cast<value_of<decltype(out.fields.timestamp)>>(nanoseconds_since_midnight(m.timestamp.get().value(), new_york())));
+    out.fields.paired_shares.set(m.paired_quantity.get().value());
+    out.fields.imbalance_shares.set(m.imbalance_quantity.get().value());
+    out.fields.imbalance_direction.set(static_cast<value_of<decltype(out.fields.imbalance_direction)>>(static_cast<char>(m.imbalance_direction.get().value())));
+    out.fields.stock.set(m.symbol.get().value());
+    out.fields.far_price.set(static_cast<value_of<decltype(out.fields.far_price)>>(m.price.get().value()));
+    out.fields.near_price.set(static_cast<value_of<decltype(out.fields.near_price)>>(m.price.get().value()));
+    out.fields.current_reference_price.set(static_cast<value_of<decltype(out.fields.current_reference_price)>>(m.price.get().value()));
+    out.fields.cross_type.set(static_cast<value_of<decltype(out.fields.cross_type)>>([](char value) { switch (value) { case 'I': return 'H'; default: return value; } }(static_cast<char>(m.cross.get().value()))));
+    return out;
+}
+
+// imbalance_indicated_message -> totalview:net_order_imbalance_indicator_message  (NsmEquities.Ipc.Transforms.xml: totalview_noii_insufficient)
+inline nasdaq::nsmequities::totalview::itch::v5_0_2026::net_order_imbalance_indicator_message to_totalview_noii_insufficient(const ipc_ns::imbalance_indicated_message& m) {
+    nasdaq::nsmequities::totalview::itch::v5_0_2026::net_order_imbalance_indicator_message out{};
+    out.fields.stock_locate.set(static_cast<value_of<decltype(out.fields.stock_locate)>>(1));
+    out.fields.tracking_number.set(static_cast<value_of<decltype(out.fields.tracking_number)>>(0));
+    out.fields.price_variation_indicator.set(static_cast<value_of<decltype(out.fields.price_variation_indicator)>>(' '));
+    out.fields.timestamp.set(static_cast<value_of<decltype(out.fields.timestamp)>>(nanoseconds_since_midnight(m.timestamp.get().value(), new_york())));
+    out.fields.paired_shares.set(m.paired_quantity.get().value());
+    out.fields.imbalance_shares.set(m.imbalance_quantity.get().value());
+    out.fields.imbalance_direction.set(static_cast<value_of<decltype(out.fields.imbalance_direction)>>(static_cast<char>(m.imbalance_direction.get().value())));
+    out.fields.stock.set(m.symbol.get().value());
+    out.fields.far_price.set(static_cast<value_of<decltype(out.fields.far_price)>>(m.price.get().value()));
+    out.fields.near_price.set(static_cast<value_of<decltype(out.fields.near_price)>>(m.price.get().value()));
+    out.fields.current_reference_price.set(static_cast<value_of<decltype(out.fields.current_reference_price)>>(m.price.get().value()));
     out.fields.cross_type.set(static_cast<value_of<decltype(out.fields.cross_type)>>([](char value) { switch (value) { case 'I': return 'H'; default: return value; } }(static_cast<char>(m.cross.get().value()))));
     return out;
 }

@@ -48,24 +48,10 @@ int main(int argc, char** argv) {
         sim::IpcEventServer totalview_events(
             [&](const sim::ipc_ns::trade_message& t) {
                 // trade_message -> the feeds its transforms declare (NsmEquities.Ipc.Transforms.xml).
-                if (static_cast<char>(t.auction.get().value()) == 'N') {
-                    auto totalview_order_executed = sim::to_totalview_order_executed(t);
-                    totalview.publish_message(reinterpret_cast<const char*>(&totalview_order_executed), sizeof totalview_order_executed);
-                    sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_executed), sizeof totalview_order_executed);
-                    sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_executed), sizeof totalview_order_executed);
-                }
-                if (static_cast<char>(t.auction.get().value()) != 'N') {
-                    auto totalview_crossed_resting = sim::to_totalview_crossed_resting(t);
-                    totalview.publish_message(reinterpret_cast<const char*>(&totalview_crossed_resting), sizeof totalview_crossed_resting);
-                    sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_crossed_resting), sizeof totalview_crossed_resting);
-                    sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_crossed_resting), sizeof totalview_crossed_resting);
-                }
-                if (static_cast<char>(t.auction.get().value()) != 'N') {
-                    auto totalview_crossed_aggressor = sim::to_totalview_crossed_aggressor(t);
-                    totalview.publish_message(reinterpret_cast<const char*>(&totalview_crossed_aggressor), sizeof totalview_crossed_aggressor);
-                    sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_crossed_aggressor), sizeof totalview_crossed_aggressor);
-                    sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_crossed_aggressor), sizeof totalview_crossed_aggressor);
-                }
+                auto totalview_order_executed = sim::to_totalview_order_executed(t);
+                totalview.publish_message(reinterpret_cast<const char*>(&totalview_order_executed), sizeof totalview_order_executed);
+                sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_executed), sizeof totalview_order_executed);
+                sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_executed), sizeof totalview_order_executed);
                 totalview.flush();
             },
             [&](const sim::ipc_ns::order_rested_message& o) {
@@ -97,7 +83,8 @@ int main(int argc, char** argv) {
             if (!worked) std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
 
-        std::printf("nasdaq-totalview: stopped — %llu events published\n", (unsigned long long)handled);
+        std::printf("nasdaq-totalview: stopped — %llu events read, %llu messages published\n",
+                    (unsigned long long)handled, (unsigned long long)(totalview.next_seq() - 1));
     } catch (const std::exception& problem) {
         std::fprintf(stderr, "nasdaq-totalview: %s\n", problem.what());
         return 1;

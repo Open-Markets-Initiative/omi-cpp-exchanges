@@ -117,6 +117,7 @@ int main(int argc, char** argv) {
     const std::size_t maker_client = gateway.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_maker, b, n); });
     sim::traders::SimpleMaker<std::remove_reference_t<decltype(maker.orders())>> maker_strategy(/*mid*/10000, /*spread*/10, /*size*/100, /*levels*/3);
     int maker_ticks = 0;
+    std::chrono::steady_clock::time_point maker_paced{};   // when a served trader next orders
     sim::Turn maker_turn;
     maker.login();
     sim::MessageQueue to_taker("gateway -> taker");
@@ -126,6 +127,7 @@ int main(int argc, char** argv) {
     const std::size_t taker_client = gateway.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_taker, b, n); });
     sim::traders::SimpleTaker<std::remove_reference_t<decltype(taker.orders())>> taker_strategy(/*mid*/10000, /*cross*/20, /*size*/50, /*period*/3);
     int taker_ticks = 0;
+    std::chrono::steady_clock::time_point taker_paced{};   // when a served trader next orders
     sim::Turn taker_turn;
     taker.login();
 
@@ -166,9 +168,16 @@ int main(int argc, char** argv) {
     sim::Component maker_thread("maker", [&] {
         bool worked = to_maker.read([&](std::string_view bytes) { maker.on_bytes(bytes.data(), bytes.size()); });
         // A served venue runs free; the startup run takes turns, so it is the same every time.
+        // Served, the trader takes in what has arrived on every pass and orders at its own pace,
+        // twenty times a second: sleeping in the step would leave the venue's answers waiting.
         if (serve) {
-            if (maker.logged_in()) { maker_strategy.step(maker.orders()); ++maker_ticks; std::this_thread::sleep_for(std::chrono::milliseconds(50)); }
-            return true;
+            if (maker.logged_in() && std::chrono::steady_clock::now() >= maker_paced) {
+                maker_strategy.step(maker.orders());
+                ++maker_ticks;
+                maker_paced = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
+                worked = true;
+            }
+            return worked;
         }
         if (!maker_turn.asked()) return worked;
         if (maker.logged_in()) { maker_strategy.step(maker.orders()); ++maker_ticks; }
@@ -178,9 +187,16 @@ int main(int argc, char** argv) {
     sim::Component taker_thread("taker", [&] {
         bool worked = to_taker.read([&](std::string_view bytes) { taker.on_bytes(bytes.data(), bytes.size()); });
         // A served venue runs free; the startup run takes turns, so it is the same every time.
+        // Served, the trader takes in what has arrived on every pass and orders at its own pace,
+        // twenty times a second: sleeping in the step would leave the venue's answers waiting.
         if (serve) {
-            if (taker.logged_in()) { taker_strategy.step(taker.orders()); ++taker_ticks; std::this_thread::sleep_for(std::chrono::milliseconds(50)); }
-            return true;
+            if (taker.logged_in() && std::chrono::steady_clock::now() >= taker_paced) {
+                taker_strategy.step(taker.orders());
+                ++taker_ticks;
+                taker_paced = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
+                worked = true;
+            }
+            return worked;
         }
         if (!taker_turn.asked()) return worked;
         if (taker.logged_in()) { taker_strategy.step(taker.orders()); ++taker_ticks; }
@@ -219,12 +235,21 @@ int main(int argc, char** argv) {
         std::puts("nse-simulator: stopping");
     }
 
-    // Stop in producer order, so each component drains what is already on its queue.
+    // Stop in producer order. Each link a component reads is closed once it has stopped: nothing
+    // reads it again, so a component still writing to it - the gateway answering a trader that
+    // has gone - stops waiting for room, and is free to stop in its turn.
     maker_thread.stop();
+    to_maker.close();
     taker_thread.stop();
+    to_taker.close();
     gateway_thread.stop();
+    to_clients.close();
+    from_maker.close();
+    from_taker.close();
     engine_thread.stop();
+    to_engine.close();
     mtbt_thread.stop();
+    to_mtbt.close();
 
     std::printf("nse-simulator: trader %s (%s) entered %llu, canceled %llu, order_confirmation=%llu, order_cancellation_confirmation_order_entry_body=%llu, trade_confirmation=%llu\n",
                 maker.name().c_str(), maker.logged_in() ? "signed on" : "not signed on",

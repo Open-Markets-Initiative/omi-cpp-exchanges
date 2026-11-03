@@ -61,6 +61,7 @@ inline ipc_ns::new_order_message to_nnf_order_entry(const protocol::order_entry_
     out.side.set(static_cast<value_of<decltype(out.side)>>([](auto value) { switch (static_cast<long long>(value)) { case 1: return 'B'; case 2: return 'S'; default: return 'B'; } }(m.fields.order_entry_body.buy_sell_indicator.get().value())));
     out.quantity.set(static_cast<value_of<decltype(out.quantity)>>(m.fields.order_entry_body.volume.get().value()));
     out.price.set(static_cast<value_of<decltype(out.price)>>(m.fields.order_entry_body.price.get().value()));
+    out.token.set(m.fields.order_entry_body.token_no.get().value());
     out.timestamp.set(static_cast<value_of<decltype(out.timestamp)>>(send_time_nanos()));
     return out;
 }
@@ -82,7 +83,7 @@ inline protocol::order_confirmation_message to_nnf_order_confirmation(const prot
     protocol::order_confirmation_message out{};
     out.fields.order_entry_body.order_number.set(static_cast<value_of<decltype(out.fields.order_entry_body.order_number)>>(order.id));
     out.fields.order_entry_body.token_no.set(m.fields.order_entry_body.token_no.get().value());
-    out.fields.order_entry_body.buy_sell_indicator.set(m.fields.order_entry_body.buy_sell_indicator.get().value());
+    out.fields.order_entry_body.buy_sell_indicator.set(static_cast<value_of<decltype(out.fields.order_entry_body.buy_sell_indicator)>>(m.fields.order_entry_body.buy_sell_indicator.get().value()));
     out.fields.order_entry_body.volume.set(m.fields.order_entry_body.volume.get().value());
     out.fields.order_entry_body.price.set(m.fields.order_entry_body.price.get().value());
     return out;
@@ -106,6 +107,8 @@ inline protocol::trade_confirmation_message to_nnf_trade_resting(const ipc_ns::t
     out.fields.response_order_number.set(static_cast<value_of<decltype(out.fields.response_order_number)>>(order.reference));
     out.fields.fill_quantity.set(static_cast<value_of<decltype(out.fields.fill_quantity)>>(m.quantity.get().value()));
     out.fields.fill_price.set(static_cast<value_of<decltype(out.fields.fill_price)>>(m.price.get().value()));
+    out.fields.token.set(m.token.get().value());
+    out.fields.fill_number.set(static_cast<value_of<decltype(out.fields.fill_number)>>(m.execution_id.get().value()));
     return out;
 }
 
@@ -117,6 +120,8 @@ inline protocol::trade_confirmation_message to_nnf_trade_aggressor(const ipc_ns:
     out.fields.response_order_number.set(static_cast<value_of<decltype(out.fields.response_order_number)>>(order.reference));
     out.fields.fill_quantity.set(static_cast<value_of<decltype(out.fields.fill_quantity)>>(m.quantity.get().value()));
     out.fields.fill_price.set(static_cast<value_of<decltype(out.fields.fill_price)>>(m.price.get().value()));
+    out.fields.token.set(m.token.get().value());
+    out.fields.fill_number.set(static_cast<value_of<decltype(out.fields.fill_number)>>(m.execution_id.get().value()));
     return out;
 }
 

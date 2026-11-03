@@ -45,20 +45,22 @@ int main(int argc, char** argv) {
         sim::traders::CaptureQuotes replay_read(replay_capture);
         sim::traders::CaptureMaker<std::remove_reference_t<decltype(replay.orders())>> replay_strategy(replay_read.quotes(), /*quotes*/4);
         int replay_ticks = 0;
+        std::chrono::steady_clock::time_point replay_paced{};   // when a served trader next orders
         replay.login();
 
         std::printf("nasdaq-replay: trading as %s\n", replay.name().c_str());
 
         // A step a trader does not take is a step it had nothing to do: it reads what the
         // venue said, and acts only once it is admitted.
+        auto paced = std::chrono::steady_clock::now();   // when it next orders
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
             worked = to_replay.read([&](std::string_view bytes) { replay.on_bytes(bytes.data(), bytes.size()); }) || worked;
             from_replay.deliver();
-            if (replay.logged_in()) {
+            if (replay.logged_in() && std::chrono::steady_clock::now() >= paced) {
                 replay_strategy.step(replay.orders());
                 ++replay_ticks;
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                paced = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
             } else if (!worked) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
             }

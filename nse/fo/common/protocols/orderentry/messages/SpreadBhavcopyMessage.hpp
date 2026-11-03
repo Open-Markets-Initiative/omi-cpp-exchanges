@@ -37,7 +37,7 @@ struct spread_bhavcopy_message {
     }
 
     // sequential access to variable-length regions
-    sbe_var_data spread_report_body() const {
+    sbe_var_data<std::uint32_t> spread_report_body() const {
         return { tail_begin(), tail_end() };
     }
 

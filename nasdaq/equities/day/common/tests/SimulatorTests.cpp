@@ -139,7 +139,8 @@ BOOST_AUTO_TEST_CASE(VerifyRefusedOrderIsCanceledClosed) {
         [](const sim::ipc_ns::order_canceled_message&) {},
         [&](const sim::ipc_ns::order_refused_message& j) { gateway.on_event(j); },
         [](const sim::ipc_ns::phase_announced_message&) {},
-        [](const sim::ipc_ns::cross_completed_message&) {});
+        [](const sim::ipc_ns::cross_completed_message&) {},
+        [](const sim::ipc_ns::imbalance_indicated_message&) {});
     auto event_emit = [&](const char* b, std::size_t n) { events.on_message(std::string_view(b, n)); };
     std::atomic<std::uint64_t> trades{0};
     sim::components::Engine<decltype(event_emit)> engine(event_emit, trades);
@@ -191,5 +192,112 @@ BOOST_AUTO_TEST_CASE(VerifyRefusedOrderIsCanceledClosed) {
     // Nothing reached the book.
     BOOST_CHECK_EQUAL(traded, 0u);
     BOOST_CHECK_EQUAL(rested, 0u);
+}
+
+// An order held for the Opening cross is filled in it, and the client is told the cross it filled in.
+BOOST_AUTO_TEST_CASE(VerifyCrossFillIsFlaggedWithItsCross) {
+    std::vector<std::string> sent;
+    std::function<void(const char*, std::size_t)> to_engine;
+    auto emit = [&](const char* b, std::size_t n) { to_engine(b, n); };
+    sim::orderentry::Gateway<decltype(emit)> gateway(emit);
+    gateway.allow("ALICE1", "alice00001");
+
+    sim::IpcEventServer events(
+        [&](const sim::ipc_ns::trade_message& t) { gateway.on_event(t); },
+        [](const sim::ipc_ns::order_rested_message&) {},
+        [](const sim::ipc_ns::order_canceled_message&) {},
+        [&](const sim::ipc_ns::order_refused_message& j) { gateway.on_event(j); },
+        [](const sim::ipc_ns::phase_announced_message&) {},
+        [](const sim::ipc_ns::cross_completed_message&) {},
+        [](const sim::ipc_ns::imbalance_indicated_message&) {});
+    auto event_emit = [&](const char* b, std::size_t n) { events.on_message(std::string_view(b, n)); };
+    std::atomic<std::uint64_t> trades{0};
+    sim::components::Engine<decltype(event_emit)> engine(event_emit, trades);
+    sim::IpcEngineServer ipc_server(engine.day());
+    to_engine = [&](const char* b, std::size_t n) { ipc_server.on_message(std::string_view(b, n)); };
+
+    // Every change the day is declared with up to the one that ends the Opening cross, each one made.
+    BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::PreOpen));
+
+    const auto client = gateway.connect([&](const char* b, std::size_t n) { sent.emplace_back(b, n); });
+    const auto whole = [](const auto& packet) {
+        return std::string(reinterpret_cast<const char*>(&packet), packet.header.packet_length.get().value() + 2);
+    };
+    // Each answer is a whole packet: its server header, then the message the model lays out.
+    const auto answer = [&](std::size_t at) { return reinterpret_cast<const std::byte*>(sent.at(at).data()); };
+
+    // Login, presenting what this protocol's own login carries.
+    entry::login_request_packet login{};
+    login.fields.username.set("ALICE1");
+    login.fields.password.set("alice00001");
+    login.fields.requested_session.set("");
+    login.fields.requested_sequence_number.set("0");
+    gateway.on_bytes(client, whole(login).data(), whole(login).size());
+    BOOST_REQUIRE_EQUAL(sent.size(), 1u);
+    // The first answer is the login admitted, read by the code the model selects it on.
+    BOOST_CHECK_EQUAL(static_cast<std::uint64_t>(entry::server_packet_header::parse(answer(0))->server_packet_type.get().value()), static_cast<std::uint64_t>('A'));
+
+    // An order the gateway admits, answered before the engine sees it
+    entry::enter_order_message order{};
+    order.fields.user_ref_num.set(7);
+    order.fields.side.set(static_cast<std::remove_cvref_t<decltype(order.fields.side.get().value())>>('B'));
+    order.fields.quantity.set(100);
+    order.fields.price.set(10000);
+    order.fields.symbol.set("ZVZZT");
+    gateway.on_bytes(client, whole(order).data(), whole(order).size());
+    // Accepted at the gateway, then held for the cross.
+    BOOST_REQUIRE_EQUAL(sent.size(), 2u);
+    // An order of the engine's own for it to cross against.
+    engine.day().on_new_order(matching::Order{ 99, matching::Side::Sell, 10000, 40 });
+    BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::Open));
+    BOOST_REQUIRE_EQUAL(sent.size(), 3u);
+    const auto* filled = entry::order_executed_message::parse(answer(2));
+    BOOST_CHECK_EQUAL(filled->fields.user_ref_num.get().value(), 7u);
+    BOOST_CHECK_EQUAL(filled->fields.quantity.get().value(), 40u);
+    BOOST_CHECK_EQUAL(static_cast<char>(filled->fields.liquidity_flag.get().value()), 'O');
+}
+
+// The Opening auction collecting is asked what it would cross at, and says so.
+BOOST_AUTO_TEST_CASE(VerifyCollectingAuctionIndicatesItsImbalance) {
+    std::vector<sim::ipc_ns::imbalance_indicated_message> indicated;
+    sim::IpcEventServer events(
+        [](const sim::ipc_ns::trade_message&) {},
+        [](const sim::ipc_ns::order_rested_message&) {},
+        [](const sim::ipc_ns::order_canceled_message&) {},
+        [](const sim::ipc_ns::order_refused_message&) {},
+        [](const sim::ipc_ns::phase_announced_message&) {},
+        [](const sim::ipc_ns::cross_completed_message&) {},
+        [&](const sim::ipc_ns::imbalance_indicated_message& i) { indicated.push_back(i); });
+    auto event_emit = [&](const char* b, std::size_t n) { events.on_message(std::string_view(b, n)); };
+    std::atomic<std::uint64_t> trades{0};
+    sim::components::Engine<decltype(event_emit)> engine(event_emit, trades);
+    sim::IpcEngineServer ipc_server(engine.day());
+    // The day's question, framed onto the Ipc and served by the engine.
+    const auto ask = [&] {
+        std::string frame;
+        auto emit = [&](const char* b, std::size_t n) { frame.assign(b, n); };
+        sim::emit_imbalance_request(emit);
+        BOOST_REQUIRE(ipc_server.on_message(frame));
+    };
+
+    // Every change the day is declared with up to the one that starts collecting for the Opening auction, each one made.
+    BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::PreOpen));
+
+    // Nothing in the book: not enough orders to say a price.
+    ask();
+    BOOST_REQUIRE_EQUAL(indicated.size(), 1u);
+    BOOST_CHECK_EQUAL(static_cast<char>(indicated[0].imbalance_direction.get().value()), 'O');
+    BOOST_CHECK_EQUAL(indicated[0].paired_quantity.get().value(), 0u);
+
+    // A buy of 100 and a sell of 40 at one price: 40 pair there, and 60 buyers are left over.
+    engine.day().on_new_order(matching::Order{ 1, matching::Side::Buy, 10000, 100 });
+    engine.day().on_new_order(matching::Order{ 2, matching::Side::Sell, 10000, 40 });
+    ask();
+    BOOST_REQUIRE_EQUAL(indicated.size(), 2u);
+    BOOST_CHECK_EQUAL(static_cast<char>(indicated[1].cross.get().value()), 'O');
+    BOOST_CHECK_EQUAL(indicated[1].price.get().value(), 10000);
+    BOOST_CHECK_EQUAL(indicated[1].paired_quantity.get().value(), 40u);
+    BOOST_CHECK_EQUAL(indicated[1].imbalance_quantity.get().value(), 60u);
+    BOOST_CHECK_EQUAL(static_cast<char>(indicated[1].imbalance_direction.get().value()), 'B');
 }
 

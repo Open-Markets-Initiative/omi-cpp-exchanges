@@ -21,9 +21,6 @@ namespace ipc_ns = nasdaq::nsmequities::matchingengine::ipc::v2026;
 inline char auctioned(matching::Cross cross) {
     switch (cross) {
         case matching::Cross::None: return 'N';
-        case matching::Cross::Opening: return 'O';
-        case matching::Cross::Intraday: return 'I';
-        case matching::Cross::Closing: return 'C';
         default: break;
     }
     return '?';
@@ -31,16 +28,12 @@ inline char auctioned(matching::Cross cross) {
 
 // Ipc message type codes (ascii) — mirror the Ipc specification.
 struct IpcType {
-    static constexpr char Heartbeat      = 'H';
-    static constexpr char NewOrder       = 'N';
-    static constexpr char CancelOrder    = 'C';
-    static constexpr char OrderRested    = 'R';
-    static constexpr char OrderCanceled  = 'X';
-    static constexpr char Trade          = 'T';
-    static constexpr char OrderRefused   = 'J';
-    static constexpr char PhaseAnnounced = 'S';
-    static constexpr char PhaseRequest   = 'P';
-    static constexpr char CrossCompleted = 'U';
+    static constexpr char Heartbeat     = 'H';
+    static constexpr char NewOrder      = 'N';
+    static constexpr char CancelOrder   = 'C';
+    static constexpr char OrderRested   = 'R';
+    static constexpr char OrderCanceled = 'X';
+    static constexpr char Trade         = 'T';
 };
 
 // The instrument the engine trades — stamped on the symbol field of every Ipc message.

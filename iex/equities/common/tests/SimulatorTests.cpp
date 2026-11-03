@@ -7,8 +7,8 @@
 #include <string_view>
 #include <vector>
 #include "MatchingEngine.hpp"
-#include "FixWire.hpp"
-#include "FixSession.hpp"
+#include "protocols/orderentry/FixWire.hpp"
+#include "protocols/orderentry/FixAcceptor.hpp"
 #include "SnapServer.hpp"
 #include "protocols/marketdata/tops/messages/SystemEventMessage.hpp"
 #include "protocols/marketdata/tops/messages/SecurityDirectoryMessage.hpp"
@@ -28,6 +28,12 @@
 #include "protocols/ipc/structs/OrderRestedMessage.hpp"
 #include "protocols/ipc/structs/OrderCanceledMessage.hpp"
 #include "protocols/ipc/structs/TradeMessage.hpp"
+#include "protocols/ipc/structs/OrderRefusedMessage.hpp"
+#include "protocols/ipc/structs/PhaseRequestMessage.hpp"
+#include "protocols/ipc/structs/PhaseAnnouncedMessage.hpp"
+#include "protocols/ipc/structs/CrossCompletedMessage.hpp"
+#include "protocols/ipc/structs/ImbalanceRequestMessage.hpp"
+#include "protocols/ipc/structs/ImbalanceIndicatedMessage.hpp"
 #include "protocols/ipc/IpcBus.hpp"
 
 using namespace iexiexequities::order_entry;
@@ -91,37 +97,34 @@ BOOST_AUTO_TEST_CASE(fix_wire_new_order_round_trip) {
     BOOST_CHECK_CLOSE(in.order_qty, 25.0, 1e-6);
     BOOST_CHECK_EQUAL(std::string_view(in.cl_ord_id, 2), "42");
 }
+// --- FIX session replay (ResendRequest -> PossDup replay), as the acceptor's chart has it ---
 
-// --- FIX session replay (ResendRequest -> PossDup replay) ---
+namespace {
+struct ResendHandler {
+    bool login(std::string_view, std::string_view) { return true; }
+    void message(std::string_view, std::string_view) {}
+    void logout() {}
+};
+}
 
-BOOST_AUTO_TEST_CASE(fix_session_replays_on_resend_request) {
+BOOST_AUTO_TEST_CASE(fix_acceptor_replays_on_resend_request) {
     unsigned sent = 0, replayed = 0;
-    SessionConfig cfg{ "FIXT.1.1", "SIM", "TRADER", 30 };
-    Session sess(cfg,
-        [&](const char* b, std::size_t n) {
-            ++sent;
-            if (std::string_view(b, n).find("\x01" "43=Y") != std::string_view::npos) ++replayed;
-        },
-        [](char, std::string_view) {});
+    auto transport = [&](const char* b, std::size_t n) {
+        ++sent;
+        if (std::string_view(b, n).find("\x01" "43=Y") != std::string_view::npos) ++replayed;
+    };
+    Acceptor<decltype(transport), ResendHandler> session(AcceptorConfig{ "FIX.4.2", "SIM" }, transport, ResendHandler{});
 
-    sess.logon();       // seq 1
-    sess.heartbeat();   // seq 2
-    sess.heartbeat();   // seq 3
+    BOOST_REQUIRE(session.on_message("8=FIX.4.2\x01" "35=A\x01" "34=1\x01" "49=TRADER\x01" "108=30\x01", 0));   // answered: seq 1
+    BOOST_REQUIRE(session.in_logged_on());
+    session.message("8", "37=1\x01", 0);   // seq 2
+    session.message("8", "37=2\x01", 0);   // seq 3
 
-    char rr[64];
-    char* p = rr;
-    p = detail::tag(p, 35); *p++ = '2'; *p++ = '\x01';   // 35=2 ResendRequest
-    p = detail::put_uint(p, 34, 1);
-    p = detail::put_uint(p, 7, 2);                        // BeginSeqNo
-    p = detail::put_uint(p, 16, 3);                       // EndSeqNo
-    char framed[256];
-    std::size_t fn = detail::frame(cfg.begin_string, rr, static_cast<std::size_t>(p - rr), framed);
-    sess.on_data(std::string_view(framed, fn));
+    BOOST_REQUIRE(session.on_message("8=FIX.4.2\x01" "35=2\x01" "34=2\x01" "7=2\x01" "16=3\x01", 0));   // ResendRequest 2..3
 
     BOOST_CHECK_EQUAL(sent, 5u);        // 3 originals + 2 replays
     BOOST_CHECK_EQUAL(replayed, 2u);    // seqs 2 and 3, flagged PossDup
 }
-
 // --- Snap snapshot (replay) service ---
 
 static std::vector<char> snap_request(std::uint64_t minimum = 0) {
@@ -314,6 +317,48 @@ BOOST_AUTO_TEST_CASE(ipc_trade_message_compiles_and_parses) {
     ipc_ns::trade_message m{};
     auto* buffer = reinterpret_cast<std::byte*>(&m);
     BOOST_CHECK(ipc_ns::trade_message::parse(buffer) == &m);
+    BOOST_CHECK(sizeof m > 0u);
+}
+
+BOOST_AUTO_TEST_CASE(ipc_order_refused_message_compiles_and_parses) {
+    ipc_ns::order_refused_message m{};
+    auto* buffer = reinterpret_cast<std::byte*>(&m);
+    BOOST_CHECK(ipc_ns::order_refused_message::parse(buffer) == &m);
+    BOOST_CHECK(sizeof m > 0u);
+}
+
+BOOST_AUTO_TEST_CASE(ipc_phase_request_message_compiles_and_parses) {
+    ipc_ns::phase_request_message m{};
+    auto* buffer = reinterpret_cast<std::byte*>(&m);
+    BOOST_CHECK(ipc_ns::phase_request_message::parse(buffer) == &m);
+    BOOST_CHECK(sizeof m > 0u);
+}
+
+BOOST_AUTO_TEST_CASE(ipc_phase_announced_message_compiles_and_parses) {
+    ipc_ns::phase_announced_message m{};
+    auto* buffer = reinterpret_cast<std::byte*>(&m);
+    BOOST_CHECK(ipc_ns::phase_announced_message::parse(buffer) == &m);
+    BOOST_CHECK(sizeof m > 0u);
+}
+
+BOOST_AUTO_TEST_CASE(ipc_cross_completed_message_compiles_and_parses) {
+    ipc_ns::cross_completed_message m{};
+    auto* buffer = reinterpret_cast<std::byte*>(&m);
+    BOOST_CHECK(ipc_ns::cross_completed_message::parse(buffer) == &m);
+    BOOST_CHECK(sizeof m > 0u);
+}
+
+BOOST_AUTO_TEST_CASE(ipc_imbalance_request_message_compiles_and_parses) {
+    ipc_ns::imbalance_request_message m{};
+    auto* buffer = reinterpret_cast<std::byte*>(&m);
+    BOOST_CHECK(ipc_ns::imbalance_request_message::parse(buffer) == &m);
+    BOOST_CHECK(sizeof m > 0u);
+}
+
+BOOST_AUTO_TEST_CASE(ipc_imbalance_indicated_message_compiles_and_parses) {
+    ipc_ns::imbalance_indicated_message m{};
+    auto* buffer = reinterpret_cast<std::byte*>(&m);
+    BOOST_CHECK(ipc_ns::imbalance_indicated_message::parse(buffer) == &m);
     BOOST_CHECK(sizeof m > 0u);
 }
 

@@ -60,7 +60,8 @@ sleep 1
 
 trades=$(number "nasdaq-engine: stopped" 1)
 events=$(number "nasdaq-engine: stopped" 2)
-totalview_published=$(number "nasdaq-totalview: stopped" 1)
+totalview_read=$(number "nasdaq-totalview: stopped" 1)
+totalview_published=$(number "nasdaq-totalview: stopped" 2)
 glimpse_held=$(number "nasdaq-glimpse: stopped" 1)
 totalviewtcp_held=$(number "nasdaq-totalviewtcp: stopped" 1)
 maker_entered=$(number "nasdaq-maker: stopped" 1)
@@ -80,7 +81,7 @@ said "nasdaq-requests: stopped" "requests ran and stopped cleanly"
 echo "verify: what it carried"
 atleast "the engine matched trades" "$trades" 1
 atleast "the engine emitted events" "$events" 1
-same "totalview published what the engine emitted" "$totalview_published" "$events"
+same "totalview read what the engine emitted" "$totalview_read" "$events"
 same "glimpse holds what totalview published" "$glimpse_held" "$totalview_published"
 same "totalviewtcp holds what totalview published" "$totalviewtcp_held" "$totalview_published"
 atleast "maker entered orders" "$maker_entered" 1

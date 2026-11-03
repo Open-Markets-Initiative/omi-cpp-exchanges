@@ -49,7 +49,7 @@ struct gateway_router_response_message {
     }
 
     // sequential access to variable-length regions
-    sbe_var_data cryptographic_tail() const {
+    sbe_var_data<std::uint32_t> cryptographic_tail() const {
         return { tail_begin(), tail_end() };
     }
 

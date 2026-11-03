@@ -41,7 +41,90 @@ add_test(NAME simulator_tests COMMAND simulator_tests)
 # them are rings in shared memory rather than queues in one process's own. The rings have to exist
 # before any component attaches - the links are a cycle, so there is no start order that would let
 # each component make its own - which is what this binary is for.
+add_executable(nasdaq_rings system/rings/Main.cpp)
+target_include_directories(nasdaq_rings PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_rings PRIVATE Threads::Threads)
 
 
 # A target per component, from the venue's own list - naming them here as well is how one gets
 # left out, which is what happened to the recovery services.
+
+add_executable(nasdaq_system_gateway system/gateway/Main.cpp)
+target_include_directories(nasdaq_system_gateway PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_system_gateway PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_system_engine system/engine/Main.cpp)
+target_include_directories(nasdaq_system_engine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_system_engine PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_system_day system/day/Main.cpp)
+target_include_directories(nasdaq_system_day PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_system_day PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_system_totalview system/totalview/Main.cpp)
+target_include_directories(nasdaq_system_totalview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_system_totalview PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_system_glimpse system/glimpse/Main.cpp)
+target_include_directories(nasdaq_system_glimpse PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_system_glimpse PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_system_totalviewtcp system/totalviewtcp/Main.cpp)
+target_include_directories(nasdaq_system_totalviewtcp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_system_totalviewtcp PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_system_maker system/maker/Main.cpp)
+target_include_directories(nasdaq_system_maker PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_system_maker PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_system_taker system/taker/Main.cpp)
+target_include_directories(nasdaq_system_taker PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_system_taker PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_system_replay system/replay/Main.cpp)
+target_include_directories(nasdaq_system_replay PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_system_replay PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_system_requests system/requests/Main.cpp)
+target_include_directories(nasdaq_system_requests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_system_requests PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_cluster_gateway cluster/gateway/Main.cpp)
+target_include_directories(nasdaq_cluster_gateway PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_cluster_gateway PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_cluster_engine cluster/engine/Main.cpp)
+target_include_directories(nasdaq_cluster_engine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_cluster_engine PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_cluster_day cluster/day/Main.cpp)
+target_include_directories(nasdaq_cluster_day PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_cluster_day PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_cluster_totalview cluster/totalview/Main.cpp)
+target_include_directories(nasdaq_cluster_totalview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_cluster_totalview PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_cluster_glimpse cluster/glimpse/Main.cpp)
+target_include_directories(nasdaq_cluster_glimpse PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_cluster_glimpse PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_cluster_totalviewtcp cluster/totalviewtcp/Main.cpp)
+target_include_directories(nasdaq_cluster_totalviewtcp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_cluster_totalviewtcp PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_cluster_maker cluster/maker/Main.cpp)
+target_include_directories(nasdaq_cluster_maker PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_cluster_maker PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_cluster_taker cluster/taker/Main.cpp)
+target_include_directories(nasdaq_cluster_taker PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_cluster_taker PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_cluster_replay cluster/replay/Main.cpp)
+target_include_directories(nasdaq_cluster_replay PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_cluster_replay PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_cluster_requests cluster/requests/Main.cpp)
+target_include_directories(nasdaq_cluster_requests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_cluster_requests PRIVATE Boost::program_options Threads::Threads)

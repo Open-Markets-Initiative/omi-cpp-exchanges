@@ -1,45 +1,40 @@
 // Generated Investors Exchange Equities simulator — entry point.
-//
+// 
 // One process, one thread per component; every link between them is a queue of framed
-// messages, so a component hands bytes on instead of calling the next one:
-//   [traders] --(FIX)--> [gateway] --(ipc)--> [engine]
-//   [engine] --(ipc)--> [gateway] execution reports, and one queue per market-data feed
+// Ipc messages, so a component hands bytes on instead of calling the next one:
+// clients --(Fix)--> [gateway] --(ipc)--> [engine]
+// [engine] --(ipc)--> [gateway] client responses
+// [engine] --(ipc)--> [deep] Deep market data
+// [engine] --(ipc)--> [tops] Tops market data
+// [engine] --(ipc)--> [deepplus] DeepPlus market data
 
-#include "FixWire.hpp"
-#include "FixSession.hpp"
-#include "FixGateway.hpp"
-#include "FixOrders.hpp"
-#include "FixStrategies.hpp"
-#include "MatchingEngine.hpp"
+#include "protocols/orderentry/Gateway.hpp"
+#include "traders/Orders.hpp"
+#include "traders/Maker.hpp"
+#include "traders/Taker.hpp"
+#include "protocols/marketdata/tops/PacketPublisher.hpp"
+#include "protocols/marketdata/deep/PacketPublisher.hpp"
+#include "protocols/marketdata/deepplus/PacketPublisher.hpp"
+#include "protocols/ipc/IpcTransforms.hpp"
+#include "snap/SnapServer.hpp"
+#include "run/Components.hpp"
 #include "engine/Engine.hpp"
-#include "FeedServer.hpp"
-#include "FixLog.hpp"
 #include "MarketDataLog.hpp"
-#include "SnapServer.hpp"
 #include "SimulatorConfiguration.hpp"
+#include "net/Network.hpp"
 
-#include <algorithm>
 #include <atomic>
-#include <charconv>
 #include <chrono>
-#include <csignal>
-#include <cstddef>
 #include <cstdint>
 #include <cstdio>
-#include <cstring>
+#include <csignal>
+#include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <thread>
-#include "protocols/ipc/IpcBus.hpp"
-#include "protocols/ipc/IpcTransforms.hpp"
-#include "run/Components.hpp"
-#include "protocols/marketdata/tops/PacketPublisher.hpp"
-#include "protocols/marketdata/deep/PacketPublisher.hpp"
-#include "protocols/marketdata/deepplus/PacketPublisher.hpp"
-#include "net/Network.hpp"
-
-using namespace iexiexequities::order_entry;
+#include <type_traits>
 
 namespace {
 // --serve runs until interrupted; the handler only asks, main.cpp does the stopping.
@@ -62,12 +57,6 @@ int main(int argc, char** argv) {
     std::printf("  snap Tops      port %u\n", (unsigned)cfg.tops_snap_port);
     std::printf("  snap DeepPlus  port %u\n", (unsigned)cfg.deepplus_snap_port);
     std::printf("  recording    dir=%s fix-log=%s market-data=%s\n", cfg.recording_directory.c_str(), "on", "on");
-
-    // FIX record log (bracketed header + raw message). Empty path = disabled.
-    sim::FixLog fixlog("recordings/fix/session.log");
-    // Numbered as each trader sends and as the gateway answers, from their own threads.
-    std::atomic<std::uint32_t> out_seq{0};
-    std::uint32_t in_seq = 0;
 
     // Market-data feed servers — segments tee to the recorder, Snap server, and real UDP multicast.
     sim::MarketDataLog tops_rec("recordings/marketdata/Tops.dat");
@@ -145,28 +134,18 @@ int main(int argc, char** argv) {
         },
         [](const sim::ipc_ns::order_canceled_message&) {});
 
-    // Order entry: the gateway decodes FIX and reaches the engine as framed Ipc messages.
+    // Order entry: each client's session reaches the engine as framed Ipc messages.
     auto gateway_emit = [&](const char* b, std::size_t n) {
         ipc_msgs.fetch_add(1, std::memory_order_relaxed);
         sim::write_blocking(to_engine, b, n);
     };
-    sim::IpcEngineClient ipc_client(gateway_emit);
-    Gateway gateway(ipc_client, [](char, std::string_view) {});
+    sim::orderentry::Gateway<decltype(gateway_emit)> gateway(gateway_emit);
 
-    // The engine's trades, answered to the client as ExecutionReports (35=8) on the
-    // gateway's own thread, and logged inbound ('<').
+    // The engine events the gateway answers, on the gateway's own thread.
     sim::IpcEventServer client_events(
-        [&](const sim::ipc_ns::trade_message& t) {
-            ExecutionReport er{};
-            { auto r = std::to_chars(er.cl_ord_id, er.cl_ord_id + sizeof er.cl_ord_id - 1, t.aggressor_order_id.get().value()); *r.ptr = '\0'; }
-            er.ord_status = '2';  er.exec_type = 'F';   // Filled / Trade
-            er.price = static_cast<double>(t.price.get().value());  er.order_qty = static_cast<double>(t.quantity.get().value());
-            char erbody[512];
-            std::size_t ern = encode(er, erbody);
-            fixlog.record('<', ++in_seq, '8', std::string_view(erbody, ern));
-        },
+        [&](const sim::ipc_ns::trade_message& t) { gateway.on_event(t); },
         [](const sim::ipc_ns::order_rested_message&) {},
-        [](const sim::ipc_ns::order_canceled_message&) {});
+        [&](const sim::ipc_ns::order_canceled_message& c) { gateway.on_event(c); });
 
     // The engine's events, framed onto every consumer's queue.
     auto event_emit = [&](const char* b, std::size_t n) {
@@ -180,38 +159,32 @@ int main(int argc, char** argv) {
     // what it matches is its own, and where its events go is whatever emit it was handed.
     sim::components::Engine<decltype(event_emit)> engine_component(event_emit, trades);
 
-    // Traders: each logs what it sends, then frames it onto its own link into the gateway.
+    // Traders: each trades through the venue's own order entry, as a client session like any
+    // other — its bytes reach the gateway over a queue instead of a socket.
+    sim::MessageQueue to_alice("gateway -> alice");
     sim::MessageQueue from_alice("alice -> gateway");
-    Orders alice_orders([&](char type, std::string_view body) {
-        fixlog.record('>', ++out_seq, type, body);   // '>' sent, '<' received
-        char message[sim::MessageQueue::slot_bytes];
-        const std::size_t length = std::min(body.size(), sizeof message - 3);
-        const std::uint16_t framed = static_cast<std::uint16_t>(1 + length);
-        std::memcpy(message, &framed, 2);
-        message[2] = type;
-        std::memcpy(message + 3, body.data(), length);
-        sim::write_blocking(from_alice, message, 3 + length);
-    });
-    SimpleMaker<decltype(alice_orders)> alice_strategy(/*mid*/10000, /*spread*/10, /*size*/100, /*levels*/3);
+    auto alice_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_alice, b, n); };
+    sim::traders::Trader<decltype(alice_send)> alice("Alice", "alice", "alice", alice_send);
+    const std::size_t alice_client = gateway.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_alice, b, n); });
+    sim::traders::SimpleMaker<std::remove_reference_t<decltype(alice.orders())>> alice_strategy(/*mid*/10000, /*spread*/10, /*size*/100, /*levels*/3);
     int alice_ticks = 0;
+    std::chrono::steady_clock::time_point alice_paced{};   // when a served trader next orders
     sim::Turn alice_turn;
+    alice.login();
+    sim::MessageQueue to_bob("gateway -> bob");
     sim::MessageQueue from_bob("bob -> gateway");
-    Orders bob_orders([&](char type, std::string_view body) {
-        fixlog.record('>', ++out_seq, type, body);   // '>' sent, '<' received
-        char message[sim::MessageQueue::slot_bytes];
-        const std::size_t length = std::min(body.size(), sizeof message - 3);
-        const std::uint16_t framed = static_cast<std::uint16_t>(1 + length);
-        std::memcpy(message, &framed, 2);
-        message[2] = type;
-        std::memcpy(message + 3, body.data(), length);
-        sim::write_blocking(from_bob, message, 3 + length);
-    });
-    SimpleTaker<decltype(bob_orders)> bob_strategy(/*mid*/10000, /*cross*/20, /*size*/50, /*period*/3);
+    auto bob_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_bob, b, n); };
+    sim::traders::Trader<decltype(bob_send)> bob("Bob", "bob", "bob", bob_send);
+    const std::size_t bob_client = gateway.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_bob, b, n); });
+    sim::traders::SimpleTaker<std::remove_reference_t<decltype(bob.orders())>> bob_strategy(/*mid*/10000, /*cross*/20, /*size*/50, /*period*/3);
     int bob_ticks = 0;
+    std::chrono::steady_clock::time_point bob_paced{};   // when a served trader next orders
     sim::Turn bob_turn;
+    bob.login();
 
-    // The listening sockets belong to the threads that serve them; --serve opens them.
+    // The listening socket belongs to the gateway thread; --serve is what opens it.
     std::unique_ptr<net::TcpServer> order_entry;
+    std::map<int, std::size_t> sessions;
     std::unique_ptr<net::TcpServer> deep_snap_srv;
     std::unique_ptr<net::TcpServer> tops_snap_srv;
     std::unique_ptr<net::TcpServer> deepplus_snap_srv;
@@ -224,24 +197,24 @@ int main(int argc, char** argv) {
         deepplus_snap_srv = std::make_unique<net::TcpServer>("0.0.0.0", cfg.deepplus_snap_port);
     }
 
-    // One thread per component. Each owns its own state: the traders their strategies, the
-    // gateway its sessions, the engine its book, each feed its market data.
+    // One thread per component. Each owns its own state: the gateway its client sockets,
+    // the engine its book, each feed its publisher — nothing is shared but the queues.
     sim::Component engine_thread("engine", [&] {
         return engine_component.step(to_engine);
-    });
-    sim::Component tops_thread("tops", [&] {
-        bool worked = to_tops.read([&](std::string_view message) { tops_events.on_message(message); });
-        // Snapshot requests are served by the feed that retains the segments.
-        if (tops_snap_srv) worked = tops_snap_srv->poll([&](int fd, std::string_view request) {
-            tops_snap.on_message(request, [&](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); });
-        }) || worked;
-        return worked;
     });
     sim::Component deep_thread("deep", [&] {
         bool worked = to_deep.read([&](std::string_view message) { deep_events.on_message(message); });
         // Snapshot requests are served by the feed that retains the segments.
         if (deep_snap_srv) worked = deep_snap_srv->poll([&](int fd, std::string_view request) {
             deep_snap.on_message(request, [&](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); });
+        }) || worked;
+        return worked;
+    });
+    sim::Component tops_thread("tops", [&] {
+        bool worked = to_tops.read([&](std::string_view message) { tops_events.on_message(message); });
+        // Snapshot requests are served by the feed that retains the segments.
+        if (tops_snap_srv) worked = tops_snap_srv->poll([&](int fd, std::string_view request) {
+            tops_snap.on_message(request, [&](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); });
         }) || worked;
         return worked;
     });
@@ -255,50 +228,63 @@ int main(int argc, char** argv) {
     });
     sim::Component gateway_thread("gateway", [&] {
         bool worked = to_clients.read([&](std::string_view message) { client_events.on_message(message); });
-        worked = from_alice.read([&](std::string_view message) { gateway.on_app(message[2], message.substr(3)); }) || worked;
-        worked = from_bob.read([&](std::string_view message) { gateway.on_app(message[2], message.substr(3)); }) || worked;
-        // External order entry over Tcp -> the gateway (decode ignores the framing tags).
-        if (order_entry) worked = order_entry->poll([&](int, std::string_view msg) {
-            char type = 'D';
-            auto at = msg.find("\x01" "35=");
-            if (at != std::string_view::npos && at + 4 < msg.size()) type = msg[at + 4];
-            else if (msg.size() > 3 && msg.compare(0, 3, "35=") == 0) type = msg[3];
-            gateway.on_app(type, msg);
+        worked = from_alice.read([&](std::string_view bytes) { gateway.on_bytes(alice_client, bytes.data(), bytes.size()); }) || worked;
+        worked = from_bob.read([&](std::string_view bytes) { gateway.on_bytes(bob_client, bytes.data(), bytes.size()); }) || worked;
+        if (order_entry) worked = order_entry->poll([&](int fd, std::string_view bytes) {
+            auto session = sessions.find(fd);
+            if (session == sessions.end())
+                session = sessions.emplace(fd, gateway.connect([fd](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); })).first;
+            gateway.on_bytes(session->second, bytes.data(), bytes.size());
+        }, [&](int fd) {
+            if (const auto gone = sessions.find(fd); gone != sessions.end()) {
+                gateway.disconnect(gone->second);
+                sessions.erase(gone);
+            }
         }) || worked;
         return worked;
     });
     sim::Component alice_thread("alice", [&] {
+        bool worked = to_alice.read([&](std::string_view bytes) { alice.on_bytes(bytes.data(), bytes.size()); });
         // A served venue runs free; the startup run takes turns, so it is the same every time.
+        // Served, the trader takes in what has arrived on every pass and orders at its own pace,
+        // twenty times a second: sleeping in the step would leave the venue's answers waiting.
         if (serve) {
-            alice_strategy.step(alice_orders);
-            ++alice_ticks;
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));   // 20 Hz order flow
-            return true;
+            if (alice.logged_in() && std::chrono::steady_clock::now() >= alice_paced) {
+                alice_strategy.step(alice.orders());
+                ++alice_ticks;
+                alice_paced = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
+                worked = true;
+            }
+            return worked;
         }
-        if (!alice_turn.asked()) return false;
-        alice_strategy.step(alice_orders);
-        ++alice_ticks;
+        if (!alice_turn.asked()) return worked;
+        if (alice.logged_in()) { alice_strategy.step(alice.orders()); ++alice_ticks; }
         alice_turn.taken();
         return true;
     });
     sim::Component bob_thread("bob", [&] {
+        bool worked = to_bob.read([&](std::string_view bytes) { bob.on_bytes(bytes.data(), bytes.size()); });
         // A served venue runs free; the startup run takes turns, so it is the same every time.
+        // Served, the trader takes in what has arrived on every pass and orders at its own pace,
+        // twenty times a second: sleeping in the step would leave the venue's answers waiting.
         if (serve) {
-            bob_strategy.step(bob_orders);
-            ++bob_ticks;
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));   // 20 Hz order flow
-            return true;
+            if (bob.logged_in() && std::chrono::steady_clock::now() >= bob_paced) {
+                bob_strategy.step(bob.orders());
+                ++bob_ticks;
+                bob_paced = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
+                worked = true;
+            }
+            return worked;
         }
-        if (!bob_turn.asked()) return false;
-        bob_strategy.step(bob_orders);
-        ++bob_ticks;
+        if (!bob_turn.asked()) return worked;
+        if (bob.logged_in()) { bob_strategy.step(bob.orders()); ++bob_ticks; }
         bob_turn.taken();
         return true;
     });
 
     engine_thread.start();
-    tops_thread.start();
     deep_thread.start();
+    tops_thread.start();
     deepplus_thread.start();
     gateway_thread.start();
     alice_thread.start();
@@ -307,54 +293,57 @@ int main(int argc, char** argv) {
     // The startup run, taken in turns: one trader acts, the venue settles, the next acts. The
     // same orders meet in the same order every time, whatever the threads' timing.
     if (!serve) {
-        bool settled = sim::quiesce({ &to_engine, &to_clients, &to_deep, &to_tops, &to_deepplus, &from_alice, &from_bob }, { &gateway_thread, &engine_thread, &tops_thread, &deep_thread, &deepplus_thread, &alice_thread, &bob_thread }, std::chrono::milliseconds(5000));
+        // Everyone is logged in before the first turn.
+        bool settled = sim::quiesce({ &to_engine, &to_clients, &to_deep, &to_tops, &to_deepplus, &to_alice, &from_alice, &to_bob, &from_bob }, { &engine_thread, &gateway_thread, &deep_thread, &tops_thread, &deepplus_thread, &alice_thread, &bob_thread }, std::chrono::milliseconds(5000));
         for (int tick = 0; tick < 20; ++tick) {
             alice_turn.ask();
             settled = alice_turn.wait() && settled;
-            settled = sim::quiesce({ &to_engine, &to_clients, &to_deep, &to_tops, &to_deepplus, &from_alice, &from_bob }, { &gateway_thread, &engine_thread, &tops_thread, &deep_thread, &deepplus_thread, &alice_thread, &bob_thread }, std::chrono::milliseconds(5000)) && settled;
+            settled = sim::quiesce({ &to_engine, &to_clients, &to_deep, &to_tops, &to_deepplus, &to_alice, &from_alice, &to_bob, &from_bob }, { &engine_thread, &gateway_thread, &deep_thread, &tops_thread, &deepplus_thread, &alice_thread, &bob_thread }, std::chrono::milliseconds(5000)) && settled;
             bob_turn.ask();
             settled = bob_turn.wait() && settled;
-            settled = sim::quiesce({ &to_engine, &to_clients, &to_deep, &to_tops, &to_deepplus, &from_alice, &from_bob }, { &gateway_thread, &engine_thread, &tops_thread, &deep_thread, &deepplus_thread, &alice_thread, &bob_thread }, std::chrono::milliseconds(5000)) && settled;
+            settled = sim::quiesce({ &to_engine, &to_clients, &to_deep, &to_tops, &to_deepplus, &to_alice, &from_alice, &to_bob, &from_bob }, { &engine_thread, &gateway_thread, &deep_thread, &tops_thread, &deepplus_thread, &alice_thread, &bob_thread }, std::chrono::milliseconds(5000)) && settled;
         }
         if (!settled)
             std::puts("iex-simulator: the run did not settle between turns — see the counts below");
     }
 
-    // --serve: live venue. Tcp order entry + snapshot servers; Udp multicast market data.
+    // --serve: live venue. Tcp order entry on the gateway thread; Udp multicast market data.
     if (serve) {
-        std::puts("iex-simulator: serving — order-entry + snapshot Tcp, market-data multicast (Ctrl-C to stop)");
+        std::puts("iex-simulator: serving — order entry on Tcp, market data on Udp multicast (Ctrl-C to stop)");
         while (serving.load(std::memory_order_acquire))
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
         std::puts("iex-simulator: stopping");
     }
 
-    // Stop in producer order, so each component drains what is already on its queue.
+    // Stop in producer order. Each link a component reads is closed once it has stopped: nothing
+    // reads it again, so a component still writing to it - the gateway answering a trader that
+    // has gone - stops waiting for room, and is free to stop in its turn.
     alice_thread.stop();
+    to_alice.close();
     bob_thread.stop();
+    to_bob.close();
     gateway_thread.stop();
+    to_clients.close();
+    from_alice.close();
+    from_bob.close();
     engine_thread.stop();
-    tops_thread.stop();
+    to_engine.close();
     deep_thread.stop();
+    to_deep.close();
+    tops_thread.stop();
+    to_tops.close();
     deepplus_thread.stop();
+    to_deepplus.close();
 
-    std::printf("iex-simulator: ran %d ticks (alice+bob), %llu trades matched; MD segments recorded\n",
-                alice_ticks + bob_ticks, (unsigned long long)trades.load());
-    std::printf("iex-simulator: ipc bus carried %llu order + %llu event messages\n",
-                (unsigned long long)ipc_msgs.load(), (unsigned long long)ipc_events.load());
-
-    // Snap (replay) self-check: SnapshotRequest -> Start + Data* + End.
-    {
-        std::uint64_t served = 0, data_msgs = 0;
-        char req[3 + 40 + 4 + 4 + 8] = {};
-        std::uint16_t rlen = static_cast<std::uint16_t>(sizeof req - 2);
-        std::memcpy(req, &rlen, 2);
-        req[2] = snap::MessageType::SnapshotRequest;   // token/channel/session zeroed; min seq 0
-        deep_snap.on_message(std::string_view(req, sizeof req), [&](const char* b, std::size_t n) {
-            ++served;
-            if (n >= 3 && b[2] == snap::MessageType::SnapshotData) ++data_msgs;
-        });
-        std::printf("iex-simulator: snap replay served %llu messages (%llu segments) from Deep\n",
-                    (unsigned long long)served, (unsigned long long)data_msgs);
-    }
+    std::printf("iex-simulator: trader %s (%s) entered %llu, canceled %llu, ExecutionReport=%llu\n",
+                alice.name().c_str(), alice.logged_in() ? "talking" : "not talking",
+                (unsigned long long)alice.entered(), (unsigned long long)alice.canceled(),
+            (unsigned long long)alice.answers().ExecutionReport);
+    std::printf("iex-simulator: trader %s (%s) entered %llu, canceled %llu, ExecutionReport=%llu\n",
+                bob.name().c_str(), bob.logged_in() ? "talking" : "not talking",
+                (unsigned long long)bob.entered(), (unsigned long long)bob.canceled(),
+            (unsigned long long)bob.answers().ExecutionReport);
+    std::printf("iex-simulator: %llu trades matched, ipc carried %llu order + %llu event messages\n",
+                (unsigned long long)trades.load(), (unsigned long long)ipc_msgs.load(), (unsigned long long)ipc_events.load());
     return 0;
 }

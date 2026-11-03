@@ -27,8 +27,9 @@ struct IpcType {
     static constexpr char Trade         = 'T';
 };
 
-// The instrument the engine trades — stamped on the symbol field of every Ipc message.
-inline constexpr std::string_view instrument_symbol = "BANKNIFTY";
+// The instrument the engine trades, by the number the venue's protocols identify it by —
+// stamped on every Ipc message that carries one.
+inline constexpr std::int32_t instrument_id = 78753;
 
 // Send-time clock (Ipc SendTime action): wall-clock nanoseconds since the POSIX epoch,
 // captured as each message is framed onto the bus. Carried through the transforms onto
@@ -65,7 +66,7 @@ public:
     void on_new_order(const matching::Order& order) {
         ipc_ns::new_order_message m{};
         m.timestamp.set(send_time_nanos());
-        m.symbol.set(instrument_symbol);
+        m.token.set(instrument_id);
         m.order_id.set(order.id);
         m.side.set(static_cast<std::remove_cvref_t<decltype(m.side.get().value())>>(order.side == matching::Side::Buy ? 'B' : 'S'));
         m.price.set(order.price);
@@ -176,7 +177,7 @@ template <typename Emit>
 inline void emit_trade(Emit& emit, const matching::Trade& trade) {
     ipc_ns::trade_message m{};
     m.timestamp.set(send_time_nanos());
-    m.symbol.set(instrument_symbol);
+    m.token.set(instrument_id);
     m.aggressor_order_id.set(trade.aggressor_id);
     m.resting_order_id.set(trade.resting_id);
     m.execution_id.set(trade.match_id);
@@ -189,7 +190,7 @@ template <typename Emit>
 inline void emit_rested(Emit& emit, const matching::Order& order) {
     ipc_ns::order_rested_message m{};
     m.timestamp.set(send_time_nanos());
-    m.symbol.set(instrument_symbol);
+    m.token.set(instrument_id);
     m.order_id.set(order.id);
     m.side.set(static_cast<std::remove_cvref_t<decltype(m.side.get().value())>>(order.side == matching::Side::Buy ? 'B' : 'S'));
     m.price.set(order.price);
@@ -202,7 +203,7 @@ inline void emit_canceled(Emit& emit, const matching::Order& order) {
     ipc_ns::order_canceled_message m{};
     m.timestamp.set(send_time_nanos());
     m.order_id.set(order.id);
-    m.symbol.set(instrument_symbol);
+    m.token.set(instrument_id);
     m.side.set(static_cast<std::remove_cvref_t<decltype(m.side.get().value())>>(order.side == matching::Side::Buy ? 'B' : 'S'));
     m.price.set(order.price);
     m.quantity.set(static_cast<std::uint32_t>(order.qty));

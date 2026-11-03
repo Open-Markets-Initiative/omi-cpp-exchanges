@@ -121,7 +121,7 @@ inline protocol::order_executed_message to_ouch_executed_resting(const ipc_ns::t
     out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), utc()));
     out.fields.quantity.set(m.quantity.get().value());
     out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>(m.price.get().value()));
-    out.fields.liquidity_flag.set(static_cast<value_of<decltype(out.fields.liquidity_flag)>>([](char value) { switch (value) { case 'N': return 'A'; case 'I': return 'H'; default: return value; } }(static_cast<char>(m.auction.get().value()))));
+    out.fields.liquidity_flag.set(static_cast<value_of<decltype(out.fields.liquidity_flag)>>([](char value) { switch (value) { case 'N': return 'A'; default: return value; } }(static_cast<char>(m.auction.get().value()))));
     out.fields.match_number.set(m.execution_id.get().value());
     return out;
 }
@@ -135,7 +135,7 @@ inline protocol::order_executed_message to_ouch_executed_aggressor(const ipc_ns:
     out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), utc()));
     out.fields.quantity.set(m.quantity.get().value());
     out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>(m.price.get().value()));
-    out.fields.liquidity_flag.set(static_cast<value_of<decltype(out.fields.liquidity_flag)>>([](char value) { switch (value) { case 'N': return 'R'; case 'I': return 'H'; default: return value; } }(static_cast<char>(m.auction.get().value()))));
+    out.fields.liquidity_flag.set(static_cast<value_of<decltype(out.fields.liquidity_flag)>>([](char value) { switch (value) { case 'N': return 'R'; default: return value; } }(static_cast<char>(m.auction.get().value()))));
     out.fields.match_number.set(m.execution_id.get().value());
     return out;
 }

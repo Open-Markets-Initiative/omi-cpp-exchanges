@@ -94,6 +94,7 @@ BOOST_AUTO_TEST_CASE(gateway_admits_fills_and_cancels_an_order) {
     order.fields.order_entry_body.buy_sell_indicator.set(static_cast<std::remove_cvref_t<decltype(order.fields.order_entry_body.buy_sell_indicator.get().value())>>(1));
     order.fields.order_entry_body.volume.set(100);
     order.fields.order_entry_body.price.set(10000);
+    order.fields.order_entry_body.token_no.set(sim::instrument_id);
     gateway.on_bytes(client, whole(order).data(), whole(order).size());
     BOOST_REQUIRE_EQUAL(sent.size(), 2u);
     BOOST_CHECK_EQUAL(gateway.open_orders(), 1u);

@@ -2,7 +2,6 @@
 
 #include "../marketdata/totalview/messages/AddOrderNoMpidAttributionMessage.hpp"
 #include "../marketdata/totalview/messages/OrderExecutedMessage.hpp"
-#include "../marketdata/totalview/messages/OrderExecutedWithPriceMessage.hpp"
 #include "../marketdata/totalview/messages/OrderDeleteMessage.hpp"
 #include "structs/OrderRestedMessage.hpp"
 #include "structs/TradeMessage.hpp"
@@ -55,34 +54,6 @@ inline nasdaq::nsmequities::totalview::itch::v5_0_2026::order_executed_message t
     out.fields.order_reference_number.set(m.resting_order_id.get().value());
     out.fields.executed_shares.set(m.quantity.get().value());
     out.fields.match_number.set(m.execution_id.get().value());
-    return out;
-}
-
-// trade_message -> totalview:order_executed_with_price_message  (NsmEquities.Ipc.Transforms.xml: totalview_crossed_resting)
-inline nasdaq::nsmequities::totalview::itch::v5_0_2026::order_executed_with_price_message to_totalview_crossed_resting(const ipc_ns::trade_message& m) {
-    nasdaq::nsmequities::totalview::itch::v5_0_2026::order_executed_with_price_message out{};
-    out.fields.stock_locate.set(static_cast<value_of<decltype(out.fields.stock_locate)>>(1));
-    out.fields.tracking_number.set(static_cast<value_of<decltype(out.fields.tracking_number)>>(0));
-    out.fields.printable.set(static_cast<value_of<decltype(out.fields.printable)>>('N'));
-    out.fields.timestamp.set(static_cast<value_of<decltype(out.fields.timestamp)>>(nanoseconds_since_midnight(m.timestamp.get().value(), new_york())));
-    out.fields.order_reference_number.set(m.resting_order_id.get().value());
-    out.fields.executed_shares.set(m.quantity.get().value());
-    out.fields.match_number.set(m.execution_id.get().value());
-    out.fields.execution_price.set(static_cast<value_of<decltype(out.fields.execution_price)>>(m.price.get().value()));
-    return out;
-}
-
-// trade_message -> totalview:order_executed_with_price_message  (NsmEquities.Ipc.Transforms.xml: totalview_crossed_aggressor)
-inline nasdaq::nsmequities::totalview::itch::v5_0_2026::order_executed_with_price_message to_totalview_crossed_aggressor(const ipc_ns::trade_message& m) {
-    nasdaq::nsmequities::totalview::itch::v5_0_2026::order_executed_with_price_message out{};
-    out.fields.stock_locate.set(static_cast<value_of<decltype(out.fields.stock_locate)>>(1));
-    out.fields.tracking_number.set(static_cast<value_of<decltype(out.fields.tracking_number)>>(0));
-    out.fields.printable.set(static_cast<value_of<decltype(out.fields.printable)>>('N'));
-    out.fields.timestamp.set(static_cast<value_of<decltype(out.fields.timestamp)>>(nanoseconds_since_midnight(m.timestamp.get().value(), new_york())));
-    out.fields.order_reference_number.set(m.aggressor_order_id.get().value());
-    out.fields.executed_shares.set(m.quantity.get().value());
-    out.fields.match_number.set(m.execution_id.get().value());
-    out.fields.execution_price.set(static_cast<value_of<decltype(out.fields.execution_price)>>(m.price.get().value()));
     return out;
 }
 

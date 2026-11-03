@@ -148,6 +148,22 @@ int main(int argc, char** argv) {
             sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_cross_trade), sizeof totalview_cross_trade);
             sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_cross_trade), sizeof totalview_cross_trade);
             totalview.flush();
+        },
+        [&](const sim::ipc_ns::imbalance_indicated_message& i) {
+            // imbalance_indicated_message -> the feeds its transforms declare (NsmEquities.Ipc.Transforms.xml).
+            if (static_cast<char>(i.imbalance_direction.get().value()) != 'O') {
+                auto totalview_noii = sim::to_totalview_noii(i);
+                totalview.publish_message(reinterpret_cast<const char*>(&totalview_noii), sizeof totalview_noii);
+                sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_noii), sizeof totalview_noii);
+                sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_noii), sizeof totalview_noii);
+            }
+            if (static_cast<char>(i.imbalance_direction.get().value()) == 'O') {
+                auto totalview_noii_insufficient = sim::to_totalview_noii_insufficient(i);
+                totalview.publish_message(reinterpret_cast<const char*>(&totalview_noii_insufficient), sizeof totalview_noii_insufficient);
+                sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_noii_insufficient), sizeof totalview_noii_insufficient);
+                sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_noii_insufficient), sizeof totalview_noii_insufficient);
+            }
+            totalview.flush();
         });
 
     // Order entry: each client's session reaches the engine as framed Ipc messages.
@@ -168,7 +184,8 @@ int main(int argc, char** argv) {
         [&](const sim::ipc_ns::order_canceled_message& c) { gateway.on_event(c); },
         [&](const sim::ipc_ns::order_refused_message& j) { gateway.on_event(j); },
         [](const sim::ipc_ns::phase_announced_message&) {},
-        [](const sim::ipc_ns::cross_completed_message&) {});
+        [](const sim::ipc_ns::cross_completed_message&) {},
+        [](const sim::ipc_ns::imbalance_indicated_message&) {});
 
     // The engine's events, framed onto every consumer's queue.
     auto event_emit = [&](const char* b, std::size_t n) {
@@ -195,6 +212,7 @@ int main(int argc, char** argv) {
     const std::size_t maker_client = gateway.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_maker, b, n); });
     sim::traders::SimpleMaker<std::remove_reference_t<decltype(maker.orders())>> maker_strategy(/*mid*/10000, /*spread*/10, /*size*/100, /*levels*/3);
     int maker_ticks = 0;
+    std::chrono::steady_clock::time_point maker_paced{};   // when a served trader next orders
     sim::Turn maker_turn;
     maker.login();
     sim::MessageQueue to_taker("gateway -> taker");
@@ -204,6 +222,7 @@ int main(int argc, char** argv) {
     const std::size_t taker_client = gateway.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_taker, b, n); });
     sim::traders::SimpleTaker<std::remove_reference_t<decltype(taker.orders())>> taker_strategy(/*mid*/10000, /*cross*/20, /*size*/50, /*period*/3);
     int taker_ticks = 0;
+    std::chrono::steady_clock::time_point taker_paced{};   // when a served trader next orders
     sim::Turn taker_turn;
     taker.login();
     sim::MessageQueue to_replay("gateway -> replay");
@@ -219,6 +238,7 @@ int main(int argc, char** argv) {
     sim::traders::CaptureQuotes replay_read(replay_capture);
     sim::traders::CaptureMaker<std::remove_reference_t<decltype(replay.orders())>> replay_strategy(replay_read.quotes(), /*quotes*/4);
     int replay_ticks = 0;
+    std::chrono::steady_clock::time_point replay_paced{};   // when a served trader next orders
     sim::Turn replay_turn;
     replay.login();
     sim::MessageQueue to_requests("gateway -> requests");
@@ -234,6 +254,7 @@ int main(int argc, char** argv) {
     sim::traders::CaptureRequests requests_read(requests_capture);
     sim::traders::CaptureReplay<std::remove_reference_t<decltype(requests.orders())>> requests_strategy(requests_read.requests(), /*quotes*/3);
     int requests_ticks = 0;
+    std::chrono::steady_clock::time_point requests_paced{};   // when a served trader next orders
     sim::Turn requests_turn;
     requests.login();
 
@@ -314,9 +335,16 @@ int main(int argc, char** argv) {
     sim::Component maker_thread("maker", [&] {
         bool worked = to_maker.read([&](std::string_view bytes) { maker.on_bytes(bytes.data(), bytes.size()); });
         // A served venue runs free; the startup run takes turns, so it is the same every time.
+        // Served, the trader takes in what has arrived on every pass and orders at its own pace,
+        // twenty times a second: sleeping in the step would leave the venue's answers waiting.
         if (serve) {
-            if (maker.logged_in()) { maker_strategy.step(maker.orders()); ++maker_ticks; std::this_thread::sleep_for(std::chrono::milliseconds(50)); }
-            return true;
+            if (maker.logged_in() && std::chrono::steady_clock::now() >= maker_paced) {
+                maker_strategy.step(maker.orders());
+                ++maker_ticks;
+                maker_paced = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
+                worked = true;
+            }
+            return worked;
         }
         if (!maker_turn.asked()) return worked;
         if (maker.logged_in()) { maker_strategy.step(maker.orders()); ++maker_ticks; }
@@ -326,9 +354,16 @@ int main(int argc, char** argv) {
     sim::Component taker_thread("taker", [&] {
         bool worked = to_taker.read([&](std::string_view bytes) { taker.on_bytes(bytes.data(), bytes.size()); });
         // A served venue runs free; the startup run takes turns, so it is the same every time.
+        // Served, the trader takes in what has arrived on every pass and orders at its own pace,
+        // twenty times a second: sleeping in the step would leave the venue's answers waiting.
         if (serve) {
-            if (taker.logged_in()) { taker_strategy.step(taker.orders()); ++taker_ticks; std::this_thread::sleep_for(std::chrono::milliseconds(50)); }
-            return true;
+            if (taker.logged_in() && std::chrono::steady_clock::now() >= taker_paced) {
+                taker_strategy.step(taker.orders());
+                ++taker_ticks;
+                taker_paced = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
+                worked = true;
+            }
+            return worked;
         }
         if (!taker_turn.asked()) return worked;
         if (taker.logged_in()) { taker_strategy.step(taker.orders()); ++taker_ticks; }
@@ -338,9 +373,16 @@ int main(int argc, char** argv) {
     sim::Component replay_thread("replay", [&] {
         bool worked = to_replay.read([&](std::string_view bytes) { replay.on_bytes(bytes.data(), bytes.size()); });
         // A served venue runs free; the startup run takes turns, so it is the same every time.
+        // Served, the trader takes in what has arrived on every pass and orders at its own pace,
+        // twenty times a second: sleeping in the step would leave the venue's answers waiting.
         if (serve) {
-            if (replay.logged_in()) { replay_strategy.step(replay.orders()); ++replay_ticks; std::this_thread::sleep_for(std::chrono::milliseconds(50)); }
-            return true;
+            if (replay.logged_in() && std::chrono::steady_clock::now() >= replay_paced) {
+                replay_strategy.step(replay.orders());
+                ++replay_ticks;
+                replay_paced = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
+                worked = true;
+            }
+            return worked;
         }
         if (!replay_turn.asked()) return worked;
         if (replay.logged_in()) { replay_strategy.step(replay.orders()); ++replay_ticks; }
@@ -350,9 +392,16 @@ int main(int argc, char** argv) {
     sim::Component requests_thread("requests", [&] {
         bool worked = to_requests.read([&](std::string_view bytes) { requests.on_bytes(bytes.data(), bytes.size()); });
         // A served venue runs free; the startup run takes turns, so it is the same every time.
+        // Served, the trader takes in what has arrived on every pass and orders at its own pace,
+        // twenty times a second: sleeping in the step would leave the venue's answers waiting.
         if (serve) {
-            if (requests.logged_in()) { requests_strategy.step(requests.orders()); ++requests_ticks; std::this_thread::sleep_for(std::chrono::milliseconds(50)); }
-            return true;
+            if (requests.logged_in() && std::chrono::steady_clock::now() >= requests_paced) {
+                requests_strategy.step(requests.orders());
+                ++requests_ticks;
+                requests_paced = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
+                worked = true;
+            }
+            return worked;
         }
         if (!requests_turn.asked()) return worked;
         if (requests.logged_in()) { requests_strategy.step(requests.orders()); ++requests_ticks; }
@@ -379,9 +428,11 @@ int main(int argc, char** argv) {
         for (int tick = 0; tick < 20; ++tick) {
             for (const auto& scheduled : decltype(day_component)::schedule) {
                 if (!(tick == scheduled.tick)) continue;
-                day_component.request(scheduled.change);
+                day_component.request(scheduled);
                 settled = sim::quiesce({ &to_engine, &to_clients, &from_day, &to_totalview, &to_maker, &from_maker, &to_taker, &from_taker, &to_replay, &from_replay, &to_requests, &from_requests, &to_glimpse, &to_totalviewtcp }, { &engine_thread, &gateway_thread, &day_thread, &totalview_thread, &maker_thread, &taker_thread, &replay_thread, &requests_thread, &glimpse_thread, &totalviewtcp_thread }, std::chrono::milliseconds(5000)) && settled;
             }
+            day_component.indicate();
+            settled = sim::quiesce({ &to_engine, &to_clients, &from_day, &to_totalview, &to_maker, &from_maker, &to_taker, &from_taker, &to_replay, &from_replay, &to_requests, &from_requests, &to_glimpse, &to_totalviewtcp }, { &engine_thread, &gateway_thread, &day_thread, &totalview_thread, &maker_thread, &taker_thread, &replay_thread, &requests_thread, &glimpse_thread, &totalviewtcp_thread }, std::chrono::milliseconds(5000)) && settled;
             maker_turn.ask();
             settled = maker_turn.wait() && settled;
             settled = sim::quiesce({ &to_engine, &to_clients, &from_day, &to_totalview, &to_maker, &from_maker, &to_taker, &from_taker, &to_replay, &from_replay, &to_requests, &from_requests, &to_glimpse, &to_totalviewtcp }, { &engine_thread, &gateway_thread, &day_thread, &totalview_thread, &maker_thread, &taker_thread, &replay_thread, &requests_thread, &glimpse_thread, &totalviewtcp_thread }, std::chrono::milliseconds(5000)) && settled;
@@ -397,7 +448,7 @@ int main(int argc, char** argv) {
         }
         for (const auto& scheduled : decltype(day_component)::schedule) {
             if (!(scheduled.tick >= 20)) continue;
-            day_component.request(scheduled.change);
+            day_component.request(scheduled);
             settled = sim::quiesce({ &to_engine, &to_clients, &from_day, &to_totalview, &to_maker, &from_maker, &to_taker, &from_taker, &to_replay, &from_replay, &to_requests, &from_requests, &to_glimpse, &to_totalviewtcp }, { &engine_thread, &gateway_thread, &day_thread, &totalview_thread, &maker_thread, &taker_thread, &replay_thread, &requests_thread, &glimpse_thread, &totalviewtcp_thread }, std::chrono::milliseconds(5000)) && settled;
         }
         if (!settled)
@@ -412,17 +463,33 @@ int main(int argc, char** argv) {
         std::puts("nasdaq-simulator: stopping");
     }
 
-    // Stop in producer order, so each component drains what is already on its queue.
+    // Stop in producer order. Each link a component reads is closed once it has stopped: nothing
+    // reads it again, so a component still writing to it - the gateway answering a trader that
+    // has gone - stops waiting for room, and is free to stop in its turn.
     maker_thread.stop();
+    to_maker.close();
     taker_thread.stop();
+    to_taker.close();
     replay_thread.stop();
+    to_replay.close();
     requests_thread.stop();
+    to_requests.close();
     gateway_thread.stop();
+    to_clients.close();
+    from_maker.close();
+    from_taker.close();
+    from_replay.close();
+    from_requests.close();
     day_thread.stop();
     engine_thread.stop();
+    to_engine.close();
+    from_day.close();
     totalview_thread.stop();
+    to_totalview.close();
     glimpse_thread.stop();
+    to_glimpse.close();
     totalviewtcp_thread.stop();
+    to_totalviewtcp.close();
 
     // Glimpse self-check: a client logs in and is served the book as it stands.
     {

@@ -44,9 +44,9 @@ inline const std::chrono::time_zone* kolkata() {
 // order_rested_message -> mtbt:new_order_message  (NseFo.Ipc.Transforms.xml: mtbt_new_order)
 inline nse::nsefo::mtbt::tbt::v7_1::new_order_message to_mtbt_new_order(const ipc_ns::order_rested_message& m) {
     nse::nsefo::mtbt::tbt::v7_1::new_order_message out{};
-    out.fields.token.set(static_cast<value_of<decltype(out.fields.token)>>(78753));
     out.fields.timestamp.set(static_cast<value_of<decltype(out.fields.timestamp)>>(nanoseconds_since_dos_epoch(m.timestamp.get().value(), kolkata())));
     out.fields.order_id.set(static_cast<double>(m.order_id.get().value()));
+    out.fields.token.set(m.token.get().value());
     out.fields.order_type.set(static_cast<value_of<decltype(out.fields.order_type)>>(static_cast<char>(m.side.get().value())));
     out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>(m.price.get().value()));
     out.fields.quantity.set(static_cast<value_of<decltype(out.fields.quantity)>>(m.quantity.get().value()));
@@ -56,9 +56,9 @@ inline nse::nsefo::mtbt::tbt::v7_1::new_order_message to_mtbt_new_order(const ip
 // order_canceled_message -> mtbt:order_cancellation_message  (NseFo.Ipc.Transforms.xml: mtbt_order_cancellation)
 inline nse::nsefo::mtbt::tbt::v7_1::order_cancellation_message to_mtbt_order_cancellation(const ipc_ns::order_canceled_message& m) {
     nse::nsefo::mtbt::tbt::v7_1::order_cancellation_message out{};
-    out.fields.token.set(static_cast<value_of<decltype(out.fields.token)>>(78753));
     out.fields.timestamp.set(static_cast<value_of<decltype(out.fields.timestamp)>>(nanoseconds_since_dos_epoch(m.timestamp.get().value(), kolkata())));
     out.fields.order_id.set(static_cast<double>(m.order_id.get().value()));
+    out.fields.token.set(m.token.get().value());
     out.fields.order_type.set(static_cast<value_of<decltype(out.fields.order_type)>>(static_cast<char>(m.side.get().value())));
     out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>(m.price.get().value()));
     out.fields.quantity.set(static_cast<value_of<decltype(out.fields.quantity)>>(m.quantity.get().value()));
@@ -68,10 +68,10 @@ inline nse::nsefo::mtbt::tbt::v7_1::order_cancellation_message to_mtbt_order_can
 // trade_message -> mtbt:trade_message  (NseFo.Ipc.Transforms.xml: mtbt_trade)
 inline nse::nsefo::mtbt::tbt::v7_1::trade_message to_mtbt_trade(const ipc_ns::trade_message& m) {
     nse::nsefo::mtbt::tbt::v7_1::trade_message out{};
-    out.fields.token.set(static_cast<value_of<decltype(out.fields.token)>>(78753));
     out.fields.timestamp.set(static_cast<value_of<decltype(out.fields.timestamp)>>(nanoseconds_since_dos_epoch(m.timestamp.get().value(), kolkata())));
     out.fields.buy_order_id.set(static_cast<double>(m.resting_order_id.get().value()));
     out.fields.sell_order_id.set(static_cast<double>(m.aggressor_order_id.get().value()));
+    out.fields.token.set(m.token.get().value());
     out.fields.trade_price.set(static_cast<value_of<decltype(out.fields.trade_price)>>(m.price.get().value()));
     out.fields.trade_quantity.set(static_cast<value_of<decltype(out.fields.trade_quantity)>>(m.quantity.get().value()));
     return out;

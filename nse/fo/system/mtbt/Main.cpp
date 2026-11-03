@@ -73,7 +73,8 @@ int main(int argc, char** argv) {
             if (!worked) std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
 
-        std::printf("nse-mtbt: stopped — %llu events published\n", (unsigned long long)handled);
+        std::printf("nse-mtbt: stopped — %llu events read, %llu messages published\n",
+                    (unsigned long long)handled, (unsigned long long)(mtbt.next_seq() - 1));
     } catch (const std::exception& problem) {
         std::fprintf(stderr, "nse-mtbt: %s\n", problem.what());
         return 1;

@@ -136,6 +136,10 @@ public:
         return best;
     }
 
+    // The next match number of the day's, for an execution that is no fill of the book's: the one
+    // print an uncross makes of all its fills.
+    std::uint64_t numbered() { return ++matches_; }
+
     // The uncross: everything an auction collected that crosses trades at one price, the best bids
     // against the best asks, first come first filled within a price. Returns what it crossed at.
     Indicative uncross(Cross cross, std::int64_t reference,

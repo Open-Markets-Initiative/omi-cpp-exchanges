@@ -21,9 +21,21 @@ carries it.
 
 | Simulator | Directory | Matching | Deployments |
 | --- | --- | --- | --- |
+| Cme Globex | [cme/globex](cme/globex) | Continuous | process |
 | Investors Exchange Equities | [iex/equities](iex/equities) | Continuous | process |
+| Nse Futures and Options | [nse/fo](nse/fo) | Continuous | process, system, cluster |
+| Nasdaq Stock Market Day | [nasdaq/equities/day](nasdaq/equities/day) | Trading day | process, system, cluster |
+| Nasdaq Stock Market Open | [nasdaq/equities/open](nasdaq/equities/open) | Continuous | process, system, cluster |
 
 ## Protocols
+
+### Cme Globex
+
+| Role | Model |
+| --- | --- |
+| Order Entry | Cme.Globex.iLink3.Sbe.v8.9 |
+| Order Entry Session | Cme.iLink3 |
+| Internal Messaging | Cme.Globex.MatchingEngine.Ipc.v1.0 |
 
 ### Investors Exchange Equities
 
@@ -39,20 +51,68 @@ carries it.
 | Snapshot (DeepPlus) | Iex.IexEquities.DeepPlus.Snap.v1.06 |
 | Internal Messaging | Iex.IexEquities.MatchingEngine.Ipc.v1.0 |
 
+### Nse Futures and Options
+
+| Role | Model |
+| --- | --- |
+| Order Entry | Nse.NseFo.OrderEntry.Nnf.v9.50 |
+| Order Entry Session | Nse.Nnf |
+| Market Data (Mtbt) | Nse.NseFo.Mtbt.Tbt.v7.1 |
+| Internal Messaging | Nse.NseFo.MatchingEngine.Ipc.v1.0 |
+
+### Nasdaq Stock Market Day
+
+| Role | Model |
+| --- | --- |
+| Order Entry | Nasdaq.NsmEquities.Orders.Ouch.v5.0 |
+| Order Entry Session | Nasdaq.SoupBinTcp |
+| Market Data (TotalView) | Nasdaq.NsmEquities.TotalView.Itch.v5.0.2026 |
+| Snapshot of TotalView (Glimpse) | Nasdaq.NsmEquities.TotalView.Glimpse.v5.0 |
+| Stream of TotalView (TotalViewTcp) | Nasdaq.NsmEquities.TotalView.Itch.v5.0.2026 |
+| Trading Day | Nasdaq.NsmEquities.Equities.Trading |
+| Internal Messaging | Nasdaq.NsmEquities.MatchingEngine.Ipc.v2026 |
+
+### Nasdaq Stock Market Open
+
+| Role | Model |
+| --- | --- |
+| Order Entry | Nasdaq.NsmEquities.Orders.Ouch.v5.0 |
+| Order Entry Session | Nasdaq.SoupBinTcp |
+| Market Data (TotalView) | Nasdaq.NsmEquities.TotalView.Itch.v5.0.2026 |
+| Snapshot of TotalView (Glimpse) | Nasdaq.NsmEquities.TotalView.Glimpse.v5.0 |
+| Stream of TotalView (TotalViewTcp) | Nasdaq.NsmEquities.TotalView.Itch.v5.0.2026 |
+| Internal Messaging | Nasdaq.NsmEquities.MatchingEngine.Ipc.v2026 |
+
 ## Build
 
 Requirements: C++20, CMake 3.28+, Boost
 
 ```bash
+cmake -S cme/globex -B build/cme/globex -DCMAKE_BUILD_TYPE=Release
+cmake --build build/cme/globex --parallel
 cmake -S iex/equities -B build/iex/equities -DCMAKE_BUILD_TYPE=Release
 cmake --build build/iex/equities --parallel
+cmake -S nse/fo -B build/nse/fo -DCMAKE_BUILD_TYPE=Release
+cmake --build build/nse/fo --parallel
+cmake -S nasdaq/equities/day -B build/nasdaq/equities/day -DCMAKE_BUILD_TYPE=Release
+cmake --build build/nasdaq/equities/day --parallel
+cmake -S nasdaq/equities/open -B build/nasdaq/equities/open -DCMAKE_BUILD_TYPE=Release
+cmake --build build/nasdaq/equities/open --parallel
 ```
 
 ## Run
 
 ```bash
+./build/cme/globex/cme_simulator    # endpoints from cme/globex/simulator.ini (--config <file> to override)
+./build/cme/globex/simulator_tests    # Boost.Test suite
 ./build/iex/equities/iex_simulator    # endpoints from iex/equities/simulator.ini (--config <file> to override)
 ./build/iex/equities/simulator_tests    # Boost.Test suite
+./build/nse/fo/nse_simulator    # endpoints from nse/fo/simulator.ini (--config <file> to override)
+./build/nse/fo/simulator_tests    # Boost.Test suite
+./build/nasdaq/equities/day/nasdaq_simulator    # endpoints from nasdaq/equities/day/simulator.ini (--config <file> to override)
+./build/nasdaq/equities/day/simulator_tests    # Boost.Test suite
+./build/nasdaq/equities/open/nasdaq_simulator    # endpoints from nasdaq/equities/open/simulator.ini (--config <file> to override)
+./build/nasdaq/equities/open/simulator_tests    # Boost.Test suite
 ```
 
 Runtime endpoints (IPs/ports for the order-entry gateway, feed multicast groups, and
@@ -75,14 +135,5 @@ The latency lab is a repository of its own, `omi-latency-lab`, generated from th
 declarations: it reads a capture of a venue running in containers through the venue's own
 address table and framing, and reports the matching engine, the fan out, the feed and each
 trader's own turn as percentiles, as plots and on a page. The exchanges carry nothing of it.
-
-## Left out
-
-An exchange whose declarations the generators cannot write is left out rather than half
-written:
-
-- **Nse Futures and Options**: Session model not found: Nse.Nnf (under C:\Users\wwteg\Desktop\Scaled\OmiModels)
-- **Nasdaq Stock Market Day**: Session model not found: Nasdaq.SoupBinTcp (under C:\Users\wwteg\Desktop\Scaled\OmiModels)
-- **Nasdaq Stock Market Open**: Session model not found: Nasdaq.SoupBinTcp (under C:\Users\wwteg\Desktop\Scaled\OmiModels)
 
 Any questions, comments or requests: Open-Markets-Initiative@outlook.com

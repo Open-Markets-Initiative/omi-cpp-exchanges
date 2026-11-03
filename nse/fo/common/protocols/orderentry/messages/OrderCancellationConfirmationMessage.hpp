@@ -34,7 +34,7 @@ struct order_cancellation_confirmation_message {
     }
 
     // sequential access to variable-length regions
-    sbe_var_data cancellation_confirmation_body() const {
+    sbe_var_data<std::uint32_t> cancellation_confirmation_body() const {
         return { tail_begin(), tail_end() };
     }
 

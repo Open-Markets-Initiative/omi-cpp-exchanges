@@ -37,7 +37,7 @@ struct market_statistics_report_message {
     }
 
     // sequential access to variable-length regions
-    sbe_var_data report_body() const {
+    sbe_var_data<std::uint32_t> report_body() const {
         return { tail_begin(), tail_end() };
     }
 

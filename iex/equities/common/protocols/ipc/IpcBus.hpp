@@ -17,6 +17,15 @@ namespace sim {
 
 namespace ipc_ns = iex::iexequities::matchingengine::ipc::v1_0;
 
+// The auction a trade ended, as the internal messaging model codes it.
+inline char auctioned(matching::Cross cross) {
+    switch (cross) {
+        case matching::Cross::None: return 'N';
+        default: break;
+    }
+    return '?';
+}
+
 // Ipc message type codes (ascii) — mirror the Ipc specification.
 struct IpcType {
     static constexpr char Heartbeat     = 'H';
@@ -179,8 +188,10 @@ inline void emit_trade(Emit& emit, const matching::Trade& trade) {
     m.symbol.set(instrument_symbol);
     m.aggressor_order_id.set(trade.aggressor_id);
     m.resting_order_id.set(trade.resting_id);
+    m.execution_id.set(trade.match_id);
     m.price.set(trade.price);
     m.quantity.set(static_cast<std::uint32_t>(trade.qty));
+    m.auction.set(static_cast<std::remove_cvref_t<decltype(m.auction.get().value())>>(auctioned(trade.cross)));
     detail_ipc::emit_framed(emit, IpcType::Trade, m);
 }
 

@@ -74,7 +74,8 @@ int main(int argc, char** argv) {
         }
 
         if (to_mtbt.gaps() > 0) std::printf("nse-mtbt: %llu gap(s) on engine -> mtbt — messages were lost\n", (unsigned long long)to_mtbt.gaps());
-        std::printf("nse-mtbt: stopped — %llu events published\n", (unsigned long long)handled);
+        std::printf("nse-mtbt: stopped — %llu events read, %llu messages published\n",
+                    (unsigned long long)handled, (unsigned long long)(mtbt.next_seq() - 1));
     } catch (const std::exception& problem) {
         std::fprintf(stderr, "nse-mtbt: %s\n", problem.what());
         return 1;

@@ -31,6 +31,8 @@ inline constexpr std::size_t ipc_slot_bytes = 3 + std::max({
     sizeof(ipc_ns::phase_announced_message),
     sizeof(ipc_ns::phase_request_message),
     sizeof(ipc_ns::cross_completed_message),
+    sizeof(ipc_ns::imbalance_request_message),
+    sizeof(ipc_ns::imbalance_indicated_message),
 });
 
 // What a bystander needs of a link: whether everything written has been read. Components never
@@ -100,6 +102,10 @@ public:
     std::uint64_t written() const { return written_.load(std::memory_order_relaxed); }
     std::uint64_t read()    const { return read_.load(std::memory_order_relaxed); }
 
+    // Its reader has stopped and will not read again, so a writer waiting for room stops waiting.
+    void close()        { closed_.store(true, std::memory_order_release); }
+    bool closed() const { return closed_.load(std::memory_order_acquire); }
+
 private:
     struct Cell {
         std::array<char, Slot> bytes{};
@@ -110,6 +116,7 @@ private:
     std::vector<Cell>                    slots_ = std::vector<Cell>(Slots);
     alignas(64) std::atomic<std::uint64_t> written_{0};
     alignas(64) std::atomic<std::uint64_t> read_{0};
+    std::atomic<bool>                    closed_{false};
 };
 
 // The links between the exchange's own components carry ipc frames.
@@ -232,7 +239,10 @@ inline bool quiesce(std::initializer_list<const Link*>      queues,
 }
 
 // Write to a link, waiting for room rather than losing the message: a slow consumer slows its
-// producer down instead of leaving a gap in the stream.
+// producer down instead of leaving a gap in the stream. A link whose reader has stopped is not
+// waited on - nothing will make room - so what is written to it then is lost, as it would be
+// unread anyway; components that write to each other would otherwise wait on each other for
+// ever as they stop.
 //
 // Any link with a write() will do, which is what lets the same call serve both versions of a
 // venue: a Queue inside the single binary, and a SharedRing between the component processes.
@@ -240,7 +250,12 @@ template <typename Link>
 inline void write_blocking(Link& link, const char* data, std::size_t length)
     requires requires(Link& to) { to.write(data, length); }
 {
-    while (!link.write(data, length)) std::this_thread::yield();
+    while (!link.write(data, length)) {
+        if constexpr (requires { link.closed(); }) {
+            if (link.closed()) return;
+        }
+        std::this_thread::yield();
+    }
 }
 
 }

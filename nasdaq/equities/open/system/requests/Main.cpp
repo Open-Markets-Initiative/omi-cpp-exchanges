@@ -45,20 +45,22 @@ int main(int argc, char** argv) {
         sim::traders::CaptureRequests requests_read(requests_capture);
         sim::traders::CaptureReplay<std::remove_reference_t<decltype(requests.orders())>> requests_strategy(requests_read.requests(), /*quotes*/3);
         int requests_ticks = 0;
+        std::chrono::steady_clock::time_point requests_paced{};   // when a served trader next orders
         requests.login();
 
         std::printf("nasdaq-requests: trading as %s\n", requests.name().c_str());
 
         // A step a trader does not take is a step it had nothing to do: it reads what the
         // venue said, and acts only once it is admitted.
+        auto paced = std::chrono::steady_clock::now();   // when it next orders
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
             worked = to_requests.read([&](std::string_view bytes) { requests.on_bytes(bytes.data(), bytes.size()); }) || worked;
             from_requests.deliver();
-            if (requests.logged_in()) {
+            if (requests.logged_in() && std::chrono::steady_clock::now() >= paced) {
                 requests_strategy.step(requests.orders());
                 ++requests_ticks;
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                paced = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
             } else if (!worked) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
             }

@@ -112,6 +112,7 @@ private:
         out.fields.order_entry_body.buy_sell_indicator.set(static_cast<value_of<decltype(out.fields.order_entry_body.buy_sell_indicator)>>([](auto value) { switch (static_cast<long long>(value)) { case 'B': return 1; case 'S': return 2; default: return 1; } }(side)));
         out.fields.order_entry_body.volume.set(static_cast<value_of<decltype(out.fields.order_entry_body.volume)>>(quantity));
         out.fields.order_entry_body.price.set(static_cast<value_of<decltype(out.fields.order_entry_body.price)>>(price));
+        out.fields.order_entry_body.token_no.set(instrument_id);
         send(out);
         ++entered_;
         return reference;

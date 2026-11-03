@@ -39,20 +39,22 @@ int main(int argc, char** argv) {
         sim::traders::Trader<decltype(taker_send)> taker("Taker", "BOB001", "bob0000001", taker_send);
         sim::traders::SimpleTaker<std::remove_reference_t<decltype(taker.orders())>> taker_strategy(/*mid*/10000, /*cross*/20, /*size*/50, /*period*/3);
         int taker_ticks = 0;
+        std::chrono::steady_clock::time_point taker_paced{};   // when a served trader next orders
         taker.login();
 
         std::printf("nasdaq-taker: trading as %s\n", taker.name().c_str());
 
         // A step a trader does not take is a step it had nothing to do: it reads what the
         // venue said, and acts only once it is admitted.
+        auto paced = std::chrono::steady_clock::now();   // when it next orders
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
             worked = to_taker.read([&](std::string_view bytes) { taker.on_bytes(bytes.data(), bytes.size()); }) || worked;
             from_taker.deliver();
-            if (taker.logged_in()) {
+            if (taker.logged_in() && std::chrono::steady_clock::now() >= paced) {
                 taker_strategy.step(taker.orders());
                 ++taker_ticks;
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                paced = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
             } else if (!worked) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
             }

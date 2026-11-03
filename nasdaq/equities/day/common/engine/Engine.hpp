@@ -41,8 +41,8 @@ class Engine {
     using Book = matching::MatchingEngine<OnTrade, OnRested, OnCanceled>;
 
     // The day's callbacks: an order a phase does not accept, what the venue announces as its
-    // phases change, and each auction it uncrosses, all framed onto the Ipc for the gateway and
-    // the feeds.
+    // phases change, each auction it uncrosses, and what the auction it collects for would cross
+    // at when asked, all framed onto the Ipc for the gateway and the feeds.
     struct OnRefused {
         Engine* self;
         void operator()(const matching::Order& order) const { sim::emit_refused(self->emit_, order); }
@@ -55,16 +55,20 @@ class Engine {
 
     struct OnCrossed {
         Engine* self;
-        void operator()(matching::Cross cross, const matching::Indicative& at) const { sim::emit_crossed(self->emit_, cross, at); }
+        void operator()(matching::Cross cross, const matching::Indicative& at, std::uint64_t match) const { sim::emit_crossed(self->emit_, cross, at, match); }
     };
-    using Day = matching::TradingPhases<Book, OnRefused, OnAnnounced, OnCrossed>;
+    struct OnIndicated {
+        Engine* self;
+        void operator()(matching::Cross cross, const matching::Indicative& at) const { sim::emit_indicated(self->emit_, cross, at); }
+    };
+    using Day = matching::TradingPhases<Book, OnRefused, OnAnnounced, OnCrossed, OnIndicated>;
 
 public:
     Engine(Emit emit, std::atomic<std::uint64_t>& trades)
         : emit_(std::move(emit)),
           trades_(trades),
           book_(OnTrade{this}, OnRested{this}, OnCanceled{this}),
-          day_(book_, OnRefused{this}, OnAnnounced{this}, OnCrossed{this}),
+          day_(book_, OnRefused{this}, OnAnnounced{this}, OnCrossed{this}, OnIndicated{this}),
           server_(day_) { day_.reference(sim::instrument_reference); }
 
     // The callbacks hold the component itself, so it stays where it was built.

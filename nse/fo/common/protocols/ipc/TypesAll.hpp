@@ -6,7 +6,7 @@
 #include "types/MessageType.hpp"
 #include "types/Timestamp.hpp"
 #include "types/OrderId.hpp"
-#include "types/Symbol.hpp"
+#include "types/Token.hpp"
 #include "types/Side.hpp"
 #include "types/Price.hpp"
 #include "types/Quantity.hpp"

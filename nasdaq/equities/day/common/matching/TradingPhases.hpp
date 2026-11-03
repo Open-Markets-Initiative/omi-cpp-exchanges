@@ -20,11 +20,11 @@ enum class Announcement : std::uint8_t { StartOfMessages, StartOfSystemHours, St
 
 // The trading day. An order is given to the phase the venue is in, which
 // crosses it, takes it out of the book, or refuses it, as the chart says.
-template <typename Engine, typename OnRefused, typename OnAnnounced, typename OnCrossed>
+template <typename Engine, typename OnRefused, typename OnAnnounced, typename OnCrossed, typename OnIndicated>
 class TradingPhases {
 public:
-    TradingPhases(Engine& engine, OnRefused on_refused, OnAnnounced on_announced, OnCrossed on_crossed)
-        : engine_(engine), on_refused_(on_refused), on_announced_(on_announced), on_crossed_(on_crossed) {}
+    TradingPhases(Engine& engine, OnRefused on_refused, OnAnnounced on_announced, OnCrossed on_crossed, OnIndicated on_indicated)
+        : engine_(engine), on_refused_(on_refused), on_announced_(on_announced), on_crossed_(on_crossed), on_indicated_(on_indicated) {}
 
     Phase phase() const { return phase_; }
 
@@ -45,6 +45,17 @@ public:
 
     // Is an auction collecting? An owner publishes the indicative price while one is.
     bool collecting() const { return phase_ == Phase::PreOpen || phase_ == Phase::Halted || phase_ == Phase::PreClose; }
+
+    // What the auction being collected for would cross at now, told to the owner with which
+    // auction it is; nothing while none is collecting.
+    void indicate() {
+        switch (phase_) {
+            case Phase::PreOpen: on_indicated_(Cross::Opening, engine_.indicative(reference_, floor_, ceiling_)); return;
+            case Phase::Halted: on_indicated_(Cross::Intraday, engine_.indicative(reference_, floor_, ceiling_)); return;
+            case Phase::PreClose: on_indicated_(Cross::Closing, engine_.indicative(reference_, floor_, ceiling_)); return;
+            default: return;
+        }
+    }
 
     void on_new_order(Order order) {
         switch (phase_) {
@@ -162,9 +173,11 @@ private:
         return true;
     }
 
-    // An uncross the owner is told of: which auction it ended, and what it crossed at.
+    // An uncross the owner is told of: which auction it ended, what it crossed at, and the
+    // match number of its print, numbered after its fills; one that crossed nothing made no
+    // execution to number.
     Indicative crossed(Cross cross, Indicative at) {
-        on_crossed_(cross, at);
+        on_crossed_(cross, at, at.qty > 0 ? engine_.numbered() : 0);
         return at;
     }
 
@@ -176,6 +189,7 @@ private:
     OnRefused     on_refused_;
     OnAnnounced   on_announced_;
     OnCrossed     on_crossed_;
+    OnIndicated   on_indicated_;
     Phase         phase_ = Phase::Closed;
     std::uint64_t phases_ = 0;
     std::int64_t  reference_ = 0;

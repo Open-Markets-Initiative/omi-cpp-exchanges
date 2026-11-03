@@ -60,7 +60,8 @@ sleep 1
 
 trades=$(number "nse-engine: stopped" 1)
 events=$(number "nse-engine: stopped" 2)
-mtbt_published=$(number "nse-mtbt: stopped" 1)
+mtbt_read=$(number "nse-mtbt: stopped" 1)
+mtbt_published=$(number "nse-mtbt: stopped" 2)
 maker_entered=$(number "nse-maker: stopped" 1)
 taker_entered=$(number "nse-taker: stopped" 1)
 echo "verify: what the venue did"
@@ -74,7 +75,7 @@ said "nse-taker: stopped" "taker ran and stopped cleanly"
 echo "verify: what it carried"
 atleast "the engine matched trades" "$trades" 1
 atleast "the engine emitted events" "$events" 1
-same "mtbt published what the engine emitted" "$mtbt_published" "$events"
+same "mtbt read what the engine emitted" "$mtbt_read" "$events"
 atleast "maker entered orders" "$maker_entered" 1
 atleast "taker entered orders" "$taker_entered" 1
 
