@@ -7,13 +7,17 @@ what a component writes to.
 
 | Binary | Here | What it is |
 | --- | --- | --- |
-| `nasdaq_system_gateway` | `gateway/` | order entry over Tcp, a session per client, the orders it has admitted |
+| `nasdaq_system_gatewaymakerbasic` | `gatewaymakerbasic/` | MakerBasic's order entry over Tcp, a session per client, the orders it has admitted, numbered in an interleave of its own |
+| `nasdaq_system_gatewaytakerbasic` | `gatewaytakerbasic/` | TakerBasic's order entry over Tcp, a session per client, the orders it has admitted, numbered in an interleave of its own |
+| `nasdaq_system_gatewayreplay` | `gatewayreplay/` | Replay's order entry over Tcp, a session per client, the orders it has admitted, numbered in an interleave of its own |
+| `nasdaq_system_gatewayrequests` | `gatewayrequests/` | Requests's order entry over Tcp, a session per client, the orders it has admitted, numbered in an interleave of its own |
 | `nasdaq_system_engine` | `engine/` | the book: it matches what it is sent and emits what happened |
+| `nasdaq_system_sequencer` | `sequencer/` | its engine's sequencer: everything bound for the engine, from every gateway and the day, put in one order and stamped with its place and time |
 | `nasdaq_system_totalview` | `totalview/` | the totalview feed: engine events through its transforms, out as multicast and into the recording |
 | `nasdaq_system_glimpse` | `glimpse/` | the Glimpse service: the snapshot of TotalView a client logs in for |
 | `nasdaq_system_totalviewtcp` | `totalviewtcp/` | the TotalViewTcp service: the stream of TotalView a client logs in for |
-| `nasdaq_system_maker` | `maker/` | the trader Maker, a maker trading through the venue's own order entry |
-| `nasdaq_system_taker` | `taker/` | the trader Taker, a taker trading through the venue's own order entry |
+| `nasdaq_system_makerbasic` | `makerbasic/` | the trader MakerBasic, a makerbasic trading through the venue's own order entry |
+| `nasdaq_system_takerbasic` | `takerbasic/` | the trader TakerBasic, a takerbasic trading through the venue's own order entry |
 | `nasdaq_system_replay` | `replay/` | the trader Replay, a capture trading through the venue's own order entry |
 | `nasdaq_system_requests` | `requests/` | the trader Requests, a capture trading through the venue's own order entry |
 | `nasdaq_rings` | `rings/` | makes the links, and removes them: run by `launch.sh`, not by hand |
@@ -23,30 +27,44 @@ what a component writes to.
 ```mermaid
 flowchart LR
     clients([clients])
-    gateway["gateway<br/><small>order entry</small>"]
+    gatewaymakerbasic["gatewaymakerbasic<br/><small>order entry</small>"]
+    gatewaytakerbasic["gatewaytakerbasic<br/><small>order entry</small>"]
+    gatewayreplay["gatewayreplay<br/><small>order entry</small>"]
+    gatewayrequests["gatewayrequests<br/><small>order entry</small>"]
     engine["engine<br/><small>matching</small>"]
+    sequencer["sequencer<br/><small>sequencer</small>"]
     totalview["totalview<br/><small>feed</small>"]
     glimpse["glimpse<br/><small>replay</small>"]
     totalviewtcp["totalviewtcp<br/><small>replay</small>"]
-    maker["maker<br/><small>trader</small>"]
-    taker["taker<br/><small>trader</small>"]
+    makerbasic["makerbasic<br/><small>trader</small>"]
+    takerbasic["takerbasic<br/><small>trader</small>"]
     replay["replay<br/><small>trader</small>"]
     requests["requests<br/><small>trader</small>"]
     totalview_out([TotalView Udp])
-    clients -->|SoupBin Tcp| gateway
-    gateway -->|ipc ring| engine
-    engine -->|ipc ring| gateway
+    clients -->|SoupBin Tcp| gatewaymakerbasic
+    clients -->|SoupBin Tcp| gatewaytakerbasic
+    clients -->|SoupBin Tcp| gatewayreplay
+    clients -->|SoupBin Tcp| gatewayrequests
+    gatewaymakerbasic -->|ipc ring| sequencer
+    gatewaytakerbasic -->|ipc ring| sequencer
+    gatewayreplay -->|ipc ring| sequencer
+    gatewayrequests -->|ipc ring| sequencer
+    sequencer -->|ipc ring| engine
+    engine -->|ipc ring| gatewaymakerbasic
+    engine -->|ipc ring| gatewaytakerbasic
+    engine -->|ipc ring| gatewayreplay
+    engine -->|ipc ring| gatewayrequests
     engine -->|ipc ring| totalview
     totalview -->|messages ring| glimpse
     totalview -->|messages ring| totalviewtcp
-    gateway -->|messages ring| maker
-    maker -->|messages ring| gateway
-    gateway -->|messages ring| taker
-    taker -->|messages ring| gateway
-    gateway -->|messages ring| replay
-    replay -->|messages ring| gateway
-    gateway -->|messages ring| requests
-    requests -->|messages ring| gateway
+    gatewaymakerbasic -->|messages ring| makerbasic
+    makerbasic -->|messages ring| gatewaymakerbasic
+    gatewaytakerbasic -->|messages ring| takerbasic
+    takerbasic -->|messages ring| gatewaytakerbasic
+    gatewayreplay -->|messages ring| replay
+    replay -->|messages ring| gatewayreplay
+    gatewayrequests -->|messages ring| requests
+    requests -->|messages ring| gatewayrequests
     totalview -.-> totalview_out
 ```
 

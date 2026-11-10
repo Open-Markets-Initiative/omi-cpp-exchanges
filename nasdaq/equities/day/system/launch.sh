@@ -38,14 +38,18 @@ start() {
 }
 
 # Consumers before producers, so nothing writes to a link nobody is reading yet.
-start gateway "$@"
+start gatewaymakerbasic "$@"
+start gatewaytakerbasic "$@"
+start gatewayreplay "$@"
+start gatewayrequests "$@"
 start engine "$@"
+start sequencer "$@"
 start day "$@"
 start totalview "$@"
 start glimpse "$@"
 start totalviewtcp "$@"
-start maker "$@"
-start taker "$@"
+start makerbasic "$@"
+start takerbasic "$@"
 start replay "$@"
 start requests "$@"
 
@@ -57,7 +61,7 @@ start requests "$@"
 down() {
     trap - INT TERM
 
-    for index in 9 8 7 6 5 4 3 2 1 0; do
+    for index in 13 12 11 10 9 8 7 6 5 4 3 2 1 0; do
         pid="${pids[$index]}"
         name="${names[$index]}"
         if kill -0 "$pid" 2>/dev/null; then
@@ -78,7 +82,7 @@ down() {
 
 trap down INT TERM
 
-echo "launch: 10 components up — Ctrl-C to stop"
+echo "launch: 14 components up — Ctrl-C to stop"
 
 while :; do
     # A component that dies on its own takes the venue with it: a venue missing one of its parts

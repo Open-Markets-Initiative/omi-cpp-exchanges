@@ -25,12 +25,12 @@ RUN apt-get update \
 WORKDIR /venue
 COPY --from=build /build/nse_simulator ./
 
-# One binary per component of the distributed venue; cluster/compose.yaml runs one each.
-COPY --from=build /build/nse_cluster_gateway ./
-COPY --from=build /build/nse_cluster_engine ./
-COPY --from=build /build/nse_cluster_mtbt ./
-COPY --from=build /build/nse_cluster_maker ./
-COPY --from=build /build/nse_cluster_taker ./
+# One binary per component of the distributed venue; distributed/compose.yaml runs one each.
+COPY --from=build /build/nse_distributed_gateway ./
+COPY --from=build /build/nse_distributed_engine ./
+COPY --from=build /build/nse_distributed_mtbt ./
+COPY --from=build /build/nse_distributed_makerbasic ./
+COPY --from=build /build/nse_distributed_takerbasic ./
 
 # The endpoints it serves on in a container, which is the one thing that differs from
 # serving on a desktop: it listens on every interface rather than on loopback.

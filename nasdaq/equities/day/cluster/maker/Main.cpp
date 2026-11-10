@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
 
         auto maker_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_maker, b, n); };
         sim::traders::Trader<decltype(maker_send)> maker("Maker", "ALICE1", "alice00001", maker_send);
-        sim::traders::SimpleMaker<std::remove_reference_t<decltype(maker.orders())>> maker_strategy(/*mid*/10000, /*spread*/10, /*size*/100, /*levels*/3);
+        sim::traders::SimpleMaker<std::remove_reference_t<decltype(maker.orders())>> maker_strategy(/*mid*/10000, /*spread*/10, /*size*/100, /*levels*/3, /*tick*/1);
         int maker_ticks = 0;
         std::chrono::steady_clock::time_point maker_paced{};   // when a served trader next orders
         maker.login();

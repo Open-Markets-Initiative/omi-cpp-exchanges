@@ -100,7 +100,7 @@ public:
     //   sellers are,
     //   then the nearest the reference price,
     //   then the higher price.
-    // Checked against a venue's feed rather than assumed. On Tadawul's 2026-06-22 day, wherever the
+    // Checked against a venue's feed rather than assumed. Over one captured trading day, wherever the
     // book its feed showed was all the auction held, this is the price and quantity it published in
     // 9,481 of 9,484 indicatives (opening, intraday and closing; band 10% of the reference, rounded
     // in to a tick). Two that differ balance exactly, with no surplus to press either way, and the

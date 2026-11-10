@@ -41,8 +41,8 @@ start() {
 start gateway "$@"
 start engine "$@"
 start mtbt "$@"
-start maker "$@"
-start taker "$@"
+start makerbasic "$@"
+start takerbasic "$@"
 
 # Taking it down. Producer order: each one quiet before whoever reads from it goes, so that
 # nothing is still being written to a component that has already stopped.

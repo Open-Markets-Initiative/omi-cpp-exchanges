@@ -17,8 +17,8 @@ digraph nse {
     gateway [label = "gateway\norder entry"];
     engine [label = "engine\nmatching"];
     mtbt [label = "mtbt\nfeed"];
-    maker [label = "maker\ntrader"];
-    taker [label = "taker\ntrader"];
+    makerbasic [label = "makerbasic\ntrader"];
+    takerbasic [label = "takerbasic\ntrader"];
 
     // Order entry arrives over Tcp, whichever version is running.
     clients -> gateway [label = "Nse Nnf Tcp"];
@@ -27,10 +27,10 @@ digraph nse {
     gateway -> engine [label = "ipc ring"];
     engine -> gateway [label = "ipc ring"];
     engine -> mtbt [label = "ipc ring"];
-    gateway -> maker [label = "messages ring"];
-    maker -> gateway [label = "messages ring"];
-    gateway -> taker [label = "messages ring"];
-    taker -> gateway [label = "messages ring"];
+    gateway -> makerbasic [label = "messages ring"];
+    makerbasic -> gateway [label = "messages ring"];
+    gateway -> takerbasic [label = "messages ring"];
+    takerbasic -> gateway [label = "messages ring"];
 
     // And out: each feed publishes and records what it is given.
     mtbt -> mtbt_out [style = dashed];

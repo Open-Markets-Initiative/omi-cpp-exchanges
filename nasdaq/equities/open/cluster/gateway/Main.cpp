@@ -42,7 +42,7 @@ int main(int argc, char** argv) {
         sim::MessageSocket from_taker("taker -> gateway", sim::MessageSocket::End::Reads, cfg.from_taker_link.host, cfg.from_taker_link.port);
         sim::MessageSocket from_replay("replay -> gateway", sim::MessageSocket::End::Reads, cfg.from_replay_link.host, cfg.from_replay_link.port);
         sim::MessageSocket from_requests("requests -> gateway", sim::MessageSocket::End::Reads, cfg.from_requests_link.host, cfg.from_requests_link.port);
-        sim::IpcSocket to_engine("gateway -> engine", sim::IpcSocket::End::Writes, cfg.to_engine_link.host, cfg.to_engine_link.port);
+        sim::IpcSocket to_sequencer("gateway -> sequencer", sim::IpcSocket::End::Writes, cfg.to_sequencer_link.host, cfg.to_sequencer_link.port);
         sim::MessageSocket to_maker("gateway -> maker", sim::MessageSocket::End::Writes, cfg.to_maker_link.host, cfg.to_maker_link.port);
         sim::MessageSocket to_taker("gateway -> taker", sim::MessageSocket::End::Writes, cfg.to_taker_link.host, cfg.to_taker_link.port);
         sim::MessageSocket to_replay("gateway -> replay", sim::MessageSocket::End::Writes, cfg.to_replay_link.host, cfg.to_replay_link.port);
@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
         // Order entry: each client's session reaches the engine as framed Ipc messages.
         auto gateway_emit = [&](const char* b, std::size_t n) {
             ipc_msgs.fetch_add(1, std::memory_order_relaxed);
-            sim::write_blocking(to_engine, b, n);
+            sim::write_blocking(to_sequencer, b, n);
         };
         sim::orderentry::Gateway<decltype(gateway_emit)> gateway(gateway_emit);
         gateway.allow("ALICE1", "alice00001");
@@ -65,7 +65,10 @@ int main(int argc, char** argv) {
         sim::IpcEventServer client_events(
             [&](const sim::ipc_ns::trade_message& t) { gateway.on_event(t); },
             [](const sim::ipc_ns::order_rested_message&) {},
-            [&](const sim::ipc_ns::order_canceled_message& c) { gateway.on_event(c); });
+            [&](const sim::ipc_ns::order_canceled_message& c) { gateway.on_event(c); },
+            [&](const sim::ipc_ns::order_accepted_message& a) { gateway.on_event(a); },
+            [&](const sim::ipc_ns::order_eliminated_message& e) { gateway.on_event(e); },
+            [&](const sim::ipc_ns::order_refused_message& j) { gateway.on_event(j); });
 
         // A session per trader process, against the link that carries it. To the gateway a
         // trader on a link is what a client on a socket is: somewhere to write bytes.
@@ -100,7 +103,7 @@ int main(int argc, char** argv) {
                     sessions.erase(gone);
                 }
             }) || worked;
-            to_engine.deliver();
+            to_sequencer.deliver();
             to_maker.deliver();
             to_taker.deliver();
             to_replay.deliver();

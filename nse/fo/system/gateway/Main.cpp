@@ -38,11 +38,11 @@ int main(int argc, char** argv) {
 
         // The links, attached the way their names say.
         sim::IpcRing to_clients("engine -> gateway", sim::IpcRing::End::Reads);
-        sim::MessageRing from_maker("maker -> gateway", sim::MessageRing::End::Reads);
-        sim::MessageRing from_taker("taker -> gateway", sim::MessageRing::End::Reads);
+        sim::MessageRing from_makerbasic("makerbasic -> gateway", sim::MessageRing::End::Reads);
+        sim::MessageRing from_takerbasic("takerbasic -> gateway", sim::MessageRing::End::Reads);
         sim::IpcRing to_engine("gateway -> engine", sim::IpcRing::End::Writes);
-        sim::MessageRing to_maker("gateway -> maker", sim::MessageRing::End::Writes);
-        sim::MessageRing to_taker("gateway -> taker", sim::MessageRing::End::Writes);
+        sim::MessageRing to_makerbasic("gateway -> makerbasic", sim::MessageRing::End::Writes);
+        sim::MessageRing to_takerbasic("gateway -> takerbasic", sim::MessageRing::End::Writes);
 
         std::atomic<std::uint64_t> ipc_msgs{0};
 
@@ -63,8 +63,8 @@ int main(int argc, char** argv) {
 
         // A session per trader process, against the link that carries it. To the gateway a
         // trader on a link is what a client on a socket is: somewhere to write bytes.
-        const std::size_t maker_client = gateway.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_maker, b, n); });
-        const std::size_t taker_client = gateway.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_taker, b, n); });
+        const std::size_t makerbasic_client = gateway.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_makerbasic, b, n); });
+        const std::size_t takerbasic_client = gateway.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_takerbasic, b, n); });
 
         // Order entry over Tcp: a session per socket, opened as each client arrives.
         net::TcpServer order_entry(cfg.order_entry.host, cfg.order_entry.port);
@@ -77,8 +77,8 @@ int main(int argc, char** argv) {
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
             worked = to_clients.read([&](std::string_view message) { client_events.on_message(message); }) || worked;
-            worked = from_maker.read([&](std::string_view bytes) { gateway.on_bytes(maker_client, bytes.data(), bytes.size()); }) || worked;
-            worked = from_taker.read([&](std::string_view bytes) { gateway.on_bytes(taker_client, bytes.data(), bytes.size()); }) || worked;
+            worked = from_makerbasic.read([&](std::string_view bytes) { gateway.on_bytes(makerbasic_client, bytes.data(), bytes.size()); }) || worked;
+            worked = from_takerbasic.read([&](std::string_view bytes) { gateway.on_bytes(takerbasic_client, bytes.data(), bytes.size()); }) || worked;
             worked = order_entry.poll([&](int fd, std::string_view bytes) {
                 auto session = sessions.find(fd);
                 if (session == sessions.end())
@@ -91,8 +91,8 @@ int main(int argc, char** argv) {
                 }
             }) || worked;
             to_engine.deliver();
-            to_maker.deliver();
-            to_taker.deliver();
+            to_makerbasic.deliver();
+            to_takerbasic.deliver();
             if (!worked) std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
 

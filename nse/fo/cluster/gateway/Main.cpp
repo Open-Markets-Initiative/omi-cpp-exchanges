@@ -38,11 +38,11 @@ int main(int argc, char** argv) {
 
         // The links, attached the way their names say.
         sim::IpcSocket to_clients("engine -> gateway", sim::IpcSocket::End::Reads, cfg.to_clients_link.host, cfg.to_clients_link.port);
-        sim::MessageSocket from_maker("maker -> gateway", sim::MessageSocket::End::Reads, cfg.from_maker_link.host, cfg.from_maker_link.port);
-        sim::MessageSocket from_taker("taker -> gateway", sim::MessageSocket::End::Reads, cfg.from_taker_link.host, cfg.from_taker_link.port);
+        sim::MessageSocket from_makerbasic("makerbasic -> gateway", sim::MessageSocket::End::Reads, cfg.from_makerbasic_link.host, cfg.from_makerbasic_link.port);
+        sim::MessageSocket from_takerbasic("takerbasic -> gateway", sim::MessageSocket::End::Reads, cfg.from_takerbasic_link.host, cfg.from_takerbasic_link.port);
         sim::IpcSocket to_engine("gateway -> engine", sim::IpcSocket::End::Writes, cfg.to_engine_link.host, cfg.to_engine_link.port);
-        sim::MessageSocket to_maker("gateway -> maker", sim::MessageSocket::End::Writes, cfg.to_maker_link.host, cfg.to_maker_link.port);
-        sim::MessageSocket to_taker("gateway -> taker", sim::MessageSocket::End::Writes, cfg.to_taker_link.host, cfg.to_taker_link.port);
+        sim::MessageSocket to_makerbasic("gateway -> makerbasic", sim::MessageSocket::End::Writes, cfg.to_makerbasic_link.host, cfg.to_makerbasic_link.port);
+        sim::MessageSocket to_takerbasic("gateway -> takerbasic", sim::MessageSocket::End::Writes, cfg.to_takerbasic_link.host, cfg.to_takerbasic_link.port);
 
         std::atomic<std::uint64_t> ipc_msgs{0};
 
@@ -63,8 +63,8 @@ int main(int argc, char** argv) {
 
         // A session per trader process, against the link that carries it. To the gateway a
         // trader on a link is what a client on a socket is: somewhere to write bytes.
-        const std::size_t maker_client = gateway.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_maker, b, n); });
-        const std::size_t taker_client = gateway.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_taker, b, n); });
+        const std::size_t makerbasic_client = gateway.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_makerbasic, b, n); });
+        const std::size_t takerbasic_client = gateway.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_takerbasic, b, n); });
 
         // Order entry over Tcp: a session per socket, opened as each client arrives.
         net::TcpServer order_entry(cfg.order_entry.host, cfg.order_entry.port);
@@ -77,8 +77,8 @@ int main(int argc, char** argv) {
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
             worked = to_clients.read([&](std::string_view message) { client_events.on_message(message); }) || worked;
-            worked = from_maker.read([&](std::string_view bytes) { gateway.on_bytes(maker_client, bytes.data(), bytes.size()); }) || worked;
-            worked = from_taker.read([&](std::string_view bytes) { gateway.on_bytes(taker_client, bytes.data(), bytes.size()); }) || worked;
+            worked = from_makerbasic.read([&](std::string_view bytes) { gateway.on_bytes(makerbasic_client, bytes.data(), bytes.size()); }) || worked;
+            worked = from_takerbasic.read([&](std::string_view bytes) { gateway.on_bytes(takerbasic_client, bytes.data(), bytes.size()); }) || worked;
             worked = order_entry.poll([&](int fd, std::string_view bytes) {
                 auto session = sessions.find(fd);
                 if (session == sessions.end())
@@ -91,14 +91,14 @@ int main(int argc, char** argv) {
                 }
             }) || worked;
             to_engine.deliver();
-            to_maker.deliver();
-            to_taker.deliver();
+            to_makerbasic.deliver();
+            to_takerbasic.deliver();
             if (!worked) std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
 
         if (to_clients.gaps() > 0) std::printf("nse-gateway: %llu gap(s) on engine -> gateway — messages were lost\n", (unsigned long long)to_clients.gaps());
-        if (from_maker.gaps() > 0) std::printf("nse-gateway: %llu gap(s) on maker -> gateway — messages were lost\n", (unsigned long long)from_maker.gaps());
-        if (from_taker.gaps() > 0) std::printf("nse-gateway: %llu gap(s) on taker -> gateway — messages were lost\n", (unsigned long long)from_taker.gaps());
+        if (from_makerbasic.gaps() > 0) std::printf("nse-gateway: %llu gap(s) on makerbasic -> gateway — messages were lost\n", (unsigned long long)from_makerbasic.gaps());
+        if (from_takerbasic.gaps() > 0) std::printf("nse-gateway: %llu gap(s) on takerbasic -> gateway — messages were lost\n", (unsigned long long)from_takerbasic.gaps());
         std::printf("nse-gateway: stopped — %llu to the engine, %zu open order(s)\n",
                     (unsigned long long)ipc_msgs.load(), gateway.open_orders());
     } catch (const std::exception& problem) {

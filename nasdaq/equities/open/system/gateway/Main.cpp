@@ -42,7 +42,7 @@ int main(int argc, char** argv) {
         sim::MessageRing from_taker("taker -> gateway", sim::MessageRing::End::Reads);
         sim::MessageRing from_replay("replay -> gateway", sim::MessageRing::End::Reads);
         sim::MessageRing from_requests("requests -> gateway", sim::MessageRing::End::Reads);
-        sim::IpcRing to_engine("gateway -> engine", sim::IpcRing::End::Writes);
+        sim::IpcRing to_sequencer("gateway -> sequencer", sim::IpcRing::End::Writes);
         sim::MessageRing to_maker("gateway -> maker", sim::MessageRing::End::Writes);
         sim::MessageRing to_taker("gateway -> taker", sim::MessageRing::End::Writes);
         sim::MessageRing to_replay("gateway -> replay", sim::MessageRing::End::Writes);
@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
         // Order entry: each client's session reaches the engine as framed Ipc messages.
         auto gateway_emit = [&](const char* b, std::size_t n) {
             ipc_msgs.fetch_add(1, std::memory_order_relaxed);
-            sim::write_blocking(to_engine, b, n);
+            sim::write_blocking(to_sequencer, b, n);
         };
         sim::orderentry::Gateway<decltype(gateway_emit)> gateway(gateway_emit);
         gateway.allow("ALICE1", "alice00001");
@@ -65,7 +65,10 @@ int main(int argc, char** argv) {
         sim::IpcEventServer client_events(
             [&](const sim::ipc_ns::trade_message& t) { gateway.on_event(t); },
             [](const sim::ipc_ns::order_rested_message&) {},
-            [&](const sim::ipc_ns::order_canceled_message& c) { gateway.on_event(c); });
+            [&](const sim::ipc_ns::order_canceled_message& c) { gateway.on_event(c); },
+            [&](const sim::ipc_ns::order_accepted_message& a) { gateway.on_event(a); },
+            [&](const sim::ipc_ns::order_eliminated_message& e) { gateway.on_event(e); },
+            [&](const sim::ipc_ns::order_refused_message& j) { gateway.on_event(j); });
 
         // A session per trader process, against the link that carries it. To the gateway a
         // trader on a link is what a client on a socket is: somewhere to write bytes.
@@ -100,7 +103,7 @@ int main(int argc, char** argv) {
                     sessions.erase(gone);
                 }
             }) || worked;
-            to_engine.deliver();
+            to_sequencer.deliver();
             to_maker.deliver();
             to_taker.deliver();
             to_replay.deliver();

@@ -32,8 +32,8 @@ int main(int argc, char** argv) {
         (void)argc; (void)argv;
 
         // The links, attached the way their names say.
-        sim::MessageRing to_requests("gateway -> requests", sim::MessageRing::End::Reads);
-        sim::MessageRing from_requests("requests -> gateway", sim::MessageRing::End::Writes);
+        sim::MessageRing to_requests("gatewayrequests -> requests", sim::MessageRing::End::Reads);
+        sim::MessageRing from_requests("requests -> gatewayrequests", sim::MessageRing::End::Writes);
 
         auto requests_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_requests, b, n); };
         sim::traders::Trader<decltype(requests_send)> requests("Requests", "DAVE01", "dave000001", requests_send);

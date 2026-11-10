@@ -20,8 +20,8 @@ would be the wrong place for it.
 | `nse_cluster_gateway` | `gateway/` | `entry` | order entry over Tcp, a session per client, the orders it has admitted |
 | `nse_cluster_engine` | `engine/` | `matching` | the book: it matches what it is sent and emits what happened |
 | `nse_cluster_mtbt` | `mtbt/` | `data` | the mtbt feed: engine events through its transforms, out as multicast and into the recording |
-| `nse_cluster_maker` | `maker/` | `clients` | the trader Maker, a maker trading through the venue's own order entry |
-| `nse_cluster_taker` | `taker/` | `clients` | the trader Taker, a taker trading through the venue's own order entry |
+| `nse_cluster_makerbasic` | `makerbasic/` | `clients` | the trader MakerBasic, a makerbasic trading through the venue's own order entry |
+| `nse_cluster_takerbasic` | `takerbasic/` | `clients` | the trader TakerBasic, a takerbasic trading through the venue's own order entry |
 
 ## The topology
 
@@ -38,18 +38,18 @@ flowchart LR
     mtbt["mtbt<br/><small>feed</small>"]
     end
     subgraph tier_clients[clients]
-    maker["maker<br/><small>trader</small>"]
-    taker["taker<br/><small>trader</small>"]
+    makerbasic["makerbasic<br/><small>trader</small>"]
+    takerbasic["takerbasic<br/><small>trader</small>"]
     end
     mtbt_out([Mtbt Udp])
     clients -->|Nse Nnf Tcp| gateway
     gateway -->|ipc Tcp| engine
     engine -->|ipc Tcp| gateway
     engine -->|ipc Tcp| mtbt
-    gateway -->|messages Tcp| maker
-    maker -->|messages Tcp| gateway
-    gateway -->|messages Tcp| taker
-    taker -->|messages Tcp| gateway
+    gateway -->|messages Tcp| makerbasic
+    makerbasic -->|messages Tcp| gateway
+    gateway -->|messages Tcp| takerbasic
+    takerbasic -->|messages Tcp| gateway
     mtbt -.-> mtbt_out
 ```
 

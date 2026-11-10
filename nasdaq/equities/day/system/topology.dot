@@ -14,35 +14,49 @@ digraph nasdaq {
     totalview_out [label = "TotalView\nUdp multicast", shape = note, fillcolor = "#fdf6e3"];
 
     // The components, each its own process in the separated versions and its own thread in the single binary.
-    gateway [label = "gateway\norder entry"];
+    gatewaymakerbasic [label = "gatewaymakerbasic\norder entry"];
+    gatewaytakerbasic [label = "gatewaytakerbasic\norder entry"];
+    gatewayreplay [label = "gatewayreplay\norder entry"];
+    gatewayrequests [label = "gatewayrequests\norder entry"];
     engine [label = "engine\nmatching"];
+    sequencer [label = "sequencer\nsequencer"];
     day [label = "day\ntrading day"];
     totalview [label = "totalview\nfeed"];
     glimpse [label = "glimpse\nreplay"];
     totalviewtcp [label = "totalviewtcp\nreplay"];
-    maker [label = "maker\ntrader"];
-    taker [label = "taker\ntrader"];
+    makerbasic [label = "makerbasic\ntrader"];
+    takerbasic [label = "takerbasic\ntrader"];
     replay [label = "replay\ntrader"];
     requests [label = "requests\ntrader"];
 
     // Order entry arrives over Tcp, whichever version is running.
-    clients -> gateway [label = "SoupBin Tcp"];
+    clients -> gatewaymakerbasic [label = "SoupBin Tcp"];
+    clients -> gatewaytakerbasic [label = "SoupBin Tcp"];
+    clients -> gatewayreplay [label = "SoupBin Tcp"];
+    clients -> gatewayrequests [label = "SoupBin Tcp"];
 
     // Between the components: a queue in one process, a ring across several, a socket across machines.
-    gateway -> engine [label = "ipc ring"];
-    day -> engine [label = "ipc ring"];
-    engine -> gateway [label = "ipc ring"];
+    gatewaymakerbasic -> sequencer [label = "ipc ring"];
+    gatewaytakerbasic -> sequencer [label = "ipc ring"];
+    gatewayreplay -> sequencer [label = "ipc ring"];
+    gatewayrequests -> sequencer [label = "ipc ring"];
+    day -> sequencer [label = "ipc ring"];
+    sequencer -> engine [label = "ipc ring"];
+    engine -> gatewaymakerbasic [label = "ipc ring"];
+    engine -> gatewaytakerbasic [label = "ipc ring"];
+    engine -> gatewayreplay [label = "ipc ring"];
+    engine -> gatewayrequests [label = "ipc ring"];
     engine -> totalview [label = "ipc ring"];
     totalview -> glimpse [label = "messages ring"];
     totalview -> totalviewtcp [label = "messages ring"];
-    gateway -> maker [label = "messages ring"];
-    maker -> gateway [label = "messages ring"];
-    gateway -> taker [label = "messages ring"];
-    taker -> gateway [label = "messages ring"];
-    gateway -> replay [label = "messages ring"];
-    replay -> gateway [label = "messages ring"];
-    gateway -> requests [label = "messages ring"];
-    requests -> gateway [label = "messages ring"];
+    gatewaymakerbasic -> makerbasic [label = "messages ring"];
+    makerbasic -> gatewaymakerbasic [label = "messages ring"];
+    gatewaytakerbasic -> takerbasic [label = "messages ring"];
+    takerbasic -> gatewaytakerbasic [label = "messages ring"];
+    gatewayreplay -> replay [label = "messages ring"];
+    replay -> gatewayreplay [label = "messages ring"];
+    gatewayrequests -> requests [label = "messages ring"];
+    requests -> gatewayrequests [label = "messages ring"];
 
     // And out: each feed publishes and records what it is given.
     totalview -> totalview_out [style = dashed];

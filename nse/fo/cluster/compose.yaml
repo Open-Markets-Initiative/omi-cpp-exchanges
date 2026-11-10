@@ -53,19 +53,19 @@ services:
         labels:
             nse.tier: "data"
 
-    # A trader of the venue's own: Maker, a maker. It reaches the gateway over a link
+    # A trader of the venue's own: MakerBasic, a makerbasic. It reaches the gateway over a link
     # like any other component, rather than dialling order entry as an outside firm would.
-    maker:
+    makerbasic:
         <<: *component
-        entrypoint: ["./nse_cluster_maker"]
+        entrypoint: ["./nse_cluster_makerbasic"]
         labels:
             nse.tier: "clients"
 
-    # A trader of the venue's own: Taker, a taker. It reaches the gateway over a link
+    # A trader of the venue's own: TakerBasic, a takerbasic. It reaches the gateway over a link
     # like any other component, rather than dialling order entry as an outside firm would.
-    taker:
+    takerbasic:
         <<: *component
-        entrypoint: ["./nse_cluster_taker"]
+        entrypoint: ["./nse_cluster_takerbasic"]
         labels:
             nse.tier: "clients"
 

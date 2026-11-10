@@ -17,14 +17,18 @@ would be the wrong place for it.
 
 | Binary | Here | Machine | What it is |
 | --- | --- | --- | --- |
-| `nasdaq_cluster_gateway` | `gateway/` | `entry` | order entry over Tcp, a session per client, the orders it has admitted |
+| `nasdaq_cluster_gatewaymakerbasic` | `gatewaymakerbasic/` | `entry` | MakerBasic's order entry over Tcp, a session per client, the orders it has admitted, numbered in an interleave of its own |
+| `nasdaq_cluster_gatewaytakerbasic` | `gatewaytakerbasic/` | `entry` | TakerBasic's order entry over Tcp, a session per client, the orders it has admitted, numbered in an interleave of its own |
+| `nasdaq_cluster_gatewayreplay` | `gatewayreplay/` | `entry` | Replay's order entry over Tcp, a session per client, the orders it has admitted, numbered in an interleave of its own |
+| `nasdaq_cluster_gatewayrequests` | `gatewayrequests/` | `entry` | Requests's order entry over Tcp, a session per client, the orders it has admitted, numbered in an interleave of its own |
 | `nasdaq_cluster_engine` | `engine/` | `matching` | the book: it matches what it is sent and emits what happened |
+| `nasdaq_cluster_sequencer` | `sequencer/` | `matching` | its engine's sequencer: everything bound for the engine, from every gateway and the day, put in one order and stamped with its place and time |
 | `nasdaq_cluster_day` | `day/` | `day` | the trading day: each change of phase asked of the engine on the clock, and the auction collecting asked what it would cross at |
 | `nasdaq_cluster_totalview` | `totalview/` | `data` | the totalview feed: engine events through its transforms, out as multicast and into the recording |
 | `nasdaq_cluster_glimpse` | `glimpse/` | `recovery` | the Glimpse service: the snapshot of TotalView a client logs in for |
 | `nasdaq_cluster_totalviewtcp` | `totalviewtcp/` | `recovery` | the TotalViewTcp service: the stream of TotalView a client logs in for |
-| `nasdaq_cluster_maker` | `maker/` | `clients` | the trader Maker, a maker trading through the venue's own order entry |
-| `nasdaq_cluster_taker` | `taker/` | `clients` | the trader Taker, a taker trading through the venue's own order entry |
+| `nasdaq_cluster_makerbasic` | `makerbasic/` | `clients` | the trader MakerBasic, a makerbasic trading through the venue's own order entry |
+| `nasdaq_cluster_takerbasic` | `takerbasic/` | `clients` | the trader TakerBasic, a takerbasic trading through the venue's own order entry |
 | `nasdaq_cluster_replay` | `replay/` | `clients` | the trader Replay, a capture trading through the venue's own order entry |
 | `nasdaq_cluster_requests` | `requests/` | `clients` | the trader Requests, a capture trading through the venue's own order entry |
 
@@ -34,10 +38,14 @@ would be the wrong place for it.
 flowchart LR
     clients([clients])
     subgraph tier_entry[entry]
-    gateway["gateway<br/><small>order entry</small>"]
+    gatewaymakerbasic["gatewaymakerbasic<br/><small>order entry</small>"]
+    gatewaytakerbasic["gatewaytakerbasic<br/><small>order entry</small>"]
+    gatewayreplay["gatewayreplay<br/><small>order entry</small>"]
+    gatewayrequests["gatewayrequests<br/><small>order entry</small>"]
     end
     subgraph tier_matching[matching]
     engine["engine<br/><small>matching</small>"]
+    sequencer["sequencer<br/><small>sequencer</small>"]
     end
     subgraph tier_day[day]
     day["day<br/><small>trading day</small>"]
@@ -50,27 +58,37 @@ flowchart LR
     totalviewtcp["totalviewtcp<br/><small>replay</small>"]
     end
     subgraph tier_clients[clients]
-    maker["maker<br/><small>trader</small>"]
-    taker["taker<br/><small>trader</small>"]
+    makerbasic["makerbasic<br/><small>trader</small>"]
+    takerbasic["takerbasic<br/><small>trader</small>"]
     replay["replay<br/><small>trader</small>"]
     requests["requests<br/><small>trader</small>"]
     end
     totalview_out([TotalView Udp])
-    clients -->|SoupBin Tcp| gateway
-    gateway -->|ipc Tcp| engine
-    day -->|ipc Tcp| engine
-    engine -->|ipc Tcp| gateway
+    clients -->|SoupBin Tcp| gatewaymakerbasic
+    clients -->|SoupBin Tcp| gatewaytakerbasic
+    clients -->|SoupBin Tcp| gatewayreplay
+    clients -->|SoupBin Tcp| gatewayrequests
+    gatewaymakerbasic -->|ipc Tcp| sequencer
+    gatewaytakerbasic -->|ipc Tcp| sequencer
+    gatewayreplay -->|ipc Tcp| sequencer
+    gatewayrequests -->|ipc Tcp| sequencer
+    day -->|ipc Tcp| sequencer
+    sequencer -->|ipc Tcp| engine
+    engine -->|ipc Tcp| gatewaymakerbasic
+    engine -->|ipc Tcp| gatewaytakerbasic
+    engine -->|ipc Tcp| gatewayreplay
+    engine -->|ipc Tcp| gatewayrequests
     engine -->|ipc Tcp| totalview
     totalview -->|messages Tcp| glimpse
     totalview -->|messages Tcp| totalviewtcp
-    gateway -->|messages Tcp| maker
-    maker -->|messages Tcp| gateway
-    gateway -->|messages Tcp| taker
-    taker -->|messages Tcp| gateway
-    gateway -->|messages Tcp| replay
-    replay -->|messages Tcp| gateway
-    gateway -->|messages Tcp| requests
-    requests -->|messages Tcp| gateway
+    gatewaymakerbasic -->|messages Tcp| makerbasic
+    makerbasic -->|messages Tcp| gatewaymakerbasic
+    gatewaytakerbasic -->|messages Tcp| takerbasic
+    takerbasic -->|messages Tcp| gatewaytakerbasic
+    gatewayreplay -->|messages Tcp| replay
+    replay -->|messages Tcp| gatewayreplay
+    gatewayrequests -->|messages Tcp| requests
+    requests -->|messages Tcp| gatewayrequests
     totalview -.-> totalview_out
 ```
 

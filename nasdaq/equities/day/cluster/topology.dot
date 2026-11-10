@@ -17,12 +17,16 @@ digraph nasdaq {
     subgraph cluster_entry {
         label = "entry";
         style = "rounded,dashed"; color = "#9aa7b4"; fontsize = 10;
-        gateway [label = "gateway\norder entry"];
+        gatewaymakerbasic [label = "gatewaymakerbasic\norder entry"];
+        gatewaytakerbasic [label = "gatewaytakerbasic\norder entry"];
+        gatewayreplay [label = "gatewayreplay\norder entry"];
+        gatewayrequests [label = "gatewayrequests\norder entry"];
     }
     subgraph cluster_matching {
         label = "matching";
         style = "rounded,dashed"; color = "#9aa7b4"; fontsize = 10;
         engine [label = "engine\nmatching"];
+        sequencer [label = "sequencer\nsequencer"];
     }
     subgraph cluster_day {
         label = "day";
@@ -43,30 +47,40 @@ digraph nasdaq {
     subgraph cluster_clients {
         label = "clients";
         style = "rounded,dashed"; color = "#9aa7b4"; fontsize = 10;
-        maker [label = "maker\ntrader"];
-        taker [label = "taker\ntrader"];
+        makerbasic [label = "makerbasic\ntrader"];
+        takerbasic [label = "takerbasic\ntrader"];
         replay [label = "replay\ntrader"];
         requests [label = "requests\ntrader"];
     }
 
     // Order entry arrives over Tcp, whichever version is running.
-    clients -> gateway [label = "SoupBin Tcp"];
+    clients -> gatewaymakerbasic [label = "SoupBin Tcp"];
+    clients -> gatewaytakerbasic [label = "SoupBin Tcp"];
+    clients -> gatewayreplay [label = "SoupBin Tcp"];
+    clients -> gatewayrequests [label = "SoupBin Tcp"];
 
     // Between the components: a queue in one process, a ring across several, a socket across machines.
-    gateway -> engine [label = "ipc Tcp"];
-    day -> engine [label = "ipc Tcp"];
-    engine -> gateway [label = "ipc Tcp"];
+    gatewaymakerbasic -> sequencer [label = "ipc Tcp"];
+    gatewaytakerbasic -> sequencer [label = "ipc Tcp"];
+    gatewayreplay -> sequencer [label = "ipc Tcp"];
+    gatewayrequests -> sequencer [label = "ipc Tcp"];
+    day -> sequencer [label = "ipc Tcp"];
+    sequencer -> engine [label = "ipc Tcp"];
+    engine -> gatewaymakerbasic [label = "ipc Tcp"];
+    engine -> gatewaytakerbasic [label = "ipc Tcp"];
+    engine -> gatewayreplay [label = "ipc Tcp"];
+    engine -> gatewayrequests [label = "ipc Tcp"];
     engine -> totalview [label = "ipc Tcp"];
     totalview -> glimpse [label = "messages Tcp"];
     totalview -> totalviewtcp [label = "messages Tcp"];
-    gateway -> maker [label = "messages Tcp"];
-    maker -> gateway [label = "messages Tcp"];
-    gateway -> taker [label = "messages Tcp"];
-    taker -> gateway [label = "messages Tcp"];
-    gateway -> replay [label = "messages Tcp"];
-    replay -> gateway [label = "messages Tcp"];
-    gateway -> requests [label = "messages Tcp"];
-    requests -> gateway [label = "messages Tcp"];
+    gatewaymakerbasic -> makerbasic [label = "messages Tcp"];
+    makerbasic -> gatewaymakerbasic [label = "messages Tcp"];
+    gatewaytakerbasic -> takerbasic [label = "messages Tcp"];
+    takerbasic -> gatewaytakerbasic [label = "messages Tcp"];
+    gatewayreplay -> replay [label = "messages Tcp"];
+    replay -> gatewayreplay [label = "messages Tcp"];
+    gatewayrequests -> requests [label = "messages Tcp"];
+    requests -> gatewayrequests [label = "messages Tcp"];
 
     // And out: each feed publishes and records what it is given.
     totalview -> totalview_out [style = dashed];

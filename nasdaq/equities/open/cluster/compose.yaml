@@ -27,20 +27,58 @@ x-component: &component
 
 services:
 
-    # Order entry: the only service a firm outside can see, which is why it is the only one
-    # that publishes a port to the host.
-    gateway:
+    # MakerBasic's order entry: a gateway for each trader, each publishing a port of
+    # its own to the host, their orders meeting only in the engine's sequencer.
+    gatewaymakerbasic:
         <<: *component
-        entrypoint: ["./nasdaq_cluster_gateway"]
+        entrypoint: ["./nasdaq_cluster_gatewaymakerbasic"]
         labels:
             nasdaq.tier: "entry"
         ports:
-            - "15001:15001"   # order entry
+            - "15011:15011"   # MakerBasic's order entry
+
+    # TakerBasic's order entry: a gateway for each trader, each publishing a port of
+    # its own to the host, their orders meeting only in the engine's sequencer.
+    gatewaytakerbasic:
+        <<: *component
+        entrypoint: ["./nasdaq_cluster_gatewaytakerbasic"]
+        labels:
+            nasdaq.tier: "entry"
+        ports:
+            - "15012:15012"   # TakerBasic's order entry
+
+    # Replay's order entry: a gateway for each trader, each publishing a port of
+    # its own to the host, their orders meeting only in the engine's sequencer.
+    gatewayreplay:
+        <<: *component
+        entrypoint: ["./nasdaq_cluster_gatewayreplay"]
+        labels:
+            nasdaq.tier: "entry"
+        ports:
+            - "15013:15013"   # Replay's order entry
+
+    # Requests's order entry: a gateway for each trader, each publishing a port of
+    # its own to the host, their orders meeting only in the engine's sequencer.
+    gatewayrequests:
+        <<: *component
+        entrypoint: ["./nasdaq_cluster_gatewayrequests"]
+        labels:
+            nasdaq.tier: "entry"
+        ports:
+            - "15014:15014"   # Requests's order entry
 
     # The book, on its own: what the venue matches should fail by itself.
     engine:
         <<: *component
         entrypoint: ["./nasdaq_cluster_engine"]
+        labels:
+            nasdaq.tier: "matching"
+
+    # The sequencer of engine: everything bound for it, from every gateway and the day, put in
+    # one order and stamped. It sits beside its engine, and keeps no book.
+    sequencer:
+        <<: *component
+        entrypoint: ["./nasdaq_cluster_sequencer"]
         labels:
             nasdaq.tier: "matching"
 
@@ -73,19 +111,19 @@ services:
         ports:
             - "15003:15003"   # TotalViewTcp, over Tcp
 
-    # A trader of the venue's own: Maker, a maker. It reaches the gateway over a link
+    # A trader of the venue's own: MakerBasic, a makerbasic. It reaches the gateway over a link
     # like any other component, rather than dialling order entry as an outside firm would.
-    maker:
+    makerbasic:
         <<: *component
-        entrypoint: ["./nasdaq_cluster_maker"]
+        entrypoint: ["./nasdaq_cluster_makerbasic"]
         labels:
             nasdaq.tier: "clients"
 
-    # A trader of the venue's own: Taker, a taker. It reaches the gateway over a link
+    # A trader of the venue's own: TakerBasic, a takerbasic. It reaches the gateway over a link
     # like any other component, rather than dialling order entry as an outside firm would.
-    taker:
+    takerbasic:
         <<: *component
-        entrypoint: ["./nasdaq_cluster_taker"]
+        entrypoint: ["./nasdaq_cluster_takerbasic"]
         labels:
             nasdaq.tier: "clients"
 

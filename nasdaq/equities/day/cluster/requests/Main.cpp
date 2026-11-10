@@ -32,8 +32,8 @@ int main(int argc, char** argv) {
         sim::RuntimeConfig cfg = sim::load_config(argc, argv);
 
         // The links, attached the way their names say.
-        sim::MessageSocket to_requests("gateway -> requests", sim::MessageSocket::End::Reads, cfg.to_requests_link.host, cfg.to_requests_link.port);
-        sim::MessageSocket from_requests("requests -> gateway", sim::MessageSocket::End::Writes, cfg.from_requests_link.host, cfg.from_requests_link.port);
+        sim::MessageSocket to_requests("gatewayrequests -> requests", sim::MessageSocket::End::Reads, cfg.to_requests_link.host, cfg.to_requests_link.port);
+        sim::MessageSocket from_requests("requests -> gatewayrequests", sim::MessageSocket::End::Writes, cfg.from_requests_link.host, cfg.from_requests_link.port);
 
         auto requests_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_requests, b, n); };
         sim::traders::Trader<decltype(requests_send)> requests("Requests", "DAVE01", "dave000001", requests_send);
@@ -66,7 +66,7 @@ int main(int argc, char** argv) {
             }
         }
 
-        if (to_requests.gaps() > 0) std::printf("nasdaq-requests: %llu gap(s) on gateway -> requests — messages were lost\n", (unsigned long long)to_requests.gaps());
+        if (to_requests.gaps() > 0) std::printf("nasdaq-requests: %llu gap(s) on gatewayrequests -> requests — messages were lost\n", (unsigned long long)to_requests.gaps());
         std::printf("nasdaq-requests: stopped — entered %llu, canceled %llu over %d turn(s)\n",
                     (unsigned long long)requests.entered(), (unsigned long long)requests.canceled(), requests_ticks);
     } catch (const std::exception& problem) {

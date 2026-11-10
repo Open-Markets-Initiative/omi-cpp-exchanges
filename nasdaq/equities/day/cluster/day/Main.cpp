@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
         sim::RuntimeConfig cfg = sim::load_config(argc, argv);
 
         // The link, attached the way its name says.
-        sim::IpcSocket from_day("day -> engine", sim::IpcSocket::End::Writes, cfg.from_day_link.host, cfg.from_day_link.port);
+        sim::IpcSocket from_day("day -> sequencer", sim::IpcSocket::End::Writes, cfg.from_day_link.host, cfg.from_day_link.port);
 
         auto emit = [&](const char* b, std::size_t n) { sim::write_blocking(from_day, b, n); };
         sim::components::Day<decltype(emit)> day(emit);

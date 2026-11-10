@@ -62,27 +62,27 @@ trades=$(number "nse-engine: stopped" 1)
 events=$(number "nse-engine: stopped" 2)
 mtbt_read=$(number "nse-mtbt: stopped" 1)
 mtbt_published=$(number "nse-mtbt: stopped" 2)
-maker_entered=$(number "nse-maker: stopped" 1)
-taker_entered=$(number "nse-taker: stopped" 1)
+makerbasic_entered=$(number "nse-makerbasic: stopped" 1)
+takerbasic_entered=$(number "nse-takerbasic: stopped" 1)
 echo "verify: what the venue did"
 same "components up while it ran" "$up" 5
 said "launch: down" "the launcher brought it down in order"
 said "nse-gateway: stopped" "gateway ran and stopped cleanly"
 said "nse-engine: stopped" "engine ran and stopped cleanly"
 said "nse-mtbt: stopped" "mtbt ran and stopped cleanly"
-said "nse-maker: stopped" "maker ran and stopped cleanly"
-said "nse-taker: stopped" "taker ran and stopped cleanly"
+said "nse-makerbasic: stopped" "makerbasic ran and stopped cleanly"
+said "nse-takerbasic: stopped" "takerbasic ran and stopped cleanly"
 echo "verify: what it carried"
 atleast "the engine matched trades" "$trades" 1
 atleast "the engine emitted events" "$events" 1
 same "mtbt read what the engine emitted" "$mtbt_read" "$events"
-atleast "maker entered orders" "$maker_entered" 1
-atleast "taker entered orders" "$taker_entered" 1
+atleast "makerbasic entered orders" "$makerbasic_entered" 1
+atleast "takerbasic entered orders" "$takerbasic_entered" 1
 
 echo "verify: what it did not lose"
 quiet "gap(s) on" "no link reported a gap"
 same "components left running" "$(pgrep -c -f "nse_system_" || true)" 0
-same "rings left in /dev/shm" "$(ls /dev/shm 2>/dev/null | grep -c -E 'gateway|engine|mtbt|maker|taker' || true)" 0
+same "rings left in /dev/shm" "$(ls /dev/shm 2>/dev/null | grep -c -E 'gateway|engine|mtbt|makerbasic|takerbasic' || true)" 0
 
 echo "verify: $pass ok, $fail failed"
 rm -f "$out"

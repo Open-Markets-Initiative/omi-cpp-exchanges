@@ -15,38 +15,60 @@ jobs:
         run: sudo apt-get update
 
       - name: Install Dependencies
-        run: sudo apt-get install -y cmake g++ libboost-all-dev
+        run: sudo apt-get install -y cmake g++ libboost-all-dev g++-14 tzdata
 
-      - name: Configure Cme Globex Simulator
-        run: cmake -S cme/globex -B build/cme/globex -DCMAKE_BUILD_TYPE=Release
+      - name: Configure Investors Exchange Equities Open Simulator
+        run: cmake -S iex/equities/open -B build/iex/equities/open -DCMAKE_BUILD_TYPE=Release
 
-      - name: Build Cme Globex Simulator
-        run: cmake --build build/cme/globex --parallel $(nproc)
+      - name: Build Investors Exchange Equities Open Simulator
+        run: cmake --build build/iex/equities/open --parallel $(nproc)
 
-      - name: Test Cme Globex Simulator
-        run: ./build/cme/globex/simulator_tests
+      - name: Test Investors Exchange Equities Open Simulator
+        run: ./build/iex/equities/open/simulator_tests
 
-      - name: Run Cme Globex Simulator
-        working-directory: cme/globex
-        run: ../../build/cme/globex/cme_simulator
+      - name: Run Investors Exchange Equities Open Simulator
+        working-directory: iex/equities/open
+        run: ../../../build/iex/equities/open/iex_simulator
 
-      - name: Configure Investors Exchange Equities Simulator
-        run: cmake -S iex/equities -B build/iex/equities -DCMAKE_BUILD_TYPE=Release
+      - name: Verify Investors Exchange Equities Open Components (system)
+        working-directory: iex/equities/open/system
+        run: bash verify.sh ../../../../build/iex/equities/open 8
 
-      - name: Build Investors Exchange Equities Simulator
-        run: cmake --build build/iex/equities --parallel $(nproc)
+      - name: Verify Investors Exchange Equities Open Components (distributed)
+        working-directory: iex/equities/open/distributed
+        run: bash verify.sh ../../../../build/iex/equities/open 8
 
-      - name: Test Investors Exchange Equities Simulator
-        run: ./build/iex/equities/simulator_tests
-
-      - name: Run Investors Exchange Equities Simulator
-        working-directory: iex/equities
-        run: ../../build/iex/equities/iex_simulator
-
-      - name: Test Investors Exchange Equities Connections
-        working-directory: iex/equities
+      - name: Test Investors Exchange Equities Open Connections
+        working-directory: iex/equities/open
         env:
-          IEX_SIMULATOR: ../../build/iex/equities/iex_simulator
+          IEX_SIMULATOR: ../../../build/iex/equities/open/iex_simulator
+        run: python3 common/tests/Connections.py
+
+      - name: Configure Investors Exchange Equities Session Simulator
+        run: cmake -S iex/equities/session -B build/iex/equities/session -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build Investors Exchange Equities Session Simulator
+        run: cmake --build build/iex/equities/session --parallel $(nproc)
+
+      - name: Test Investors Exchange Equities Session Simulator
+        run: ./build/iex/equities/session/simulator_tests
+
+      - name: Run Investors Exchange Equities Session Simulator
+        working-directory: iex/equities/session
+        run: ../../../build/iex/equities/session/iex_simulator
+
+      - name: Verify Investors Exchange Equities Session Components (system)
+        working-directory: iex/equities/session/system
+        run: bash verify.sh ../../../../build/iex/equities/session 8
+
+      - name: Verify Investors Exchange Equities Session Components (distributed)
+        working-directory: iex/equities/session/distributed
+        run: bash verify.sh ../../../../build/iex/equities/session 8
+
+      - name: Test Investors Exchange Equities Session Connections
+        working-directory: iex/equities/session
+        env:
+          IEX_SIMULATOR: ../../../build/iex/equities/session/iex_simulator
         run: python3 common/tests/Connections.py
 
       - name: Configure Nse Futures and Options Simulator
@@ -66,33 +88,12 @@ jobs:
         working-directory: nse/fo/system
         run: bash verify.sh ../../../build/nse/fo 8
 
-      - name: Verify Nse Futures and Options Components (cluster)
-        working-directory: nse/fo/cluster
+      - name: Verify Nse Futures and Options Components (distributed)
+        working-directory: nse/fo/distributed
         run: bash verify.sh ../../../build/nse/fo 8
 
-      - name: Configure Nasdaq Stock Market Day Simulator
-        run: cmake -S nasdaq/equities/day -B build/nasdaq/equities/day -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build Nasdaq Stock Market Day Simulator
-        run: cmake --build build/nasdaq/equities/day --parallel $(nproc)
-
-      - name: Test Nasdaq Stock Market Day Simulator
-        run: ./build/nasdaq/equities/day/simulator_tests
-
-      - name: Run Nasdaq Stock Market Day Simulator
-        working-directory: nasdaq/equities/day
-        run: ../../../build/nasdaq/equities/day/nasdaq_simulator
-
-      - name: Verify Nasdaq Stock Market Day Components (system)
-        working-directory: nasdaq/equities/day/system
-        run: bash verify.sh ../../../../build/nasdaq/equities/day 8
-
-      - name: Verify Nasdaq Stock Market Day Components (cluster)
-        working-directory: nasdaq/equities/day/cluster
-        run: bash verify.sh ../../../../build/nasdaq/equities/day 8
-
       - name: Configure Nasdaq Stock Market Open Simulator
-        run: cmake -S nasdaq/equities/open -B build/nasdaq/equities/open -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S nasdaq/equities/open -B build/nasdaq/equities/open -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-14
 
       - name: Build Nasdaq Stock Market Open Simulator
         run: cmake --build build/nasdaq/equities/open --parallel $(nproc)
@@ -108,6 +109,27 @@ jobs:
         working-directory: nasdaq/equities/open/system
         run: bash verify.sh ../../../../build/nasdaq/equities/open 8
 
-      - name: Verify Nasdaq Stock Market Open Components (cluster)
-        working-directory: nasdaq/equities/open/cluster
+      - name: Verify Nasdaq Stock Market Open Components (distributed)
+        working-directory: nasdaq/equities/open/distributed
         run: bash verify.sh ../../../../build/nasdaq/equities/open 8
+
+      - name: Configure Nasdaq Stock Market Session Simulator
+        run: cmake -S nasdaq/equities/session -B build/nasdaq/equities/session -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-14
+
+      - name: Build Nasdaq Stock Market Session Simulator
+        run: cmake --build build/nasdaq/equities/session --parallel $(nproc)
+
+      - name: Test Nasdaq Stock Market Session Simulator
+        run: ./build/nasdaq/equities/session/simulator_tests
+
+      - name: Run Nasdaq Stock Market Session Simulator
+        working-directory: nasdaq/equities/session
+        run: ../../../build/nasdaq/equities/session/nasdaq_simulator
+
+      - name: Verify Nasdaq Stock Market Session Components (system)
+        working-directory: nasdaq/equities/session/system
+        run: bash verify.sh ../../../../build/nasdaq/equities/session 8
+
+      - name: Verify Nasdaq Stock Market Session Components (distributed)
+        working-directory: nasdaq/equities/session/distributed
+        run: bash verify.sh ../../../../build/nasdaq/equities/session 8

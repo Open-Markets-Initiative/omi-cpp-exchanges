@@ -69,7 +69,10 @@ int main(int argc, char** argv) {
                 sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_delete), sizeof totalview_order_delete);
                 sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_delete), sizeof totalview_order_delete);
                 totalview.flush();
-            });
+            },
+            [](const sim::ipc_ns::order_accepted_message&) {},
+            [](const sim::ipc_ns::order_eliminated_message&) {},
+            [](const sim::ipc_ns::order_refused_message&) {});
 
         std::printf("nasdaq-totalview: publishing to %s:%u\n", cfg.totalview_feed.host.c_str(), (unsigned)cfg.totalview_feed.port);
 

@@ -32,8 +32,8 @@ digraph nse {
     subgraph cluster_clients {
         label = "clients";
         style = "rounded,dashed"; color = "#9aa7b4"; fontsize = 10;
-        maker [label = "maker\ntrader"];
-        taker [label = "taker\ntrader"];
+        makerbasic [label = "makerbasic\ntrader"];
+        takerbasic [label = "takerbasic\ntrader"];
     }
 
     // Order entry arrives over Tcp, whichever version is running.
@@ -43,10 +43,10 @@ digraph nse {
     gateway -> engine [label = "ipc Tcp"];
     engine -> gateway [label = "ipc Tcp"];
     engine -> mtbt [label = "ipc Tcp"];
-    gateway -> maker [label = "messages Tcp"];
-    maker -> gateway [label = "messages Tcp"];
-    gateway -> taker [label = "messages Tcp"];
-    taker -> gateway [label = "messages Tcp"];
+    gateway -> makerbasic [label = "messages Tcp"];
+    makerbasic -> gateway [label = "messages Tcp"];
+    gateway -> takerbasic [label = "messages Tcp"];
+    takerbasic -> gateway [label = "messages Tcp"];
 
     // And out: each feed publishes and records what it is given.
     mtbt -> mtbt_out [style = dashed];

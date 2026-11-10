@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include "../types/Timestamp.hpp"
+#include "../types/Sequence.hpp"
 #include "../types/PhaseChange.hpp"
 
 namespace nasdaq::nsmequities::matchingengine::ipc::v2026 {
@@ -13,6 +14,7 @@ namespace ipc_matchingengine = ::nasdaq::nsmequities::matchingengine::ipc::v2026
 struct phase_request_message {
 
     ipc_matchingengine::timestamp timestamp;
+    ipc_matchingengine::sequence sequence;
     ipc_matchingengine::phase_change phase_change;
 
     // parse method
@@ -28,8 +30,9 @@ struct phase_request_message {
 
 // layout verification
 static_assert(offsetof(phase_request_message, timestamp) == 0, "unexpected offset of phase_request_message::timestamp");
-static_assert(offsetof(phase_request_message, phase_change) == 8, "unexpected offset of phase_request_message::phase_change");
-static_assert(sizeof(phase_request_message) == 9, "unexpected sizeof phase_request_message");
+static_assert(offsetof(phase_request_message, sequence) == 8, "unexpected offset of phase_request_message::sequence");
+static_assert(offsetof(phase_request_message, phase_change) == 16, "unexpected offset of phase_request_message::phase_change");
+static_assert(sizeof(phase_request_message) == 17, "unexpected sizeof phase_request_message");
 
 #pragma pack(pop)
 }

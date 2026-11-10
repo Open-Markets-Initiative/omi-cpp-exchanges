@@ -19,7 +19,7 @@ namespace iexiexequities::order_entry {
 // model requires that neither the chart nor the framing fills.
 struct AcceptorConfig {
     std::string_view begin_string = "FIX.4.2";
-    std::string_view sender_comp_id{};
+    std::string_view comp_id{};
 };
 
 // Where a session is: the leaf states of Fix's chart, as it lists them.
@@ -50,6 +50,7 @@ public:
     std::int64_t next_sequence() const { return next_sequence_; }
     std::int64_t expected_sequence() const { return expected_sequence_; }
     std::int64_t heartbeat_interval() const { return heartbeat_interval_; }
+    std::string_view comp_id() const { return config_.comp_id; }
 
     // One whole FIX message from the transport, framed: begin string
     // to checksum. Returns false when it carries no MsgType, which is
@@ -205,6 +206,19 @@ private:
 
     // NotLoggedOn: what arrives.
     bool arriving_not_logged_on(const Arrived& arrived) {
+        // Receive.Login.Request [Field:Target != State:CompId] -> Ended
+        if (arrived.type == MsgType::Logon && field(arrived.text, Tag::TargetCompID) != config_.comp_id) {
+            // Send.Session.Logout
+            {
+                auto out = start(MsgType::Logout, next_sequence_);
+                out.put(Tag::Text, std::string_view{"it names another target"});
+                finish(out);
+            }
+            next_sequence_ = next_sequence_ + 1;
+            enter_ended();
+            return true;
+        }
+
         // Receive.Login.Request -> Authenticating
         if (arrived.type == MsgType::Logon) {
             enter_authenticating(arrived);
@@ -465,12 +479,19 @@ private:
         return written;
     }
 
+    // Entering Ended.
+    std::size_t enter_ended() {
+        state_ = AcceptorState::Ended;
+        return 0;
+    }
+
     // Entering Authenticating.
     std::size_t enter_authenticating(const Arrived& arrived) {
         std::size_t written = 0;
         state_ = AcceptorState::Authenticating;
         // Ask.Login
-        if (handler_.login(arrived.type, arrived.text)) {
+        std::string refusal;
+        if (handler_.login(arrived.type, arrived.text, refusal)) {
             // Handler.Login.Accepted -> LoggedOn
             expected_sequence_ = expected_sequence_ + 1;
             heartbeat_interval_ = field_int(arrived.text, Tag::HeartBtInt);
@@ -480,18 +501,15 @@ private:
             // Send.Session.Logout
             {
                 auto out = start(MsgType::Logout, next_sequence_);
+                if (!refusal.empty()) {
+                    out.put(Tag::Text, refusal);
+                }
                 written += finish(out);
             }
             next_sequence_ = next_sequence_ + 1;
             written += enter_ended();
         }
         return written;
-    }
-
-    // Entering Ended.
-    std::size_t enter_ended() {
-        state_ = AcceptorState::Ended;
-        return 0;
     }
 
     // Entering LoggedOn.
@@ -597,7 +615,7 @@ private:
     Writer start(std::string_view type, const std::int64_t number) {
         Writer out{body_.data(), body_.data() + body_.size()};
         out.put(Tag::MsgType, type);
-        out.put(Tag::SenderCompID, config_.sender_comp_id);
+        out.put(Tag::SenderCompID, config_.comp_id);
         out.put(Tag::TargetCompID, std::string_view{counterparty_});
         out.put(Tag::MsgSeqNum, number);
         out.put_time(Tag::SendingTime, now_ns_);
@@ -609,7 +627,7 @@ private:
     Writer start_again(std::string_view type, const std::int64_t number, const std::int64_t first_sent_ns) {
         Writer out{body_.data(), body_.data() + body_.size()};
         out.put(Tag::MsgType, type);
-        out.put(Tag::SenderCompID, config_.sender_comp_id);
+        out.put(Tag::SenderCompID, config_.comp_id);
         out.put(Tag::TargetCompID, std::string_view{counterparty_});
         out.put(Tag::MsgSeqNum, number);
         out.put_time(Tag::SendingTime, now_ns_);
@@ -728,6 +746,7 @@ private:
         static constexpr std::uint32_t SendingTime = 52;
         static constexpr std::uint32_t TargetCompID = 56;
         static constexpr std::uint32_t TestReqID = 112;
+        static constexpr std::uint32_t Text = 58;
     };
 
     // The message types the chart's events name, as the model gives them.

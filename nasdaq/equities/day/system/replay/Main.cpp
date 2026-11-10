@@ -32,8 +32,8 @@ int main(int argc, char** argv) {
         (void)argc; (void)argv;
 
         // The links, attached the way their names say.
-        sim::MessageRing to_replay("gateway -> replay", sim::MessageRing::End::Reads);
-        sim::MessageRing from_replay("replay -> gateway", sim::MessageRing::End::Writes);
+        sim::MessageRing to_replay("gatewayreplay -> replay", sim::MessageRing::End::Reads);
+        sim::MessageRing from_replay("replay -> gatewayreplay", sim::MessageRing::End::Writes);
 
         auto replay_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_replay, b, n); };
         sim::traders::Trader<decltype(replay_send)> replay("Replay", "CAROL1", "carol00001", replay_send);

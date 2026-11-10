@@ -26,14 +26,14 @@ int main(int argc, char** argv) {
         else        sim::IpcRing::discard("engine -> gateway");
         if (create) sim::IpcRing::create("engine -> mtbt");
         else        sim::IpcRing::discard("engine -> mtbt");
-        if (create) sim::MessageRing::create("gateway -> maker");
-        else        sim::MessageRing::discard("gateway -> maker");
-        if (create) sim::MessageRing::create("maker -> gateway");
-        else        sim::MessageRing::discard("maker -> gateway");
-        if (create) sim::MessageRing::create("gateway -> taker");
-        else        sim::MessageRing::discard("gateway -> taker");
-        if (create) sim::MessageRing::create("taker -> gateway");
-        else        sim::MessageRing::discard("taker -> gateway");
+        if (create) sim::MessageRing::create("gateway -> makerbasic");
+        else        sim::MessageRing::discard("gateway -> makerbasic");
+        if (create) sim::MessageRing::create("makerbasic -> gateway");
+        else        sim::MessageRing::discard("makerbasic -> gateway");
+        if (create) sim::MessageRing::create("gateway -> takerbasic");
+        else        sim::MessageRing::discard("gateway -> takerbasic");
+        if (create) sim::MessageRing::create("takerbasic -> gateway");
+        else        sim::MessageRing::discard("takerbasic -> gateway");
     } catch (const std::exception& problem) {
         std::fprintf(stderr, "nse-rings: %s\n", problem.what());
         return 1;

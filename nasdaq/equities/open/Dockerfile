@@ -7,34 +7,38 @@ FROM ubuntu:24.04 AS build
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-        g++ cmake make libboost-program-options-dev ca-certificates \
+        g++-14 cmake make libboost-program-options-dev ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
 COPY . ./
 
-RUN cmake -S . -B /build -DCMAKE_BUILD_TYPE=Release \
+RUN cmake -S . -B /build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-14 \
  && cmake --build /build --parallel
 
 FROM ubuntu:24.04
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libboost-program-options1.83.0 \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libboost-program-options1.83.0 tzdata \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /venue
 COPY --from=build /build/nasdaq_simulator ./
 
-# One binary per component of the distributed venue; cluster/compose.yaml runs one each.
-COPY --from=build /build/nasdaq_cluster_gateway ./
-COPY --from=build /build/nasdaq_cluster_engine ./
-COPY --from=build /build/nasdaq_cluster_totalview ./
-COPY --from=build /build/nasdaq_cluster_glimpse ./
-COPY --from=build /build/nasdaq_cluster_totalviewtcp ./
-COPY --from=build /build/nasdaq_cluster_maker ./
-COPY --from=build /build/nasdaq_cluster_taker ./
-COPY --from=build /build/nasdaq_cluster_replay ./
-COPY --from=build /build/nasdaq_cluster_requests ./
+# One binary per component of the distributed venue; distributed/compose.yaml runs one each.
+COPY --from=build /build/nasdaq_distributed_gatewaymakerbasic ./
+COPY --from=build /build/nasdaq_distributed_gatewaytakerbasic ./
+COPY --from=build /build/nasdaq_distributed_gatewayreplay ./
+COPY --from=build /build/nasdaq_distributed_gatewayrequests ./
+COPY --from=build /build/nasdaq_distributed_engine ./
+COPY --from=build /build/nasdaq_distributed_sequencer ./
+COPY --from=build /build/nasdaq_distributed_totalview ./
+COPY --from=build /build/nasdaq_distributed_glimpse ./
+COPY --from=build /build/nasdaq_distributed_totalviewtcp ./
+COPY --from=build /build/nasdaq_distributed_makerbasic ./
+COPY --from=build /build/nasdaq_distributed_takerbasic ./
+COPY --from=build /build/nasdaq_distributed_replay ./
+COPY --from=build /build/nasdaq_distributed_requests ./
 
 # The endpoints it serves on in a container, which is the one thing that differs from
 # serving on a desktop: it listens on every interface rather than on loopback.

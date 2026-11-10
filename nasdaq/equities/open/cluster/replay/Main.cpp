@@ -32,8 +32,8 @@ int main(int argc, char** argv) {
         sim::RuntimeConfig cfg = sim::load_config(argc, argv);
 
         // The links, attached the way their names say.
-        sim::MessageSocket to_replay("gateway -> replay", sim::MessageSocket::End::Reads, cfg.to_replay_link.host, cfg.to_replay_link.port);
-        sim::MessageSocket from_replay("replay -> gateway", sim::MessageSocket::End::Writes, cfg.from_replay_link.host, cfg.from_replay_link.port);
+        sim::MessageSocket to_replay("gatewayreplay -> replay", sim::MessageSocket::End::Reads, cfg.to_replay_link.host, cfg.to_replay_link.port);
+        sim::MessageSocket from_replay("replay -> gatewayreplay", sim::MessageSocket::End::Writes, cfg.from_replay_link.host, cfg.from_replay_link.port);
 
         auto replay_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_replay, b, n); };
         sim::traders::Trader<decltype(replay_send)> replay("Replay", "CAROL1", "carol00001", replay_send);
@@ -66,7 +66,7 @@ int main(int argc, char** argv) {
             }
         }
 
-        if (to_replay.gaps() > 0) std::printf("nasdaq-replay: %llu gap(s) on gateway -> replay — messages were lost\n", (unsigned long long)to_replay.gaps());
+        if (to_replay.gaps() > 0) std::printf("nasdaq-replay: %llu gap(s) on gatewayreplay -> replay — messages were lost\n", (unsigned long long)to_replay.gaps());
         std::printf("nasdaq-replay: stopped — entered %llu, canceled %llu over %d turn(s)\n",
                     (unsigned long long)replay.entered(), (unsigned long long)replay.canceled(), replay_ticks);
     } catch (const std::exception& problem) {

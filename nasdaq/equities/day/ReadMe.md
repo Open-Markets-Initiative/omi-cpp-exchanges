@@ -6,13 +6,13 @@ and traders that exercise the exchange end to end. Every link between two compon
 framed Nasdaq.NsmEquities.MatchingEngine.Ipc.v2026 messages: the gateway owns the client sockets, the engine owns the
 book, and each feed owns its market data.
 
-The components are generated once, into `common/`, and deployed three ways - `process/`, one binary with a thread per component, `system/`, a process per component on this host, `cluster/`, a process per component across machines. Each directory has a ReadMe of its own.
+The components are generated once, into `common/`, and deployed three ways - `process/`, one binary with a thread per component, `system/`, a process per component on this host, `distributed/`, a process per component across machines. Each directory has a ReadMe of its own.
 
 ## Layout
 
 ```
 CMakeLists.txt         every target: the single binary, a binary per component, the tests
-Dockerfile             the venue as one image; cluster/compose.yaml runs a component per container
+Dockerfile             the venue as one image; distributed/compose.yaml runs a component per container
 simulator.ini          runtime endpoints, read at process start (docker/ holds the container copy)
 common/                everything the deployments share, generated once
   protocols/           the generated structs, messages and sessions of each protocol
@@ -20,10 +20,10 @@ common/                everything the deployments share, generated once
   run/                 the links: a queue, a ring in shared memory, a socket
 process/               one binary, a thread per component - deterministic, the reference
 system/                a process per component on one host, rings in shared memory
-cluster/               a process per component across machines, Tcp, tiers that fail apart
+distributed/           a process per component across machines, Tcp, tiers that fail apart
 ```
 
-Each of `process/`, `system/`, `cluster/` has a ReadMe saying what it is and what it is not; the separated ones have a `launch.sh`
+Each of `process/`, `system/`, `distributed/` has a ReadMe saying what it is and what it is not; the separated ones have a `launch.sh`
 and a `verify.sh` that runs the venue and checks what its components carried.
 
 ## Protocols
@@ -35,12 +35,12 @@ and a `verify.sh` that runs the venue and checks what its components carried.
 | Market Data (TotalView) | Nasdaq.NsmEquities.TotalView.Itch.v5.0.2026 |
 | Snapshot of TotalView (Glimpse) | Nasdaq.NsmEquities.TotalView.Glimpse.v5.0 |
 | Stream of TotalView (TotalViewTcp) | Nasdaq.NsmEquities.TotalView.Itch.v5.0.2026 |
-| Trading Day | Nasdaq.NsmEquities.Equities.Trading |
+| Trading Day | Nasdaq.NsmEquities.Equities.Session.Trading |
 | Internal Messaging | Nasdaq.NsmEquities.MatchingEngine.Ipc.v2026 |
 
 ## Trading Day
 
-The engine runs `Nasdaq.NsmEquities.Equities.Trading`: each phase of the day decides whether an order
+The engine runs `Nasdaq.NsmEquities.Equities.Session.Trading`: each phase of the day decides whether an order
 trades, waits for the next cross, or is refused. Each change of phase is announced on the
 internal messaging, and so is each cross completed, with the price it crossed at and the
 shares that traded there. The day the simulator is generated with:

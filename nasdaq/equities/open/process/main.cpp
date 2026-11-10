@@ -8,8 +8,8 @@
 
 #include "protocols/orderentry/Gateway.hpp"
 #include "traders/Orders.hpp"
-#include "traders/Maker.hpp"
-#include "traders/Taker.hpp"
+#include "traders/MakerBasic.hpp"
+#include "traders/TakerBasic.hpp"
 #include "traders/CaptureQuotes.hpp"
 #include "traders/CaptureRequests.hpp"
 #include "protocols/marketdata/totalview/PacketPublisher.hpp"
@@ -20,6 +20,7 @@
 #include "protocols/ipc/IpcTransforms.hpp"
 #include "run/Components.hpp"
 #include "engine/Engine.hpp"
+#include "sequencer/Sequencer.hpp"
 #include "MarketDataLog.hpp"
 #include "SimulatorConfiguration.hpp"
 #include "net/Network.hpp"
@@ -50,7 +51,10 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) if (std::string_view(argv[i]) == "--serve") serve = true;
 
     std::puts("nasdaq-simulator configuration (runtime simulator.ini):");
-    std::printf("  order-entry  %s:%u\n", cfg.order_entry.host.c_str(), (unsigned)cfg.order_entry.port);
+    std::printf("  order-entry  %s:%u  MakerBasic's gateway\n", cfg.order_entry.host.c_str(), (unsigned)cfg.gatewaymakerbasic_port);
+    std::printf("  order-entry  %s:%u  TakerBasic's gateway\n", cfg.order_entry.host.c_str(), (unsigned)cfg.gatewaytakerbasic_port);
+    std::printf("  order-entry  %s:%u  Replay's gateway\n", cfg.order_entry.host.c_str(), (unsigned)cfg.gatewayreplay_port);
+    std::printf("  order-entry  %s:%u  Requests's gateway\n", cfg.order_entry.host.c_str(), (unsigned)cfg.gatewayrequests_port);
     std::printf("  feed TotalView %s:%u\n", cfg.totalview_feed.host.c_str(), (unsigned)cfg.totalview_feed.port);
     std::printf("  recording    dir=%s order-entry-log=%s market-data=%s\n", cfg.recording_directory.c_str(), "on", "on");
 
@@ -75,8 +79,15 @@ int main(int argc, char** argv) {
 
     // The links between the components. One writer and one reader each: the engine fans
     // an event out by writing one queue per consumer, and takes one queue per producer.
-    sim::IpcQueue to_engine("gateway -> engine");
-    sim::IpcQueue to_clients("engine -> gateway");
+    sim::IpcQueue to_sequencer_gatewaymakerbasic("gatewaymakerbasic -> sequencer");
+    sim::IpcQueue to_sequencer_gatewaytakerbasic("gatewaytakerbasic -> sequencer");
+    sim::IpcQueue to_sequencer_gatewayreplay("gatewayreplay -> sequencer");
+    sim::IpcQueue to_sequencer_gatewayrequests("gatewayrequests -> sequencer");
+    sim::IpcQueue sequenced("sequencer -> engine");
+    sim::IpcQueue to_clients_gatewaymakerbasic("engine -> gatewaymakerbasic");
+    sim::IpcQueue to_clients_gatewaytakerbasic("engine -> gatewaytakerbasic");
+    sim::IpcQueue to_clients_gatewayreplay("engine -> gatewayreplay");
+    sim::IpcQueue to_clients_gatewayrequests("engine -> gatewayrequests");
     sim::IpcQueue to_totalview("engine -> totalview");
 
     // Counted from several threads: what crossed the links, and what the engine matched.
@@ -107,62 +118,135 @@ int main(int argc, char** argv) {
             sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_delete), sizeof totalview_order_delete);
             sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_delete), sizeof totalview_order_delete);
             totalview.flush();
-        });
+        },
+        [](const sim::ipc_ns::order_accepted_message&) {},
+        [](const sim::ipc_ns::order_eliminated_message&) {},
+        [](const sim::ipc_ns::order_refused_message&) {});
 
-    // Order entry: each client's session reaches the engine as framed Ipc messages.
-    auto gateway_emit = [&](const char* b, std::size_t n) {
+    // MakerBasic's gateway: each client's session reaches the engine as framed Ipc messages.
+    auto gatewaymakerbasic_emit = [&](const char* b, std::size_t n) {
         ipc_msgs.fetch_add(1, std::memory_order_relaxed);
-        sim::write_blocking(to_engine, b, n);
+        sim::write_blocking(to_sequencer_gatewaymakerbasic, b, n);
     };
-    sim::orderentry::Gateway<decltype(gateway_emit)> gateway(gateway_emit);
-    gateway.allow("ALICE1", "alice00001");
-    gateway.allow("BOB001", "bob0000001");
-    gateway.allow("CAROL1", "carol00001");
-    gateway.allow("DAVE01", "dave000001");
+    sim::orderentry::Gateway<decltype(gatewaymakerbasic_emit)> gatewaymakerbasic(gatewaymakerbasic_emit, 1, 4);
+    gatewaymakerbasic.allow("ALICE1", "alice00001");
+    gatewaymakerbasic.allow("BOB001", "bob0000001");
+    gatewaymakerbasic.allow("CAROL1", "carol00001");
+    gatewaymakerbasic.allow("DAVE01", "dave000001");
 
     // The engine events the gateway answers, on the gateway's own thread.
-    sim::IpcEventServer client_events(
-        [&](const sim::ipc_ns::trade_message& t) { gateway.on_event(t); },
+    sim::IpcEventServer gatewaymakerbasic_events(
+        [&](const sim::ipc_ns::trade_message& t) { gatewaymakerbasic.on_event(t); },
         [](const sim::ipc_ns::order_rested_message&) {},
-        [&](const sim::ipc_ns::order_canceled_message& c) { gateway.on_event(c); });
+        [&](const sim::ipc_ns::order_canceled_message& c) { gatewaymakerbasic.on_event(c); },
+        [&](const sim::ipc_ns::order_accepted_message& a) { gatewaymakerbasic.on_event(a); },
+        [&](const sim::ipc_ns::order_eliminated_message& e) { gatewaymakerbasic.on_event(e); },
+        [&](const sim::ipc_ns::order_refused_message& j) { gatewaymakerbasic.on_event(j); });
+
+    // TakerBasic's gateway: each client's session reaches the engine as framed Ipc messages.
+    auto gatewaytakerbasic_emit = [&](const char* b, std::size_t n) {
+        ipc_msgs.fetch_add(1, std::memory_order_relaxed);
+        sim::write_blocking(to_sequencer_gatewaytakerbasic, b, n);
+    };
+    sim::orderentry::Gateway<decltype(gatewaytakerbasic_emit)> gatewaytakerbasic(gatewaytakerbasic_emit, 2, 4);
+    gatewaytakerbasic.allow("ALICE1", "alice00001");
+    gatewaytakerbasic.allow("BOB001", "bob0000001");
+    gatewaytakerbasic.allow("CAROL1", "carol00001");
+    gatewaytakerbasic.allow("DAVE01", "dave000001");
+
+    // The engine events the gateway answers, on the gateway's own thread.
+    sim::IpcEventServer gatewaytakerbasic_events(
+        [&](const sim::ipc_ns::trade_message& t) { gatewaytakerbasic.on_event(t); },
+        [](const sim::ipc_ns::order_rested_message&) {},
+        [&](const sim::ipc_ns::order_canceled_message& c) { gatewaytakerbasic.on_event(c); },
+        [&](const sim::ipc_ns::order_accepted_message& a) { gatewaytakerbasic.on_event(a); },
+        [&](const sim::ipc_ns::order_eliminated_message& e) { gatewaytakerbasic.on_event(e); },
+        [&](const sim::ipc_ns::order_refused_message& j) { gatewaytakerbasic.on_event(j); });
+
+    // Replay's gateway: each client's session reaches the engine as framed Ipc messages.
+    auto gatewayreplay_emit = [&](const char* b, std::size_t n) {
+        ipc_msgs.fetch_add(1, std::memory_order_relaxed);
+        sim::write_blocking(to_sequencer_gatewayreplay, b, n);
+    };
+    sim::orderentry::Gateway<decltype(gatewayreplay_emit)> gatewayreplay(gatewayreplay_emit, 3, 4);
+    gatewayreplay.allow("ALICE1", "alice00001");
+    gatewayreplay.allow("BOB001", "bob0000001");
+    gatewayreplay.allow("CAROL1", "carol00001");
+    gatewayreplay.allow("DAVE01", "dave000001");
+
+    // The engine events the gateway answers, on the gateway's own thread.
+    sim::IpcEventServer gatewayreplay_events(
+        [&](const sim::ipc_ns::trade_message& t) { gatewayreplay.on_event(t); },
+        [](const sim::ipc_ns::order_rested_message&) {},
+        [&](const sim::ipc_ns::order_canceled_message& c) { gatewayreplay.on_event(c); },
+        [&](const sim::ipc_ns::order_accepted_message& a) { gatewayreplay.on_event(a); },
+        [&](const sim::ipc_ns::order_eliminated_message& e) { gatewayreplay.on_event(e); },
+        [&](const sim::ipc_ns::order_refused_message& j) { gatewayreplay.on_event(j); });
+
+    // Requests's gateway: each client's session reaches the engine as framed Ipc messages.
+    auto gatewayrequests_emit = [&](const char* b, std::size_t n) {
+        ipc_msgs.fetch_add(1, std::memory_order_relaxed);
+        sim::write_blocking(to_sequencer_gatewayrequests, b, n);
+    };
+    sim::orderentry::Gateway<decltype(gatewayrequests_emit)> gatewayrequests(gatewayrequests_emit, 4, 4);
+    gatewayrequests.allow("ALICE1", "alice00001");
+    gatewayrequests.allow("BOB001", "bob0000001");
+    gatewayrequests.allow("CAROL1", "carol00001");
+    gatewayrequests.allow("DAVE01", "dave000001");
+
+    // The engine events the gateway answers, on the gateway's own thread.
+    sim::IpcEventServer gatewayrequests_events(
+        [&](const sim::ipc_ns::trade_message& t) { gatewayrequests.on_event(t); },
+        [](const sim::ipc_ns::order_rested_message&) {},
+        [&](const sim::ipc_ns::order_canceled_message& c) { gatewayrequests.on_event(c); },
+        [&](const sim::ipc_ns::order_accepted_message& a) { gatewayrequests.on_event(a); },
+        [&](const sim::ipc_ns::order_eliminated_message& e) { gatewayrequests.on_event(e); },
+        [&](const sim::ipc_ns::order_refused_message& j) { gatewayrequests.on_event(j); });
 
     // The engine's events, framed onto every consumer's queue.
     auto event_emit = [&](const char* b, std::size_t n) {
         ipc_events.fetch_add(1, std::memory_order_relaxed);
-        sim::write_blocking(to_clients, b, n);
+        sim::write_blocking(to_clients_gatewaymakerbasic, b, n);
+        sim::write_blocking(to_clients_gatewaytakerbasic, b, n);
+        sim::write_blocking(to_clients_gatewayreplay, b, n);
+        sim::write_blocking(to_clients_gatewayrequests, b, n);
         sim::write_blocking(to_totalview, b, n);
     };
     // The engine component, built the same way the per-component binaries build it:
     // what it matches is its own, and where its events go is whatever emit it was handed.
     sim::components::Engine<decltype(event_emit)> engine_component(event_emit, trades);
+    // Each engine's sequencer: what is bound for the engine, from every producer, put in one
+    // order, each message stamped with its place in it and the time, and handed to the engine.
+    auto sequencer_emit = [&](const char* b, std::size_t n) { sim::write_blocking(sequenced, b, n); };
+    sim::components::Sequencer<decltype(sequencer_emit)> sequencer_component(sequencer_emit);
 
     // Traders: each trades through the venue's own order entry, as a client session like any
     // other — its bytes reach the gateway over a queue instead of a socket.
-    sim::MessageQueue to_maker("gateway -> maker");
-    sim::MessageQueue from_maker("maker -> gateway");
-    auto maker_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_maker, b, n); };
-    sim::traders::Trader<decltype(maker_send)> maker("Maker", "ALICE1", "alice00001", maker_send);
-    const std::size_t maker_client = gateway.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_maker, b, n); });
-    sim::traders::SimpleMaker<std::remove_reference_t<decltype(maker.orders())>> maker_strategy(/*mid*/10000, /*spread*/10, /*size*/100, /*levels*/3);
-    int maker_ticks = 0;
-    std::chrono::steady_clock::time_point maker_paced{};   // when a served trader next orders
-    sim::Turn maker_turn;
-    maker.login();
-    sim::MessageQueue to_taker("gateway -> taker");
-    sim::MessageQueue from_taker("taker -> gateway");
-    auto taker_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_taker, b, n); };
-    sim::traders::Trader<decltype(taker_send)> taker("Taker", "BOB001", "bob0000001", taker_send);
-    const std::size_t taker_client = gateway.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_taker, b, n); });
-    sim::traders::SimpleTaker<std::remove_reference_t<decltype(taker.orders())>> taker_strategy(/*mid*/10000, /*cross*/20, /*size*/50, /*period*/3);
-    int taker_ticks = 0;
-    std::chrono::steady_clock::time_point taker_paced{};   // when a served trader next orders
-    sim::Turn taker_turn;
-    taker.login();
-    sim::MessageQueue to_replay("gateway -> replay");
-    sim::MessageQueue from_replay("replay -> gateway");
+    sim::MessageQueue to_makerbasic("gatewaymakerbasic -> makerbasic");
+    sim::MessageQueue from_makerbasic("makerbasic -> gatewaymakerbasic");
+    auto makerbasic_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_makerbasic, b, n); };
+    sim::traders::Trader<decltype(makerbasic_send)> makerbasic("MakerBasic", "ALICE1", "alice00001", makerbasic_send);
+    const std::size_t makerbasic_client = gatewaymakerbasic.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_makerbasic, b, n); });
+    sim::traders::MakerBasic<std::remove_reference_t<decltype(makerbasic.orders())>> makerbasic_strategy(/*mid*/10000, /*spread*/10, /*size*/100, /*levels*/3, /*tick*/1);
+    int makerbasic_ticks = 0;
+    std::chrono::steady_clock::time_point makerbasic_paced{};   // when a served trader next orders
+    sim::Turn makerbasic_turn;
+    makerbasic.login();
+    sim::MessageQueue to_takerbasic("gatewaytakerbasic -> takerbasic");
+    sim::MessageQueue from_takerbasic("takerbasic -> gatewaytakerbasic");
+    auto takerbasic_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_takerbasic, b, n); };
+    sim::traders::Trader<decltype(takerbasic_send)> takerbasic("TakerBasic", "BOB001", "bob0000001", takerbasic_send);
+    const std::size_t takerbasic_client = gatewaytakerbasic.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_takerbasic, b, n); });
+    sim::traders::TakerBasic<std::remove_reference_t<decltype(takerbasic.orders())>> takerbasic_strategy(/*mid*/10000, /*cross*/20, /*size*/50, /*period*/3);
+    int takerbasic_ticks = 0;
+    std::chrono::steady_clock::time_point takerbasic_paced{};   // when a served trader next orders
+    sim::Turn takerbasic_turn;
+    takerbasic.login();
+    sim::MessageQueue to_replay("gatewayreplay -> replay");
+    sim::MessageQueue from_replay("replay -> gatewayreplay");
     auto replay_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_replay, b, n); };
     sim::traders::Trader<decltype(replay_send)> replay("Replay", "CAROL1", "carol00001", replay_send);
-    const std::size_t replay_client = gateway.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_replay, b, n); });
+    const std::size_t replay_client = gatewayreplay.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_replay, b, n); });
     // Replay takes its orders from a capture of Nasdaq.NsmEquities.TotalView.Itch.v5.0.2026: what that market showed,
     // posted here as this trader's own orders. A capture it cannot read leaves it quiet.
     sim::traders::Capture replay_capture("captures/TotalView.pcap");
@@ -174,11 +258,11 @@ int main(int argc, char** argv) {
     std::chrono::steady_clock::time_point replay_paced{};   // when a served trader next orders
     sim::Turn replay_turn;
     replay.login();
-    sim::MessageQueue to_requests("gateway -> requests");
-    sim::MessageQueue from_requests("requests -> gateway");
+    sim::MessageQueue to_requests("gatewayrequests -> requests");
+    sim::MessageQueue from_requests("requests -> gatewayrequests");
     auto requests_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_requests, b, n); };
     sim::traders::Trader<decltype(requests_send)> requests("Requests", "DAVE01", "dave000001", requests_send);
-    const std::size_t requests_client = gateway.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_requests, b, n); });
+    const std::size_t requests_client = gatewayrequests.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_requests, b, n); });
     // Requests takes its orders from a capture of this venue's own order entry: the requests a
     // client sent, replayed here as this trader's own. A capture it cannot read leaves it quiet.
     sim::traders::Capture requests_capture("captures/Ouch.pcap");
@@ -191,9 +275,15 @@ int main(int argc, char** argv) {
     sim::Turn requests_turn;
     requests.login();
 
-    // The listening socket belongs to the gateway thread; --serve is what opens it.
-    std::unique_ptr<net::TcpServer> order_entry;
-    std::map<int, std::size_t> sessions;
+    // Each listening socket belongs to its gateway's thread; --serve is what opens them.
+    std::unique_ptr<net::TcpServer> gatewaymakerbasic_order_entry;
+    std::map<int, std::size_t> gatewaymakerbasic_sessions;
+    std::unique_ptr<net::TcpServer> gatewaytakerbasic_order_entry;
+    std::map<int, std::size_t> gatewaytakerbasic_sessions;
+    std::unique_ptr<net::TcpServer> gatewayreplay_order_entry;
+    std::map<int, std::size_t> gatewayreplay_sessions;
+    std::unique_ptr<net::TcpServer> gatewayrequests_order_entry;
+    std::map<int, std::size_t> gatewayrequests_sessions;
     std::unique_ptr<net::TcpServer> glimpse_server;
     std::map<int, std::size_t> glimpse_sessions;
     std::unique_ptr<net::TcpServer> totalviewtcp_server;
@@ -201,16 +291,18 @@ int main(int argc, char** argv) {
     if (serve) {
         std::signal(SIGPIPE, SIG_IGN);   // a client hanging up must not kill the venue
         std::signal(SIGINT, on_interrupt);
-        order_entry = std::make_unique<net::TcpServer>(cfg.order_entry.host, cfg.order_entry.port);
+        gatewaymakerbasic_order_entry = std::make_unique<net::TcpServer>(cfg.order_entry.host, cfg.gatewaymakerbasic_port);
+        gatewaytakerbasic_order_entry = std::make_unique<net::TcpServer>(cfg.order_entry.host, cfg.gatewaytakerbasic_port);
+        gatewayreplay_order_entry = std::make_unique<net::TcpServer>(cfg.order_entry.host, cfg.gatewayreplay_port);
+        gatewayrequests_order_entry = std::make_unique<net::TcpServer>(cfg.order_entry.host, cfg.gatewayrequests_port);
         glimpse_server = std::make_unique<net::TcpServer>(cfg.glimpse_replay_port == 0 ? "0.0.0.0" : "127.0.0.1", cfg.glimpse_replay_port);
         totalviewtcp_server = std::make_unique<net::TcpServer>(cfg.totalviewtcp_replay_port == 0 ? "0.0.0.0" : "127.0.0.1", cfg.totalviewtcp_replay_port);
     }
 
     // One thread per component. Each owns its own state: the gateway its client sockets,
     // the engine its book, each feed its publisher — nothing is shared but the queues.
-    sim::Component engine_thread("engine", [&] {
-        return engine_component.step(to_engine);
-    });
+    sim::Component engine_thread("engine", [&] { return engine_component.step(sequenced); });
+    sim::Component sequencer_thread("sequencer", [&] { return sequencer_component.step(to_sequencer_gatewaymakerbasic, to_sequencer_gatewaytakerbasic, to_sequencer_gatewayreplay, to_sequencer_gatewayrequests); });
     sim::Component totalview_thread("totalview", [&] {
         return to_totalview.read([&](std::string_view message) { totalview_events.on_message(message); });
     });
@@ -244,61 +336,106 @@ int main(int argc, char** argv) {
         }) || worked;
         return totalviewtcp.pump() || worked;
     });
-    sim::Component gateway_thread("gateway", [&] {
-        bool worked = to_clients.read([&](std::string_view message) { client_events.on_message(message); });
-        worked = from_maker.read([&](std::string_view bytes) { gateway.on_bytes(maker_client, bytes.data(), bytes.size()); }) || worked;
-        worked = from_taker.read([&](std::string_view bytes) { gateway.on_bytes(taker_client, bytes.data(), bytes.size()); }) || worked;
-        worked = from_replay.read([&](std::string_view bytes) { gateway.on_bytes(replay_client, bytes.data(), bytes.size()); }) || worked;
-        worked = from_requests.read([&](std::string_view bytes) { gateway.on_bytes(requests_client, bytes.data(), bytes.size()); }) || worked;
-        if (order_entry) worked = order_entry->poll([&](int fd, std::string_view bytes) {
-            auto session = sessions.find(fd);
-            if (session == sessions.end())
-                session = sessions.emplace(fd, gateway.connect([fd](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); })).first;
-            gateway.on_bytes(session->second, bytes.data(), bytes.size());
+    sim::Component gatewaymakerbasic_thread("gatewaymakerbasic", [&] {
+        bool worked = to_clients_gatewaymakerbasic.read([&](std::string_view message) { gatewaymakerbasic_events.on_message(message); });
+        worked = from_makerbasic.read([&](std::string_view bytes) { gatewaymakerbasic.on_bytes(makerbasic_client, bytes.data(), bytes.size()); }) || worked;
+        if (gatewaymakerbasic_order_entry) worked = gatewaymakerbasic_order_entry->poll([&](int fd, std::string_view bytes) {
+            auto session = gatewaymakerbasic_sessions.find(fd);
+            if (session == gatewaymakerbasic_sessions.end())
+                session = gatewaymakerbasic_sessions.emplace(fd, gatewaymakerbasic.connect([fd](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); })).first;
+            gatewaymakerbasic.on_bytes(session->second, bytes.data(), bytes.size());
         }, [&](int fd) {
-            if (const auto gone = sessions.find(fd); gone != sessions.end()) {
-                gateway.disconnect(gone->second);
-                sessions.erase(gone);
+            if (const auto gone = gatewaymakerbasic_sessions.find(fd); gone != gatewaymakerbasic_sessions.end()) {
+                gatewaymakerbasic.disconnect(gone->second);
+                gatewaymakerbasic_sessions.erase(gone);
             }
         }) || worked;
         return worked;
     });
-    sim::Component maker_thread("maker", [&] {
-        bool worked = to_maker.read([&](std::string_view bytes) { maker.on_bytes(bytes.data(), bytes.size()); });
+    sim::Component gatewaytakerbasic_thread("gatewaytakerbasic", [&] {
+        bool worked = to_clients_gatewaytakerbasic.read([&](std::string_view message) { gatewaytakerbasic_events.on_message(message); });
+        worked = from_takerbasic.read([&](std::string_view bytes) { gatewaytakerbasic.on_bytes(takerbasic_client, bytes.data(), bytes.size()); }) || worked;
+        if (gatewaytakerbasic_order_entry) worked = gatewaytakerbasic_order_entry->poll([&](int fd, std::string_view bytes) {
+            auto session = gatewaytakerbasic_sessions.find(fd);
+            if (session == gatewaytakerbasic_sessions.end())
+                session = gatewaytakerbasic_sessions.emplace(fd, gatewaytakerbasic.connect([fd](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); })).first;
+            gatewaytakerbasic.on_bytes(session->second, bytes.data(), bytes.size());
+        }, [&](int fd) {
+            if (const auto gone = gatewaytakerbasic_sessions.find(fd); gone != gatewaytakerbasic_sessions.end()) {
+                gatewaytakerbasic.disconnect(gone->second);
+                gatewaytakerbasic_sessions.erase(gone);
+            }
+        }) || worked;
+        return worked;
+    });
+    sim::Component gatewayreplay_thread("gatewayreplay", [&] {
+        bool worked = to_clients_gatewayreplay.read([&](std::string_view message) { gatewayreplay_events.on_message(message); });
+        worked = from_replay.read([&](std::string_view bytes) { gatewayreplay.on_bytes(replay_client, bytes.data(), bytes.size()); }) || worked;
+        if (gatewayreplay_order_entry) worked = gatewayreplay_order_entry->poll([&](int fd, std::string_view bytes) {
+            auto session = gatewayreplay_sessions.find(fd);
+            if (session == gatewayreplay_sessions.end())
+                session = gatewayreplay_sessions.emplace(fd, gatewayreplay.connect([fd](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); })).first;
+            gatewayreplay.on_bytes(session->second, bytes.data(), bytes.size());
+        }, [&](int fd) {
+            if (const auto gone = gatewayreplay_sessions.find(fd); gone != gatewayreplay_sessions.end()) {
+                gatewayreplay.disconnect(gone->second);
+                gatewayreplay_sessions.erase(gone);
+            }
+        }) || worked;
+        return worked;
+    });
+    sim::Component gatewayrequests_thread("gatewayrequests", [&] {
+        bool worked = to_clients_gatewayrequests.read([&](std::string_view message) { gatewayrequests_events.on_message(message); });
+        worked = from_requests.read([&](std::string_view bytes) { gatewayrequests.on_bytes(requests_client, bytes.data(), bytes.size()); }) || worked;
+        if (gatewayrequests_order_entry) worked = gatewayrequests_order_entry->poll([&](int fd, std::string_view bytes) {
+            auto session = gatewayrequests_sessions.find(fd);
+            if (session == gatewayrequests_sessions.end())
+                session = gatewayrequests_sessions.emplace(fd, gatewayrequests.connect([fd](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); })).first;
+            gatewayrequests.on_bytes(session->second, bytes.data(), bytes.size());
+        }, [&](int fd) {
+            if (const auto gone = gatewayrequests_sessions.find(fd); gone != gatewayrequests_sessions.end()) {
+                gatewayrequests.disconnect(gone->second);
+                gatewayrequests_sessions.erase(gone);
+            }
+        }) || worked;
+        return worked;
+    });
+    sim::Component makerbasic_thread("makerbasic", [&] {
+        bool worked = to_makerbasic.read([&](std::string_view bytes) { makerbasic.on_bytes(bytes.data(), bytes.size()); });
         // A served venue runs free; the startup run takes turns, so it is the same every time.
         // Served, the trader takes in what has arrived on every pass and orders at its own pace,
         // twenty times a second: sleeping in the step would leave the venue's answers waiting.
         if (serve) {
-            if (maker.logged_in() && std::chrono::steady_clock::now() >= maker_paced) {
-                maker_strategy.step(maker.orders());
-                ++maker_ticks;
-                maker_paced = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
+            if (makerbasic.logged_in() && std::chrono::steady_clock::now() >= makerbasic_paced) {
+                makerbasic_strategy.step(makerbasic.orders());
+                ++makerbasic_ticks;
+                makerbasic_paced = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
                 worked = true;
             }
             return worked;
         }
-        if (!maker_turn.asked()) return worked;
-        if (maker.logged_in()) { maker_strategy.step(maker.orders()); ++maker_ticks; }
-        maker_turn.taken();
+        if (!makerbasic_turn.asked()) return worked;
+        if (makerbasic.logged_in()) { makerbasic_strategy.step(makerbasic.orders()); ++makerbasic_ticks; }
+        makerbasic_turn.taken();
         return true;
     });
-    sim::Component taker_thread("taker", [&] {
-        bool worked = to_taker.read([&](std::string_view bytes) { taker.on_bytes(bytes.data(), bytes.size()); });
+    sim::Component takerbasic_thread("takerbasic", [&] {
+        bool worked = to_takerbasic.read([&](std::string_view bytes) { takerbasic.on_bytes(bytes.data(), bytes.size()); });
         // A served venue runs free; the startup run takes turns, so it is the same every time.
         // Served, the trader takes in what has arrived on every pass and orders at its own pace,
         // twenty times a second: sleeping in the step would leave the venue's answers waiting.
         if (serve) {
-            if (taker.logged_in() && std::chrono::steady_clock::now() >= taker_paced) {
-                taker_strategy.step(taker.orders());
-                ++taker_ticks;
-                taker_paced = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
+            if (takerbasic.logged_in() && std::chrono::steady_clock::now() >= takerbasic_paced) {
+                takerbasic_strategy.step(takerbasic.orders());
+                ++takerbasic_ticks;
+                takerbasic_paced = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
                 worked = true;
             }
             return worked;
         }
-        if (!taker_turn.asked()) return worked;
-        if (taker.logged_in()) { taker_strategy.step(taker.orders()); ++taker_ticks; }
-        taker_turn.taken();
+        if (!takerbasic_turn.asked()) return worked;
+        if (takerbasic.logged_in()) { takerbasic_strategy.step(takerbasic.orders()); ++takerbasic_ticks; }
+        takerbasic_turn.taken();
         return true;
     });
     sim::Component replay_thread("replay", [&] {
@@ -341,12 +478,16 @@ int main(int argc, char** argv) {
     });
 
     engine_thread.start();
+    sequencer_thread.start();
     totalview_thread.start();
-    gateway_thread.start();
+    gatewaymakerbasic_thread.start();
+    gatewaytakerbasic_thread.start();
+    gatewayreplay_thread.start();
+    gatewayrequests_thread.start();
     glimpse_thread.start();
     totalviewtcp_thread.start();
-    maker_thread.start();
-    taker_thread.start();
+    makerbasic_thread.start();
+    takerbasic_thread.start();
     replay_thread.start();
     requests_thread.start();
 
@@ -354,20 +495,20 @@ int main(int argc, char** argv) {
     // same orders meet in the same order every time, whatever the threads' timing.
     if (!serve) {
         // Everyone is logged in before the first turn.
-        bool settled = sim::quiesce({ &to_engine, &to_clients, &to_totalview, &to_maker, &from_maker, &to_taker, &from_taker, &to_replay, &from_replay, &to_requests, &from_requests, &to_glimpse, &to_totalviewtcp }, { &engine_thread, &gateway_thread, &totalview_thread, &maker_thread, &taker_thread, &replay_thread, &requests_thread, &glimpse_thread, &totalviewtcp_thread }, std::chrono::milliseconds(5000));
+        bool settled = sim::quiesce({ &to_sequencer_gatewaymakerbasic, &to_sequencer_gatewaytakerbasic, &to_sequencer_gatewayreplay, &to_sequencer_gatewayrequests, &sequenced, &to_clients_gatewaymakerbasic, &to_clients_gatewaytakerbasic, &to_clients_gatewayreplay, &to_clients_gatewayrequests, &to_totalview, &to_makerbasic, &from_makerbasic, &to_takerbasic, &from_takerbasic, &to_replay, &from_replay, &to_requests, &from_requests, &to_glimpse, &to_totalviewtcp }, { &engine_thread, &sequencer_thread, &gatewaymakerbasic_thread, &gatewaytakerbasic_thread, &gatewayreplay_thread, &gatewayrequests_thread, &totalview_thread, &makerbasic_thread, &takerbasic_thread, &replay_thread, &requests_thread, &glimpse_thread, &totalviewtcp_thread }, std::chrono::milliseconds(5000));
         for (int tick = 0; tick < 20; ++tick) {
-            maker_turn.ask();
-            settled = maker_turn.wait() && settled;
-            settled = sim::quiesce({ &to_engine, &to_clients, &to_totalview, &to_maker, &from_maker, &to_taker, &from_taker, &to_replay, &from_replay, &to_requests, &from_requests, &to_glimpse, &to_totalviewtcp }, { &engine_thread, &gateway_thread, &totalview_thread, &maker_thread, &taker_thread, &replay_thread, &requests_thread, &glimpse_thread, &totalviewtcp_thread }, std::chrono::milliseconds(5000)) && settled;
-            taker_turn.ask();
-            settled = taker_turn.wait() && settled;
-            settled = sim::quiesce({ &to_engine, &to_clients, &to_totalview, &to_maker, &from_maker, &to_taker, &from_taker, &to_replay, &from_replay, &to_requests, &from_requests, &to_glimpse, &to_totalviewtcp }, { &engine_thread, &gateway_thread, &totalview_thread, &maker_thread, &taker_thread, &replay_thread, &requests_thread, &glimpse_thread, &totalviewtcp_thread }, std::chrono::milliseconds(5000)) && settled;
+            makerbasic_turn.ask();
+            settled = makerbasic_turn.wait() && settled;
+            settled = sim::quiesce({ &to_sequencer_gatewaymakerbasic, &to_sequencer_gatewaytakerbasic, &to_sequencer_gatewayreplay, &to_sequencer_gatewayrequests, &sequenced, &to_clients_gatewaymakerbasic, &to_clients_gatewaytakerbasic, &to_clients_gatewayreplay, &to_clients_gatewayrequests, &to_totalview, &to_makerbasic, &from_makerbasic, &to_takerbasic, &from_takerbasic, &to_replay, &from_replay, &to_requests, &from_requests, &to_glimpse, &to_totalviewtcp }, { &engine_thread, &sequencer_thread, &gatewaymakerbasic_thread, &gatewaytakerbasic_thread, &gatewayreplay_thread, &gatewayrequests_thread, &totalview_thread, &makerbasic_thread, &takerbasic_thread, &replay_thread, &requests_thread, &glimpse_thread, &totalviewtcp_thread }, std::chrono::milliseconds(5000)) && settled;
+            takerbasic_turn.ask();
+            settled = takerbasic_turn.wait() && settled;
+            settled = sim::quiesce({ &to_sequencer_gatewaymakerbasic, &to_sequencer_gatewaytakerbasic, &to_sequencer_gatewayreplay, &to_sequencer_gatewayrequests, &sequenced, &to_clients_gatewaymakerbasic, &to_clients_gatewaytakerbasic, &to_clients_gatewayreplay, &to_clients_gatewayrequests, &to_totalview, &to_makerbasic, &from_makerbasic, &to_takerbasic, &from_takerbasic, &to_replay, &from_replay, &to_requests, &from_requests, &to_glimpse, &to_totalviewtcp }, { &engine_thread, &sequencer_thread, &gatewaymakerbasic_thread, &gatewaytakerbasic_thread, &gatewayreplay_thread, &gatewayrequests_thread, &totalview_thread, &makerbasic_thread, &takerbasic_thread, &replay_thread, &requests_thread, &glimpse_thread, &totalviewtcp_thread }, std::chrono::milliseconds(5000)) && settled;
             replay_turn.ask();
             settled = replay_turn.wait() && settled;
-            settled = sim::quiesce({ &to_engine, &to_clients, &to_totalview, &to_maker, &from_maker, &to_taker, &from_taker, &to_replay, &from_replay, &to_requests, &from_requests, &to_glimpse, &to_totalviewtcp }, { &engine_thread, &gateway_thread, &totalview_thread, &maker_thread, &taker_thread, &replay_thread, &requests_thread, &glimpse_thread, &totalviewtcp_thread }, std::chrono::milliseconds(5000)) && settled;
+            settled = sim::quiesce({ &to_sequencer_gatewaymakerbasic, &to_sequencer_gatewaytakerbasic, &to_sequencer_gatewayreplay, &to_sequencer_gatewayrequests, &sequenced, &to_clients_gatewaymakerbasic, &to_clients_gatewaytakerbasic, &to_clients_gatewayreplay, &to_clients_gatewayrequests, &to_totalview, &to_makerbasic, &from_makerbasic, &to_takerbasic, &from_takerbasic, &to_replay, &from_replay, &to_requests, &from_requests, &to_glimpse, &to_totalviewtcp }, { &engine_thread, &sequencer_thread, &gatewaymakerbasic_thread, &gatewaytakerbasic_thread, &gatewayreplay_thread, &gatewayrequests_thread, &totalview_thread, &makerbasic_thread, &takerbasic_thread, &replay_thread, &requests_thread, &glimpse_thread, &totalviewtcp_thread }, std::chrono::milliseconds(5000)) && settled;
             requests_turn.ask();
             settled = requests_turn.wait() && settled;
-            settled = sim::quiesce({ &to_engine, &to_clients, &to_totalview, &to_maker, &from_maker, &to_taker, &from_taker, &to_replay, &from_replay, &to_requests, &from_requests, &to_glimpse, &to_totalviewtcp }, { &engine_thread, &gateway_thread, &totalview_thread, &maker_thread, &taker_thread, &replay_thread, &requests_thread, &glimpse_thread, &totalviewtcp_thread }, std::chrono::milliseconds(5000)) && settled;
+            settled = sim::quiesce({ &to_sequencer_gatewaymakerbasic, &to_sequencer_gatewaytakerbasic, &to_sequencer_gatewayreplay, &to_sequencer_gatewayrequests, &sequenced, &to_clients_gatewaymakerbasic, &to_clients_gatewaytakerbasic, &to_clients_gatewayreplay, &to_clients_gatewayrequests, &to_totalview, &to_makerbasic, &from_makerbasic, &to_takerbasic, &from_takerbasic, &to_replay, &from_replay, &to_requests, &from_requests, &to_glimpse, &to_totalviewtcp }, { &engine_thread, &sequencer_thread, &gatewaymakerbasic_thread, &gatewaytakerbasic_thread, &gatewayreplay_thread, &gatewayrequests_thread, &totalview_thread, &makerbasic_thread, &takerbasic_thread, &replay_thread, &requests_thread, &glimpse_thread, &totalviewtcp_thread }, std::chrono::milliseconds(5000)) && settled;
         }
         if (!settled)
             std::puts("nasdaq-simulator: the run did not settle between turns — see the counts below");
@@ -384,22 +525,33 @@ int main(int argc, char** argv) {
     // Stop in producer order. Each link a component reads is closed once it has stopped: nothing
     // reads it again, so a component still writing to it - the gateway answering a trader that
     // has gone - stops waiting for room, and is free to stop in its turn.
-    maker_thread.stop();
-    to_maker.close();
-    taker_thread.stop();
-    to_taker.close();
+    makerbasic_thread.stop();
+    to_makerbasic.close();
+    takerbasic_thread.stop();
+    to_takerbasic.close();
     replay_thread.stop();
     to_replay.close();
     requests_thread.stop();
     to_requests.close();
-    gateway_thread.stop();
-    to_clients.close();
-    from_maker.close();
-    from_taker.close();
+    gatewaymakerbasic_thread.stop();
+    to_clients_gatewaymakerbasic.close();
+    from_makerbasic.close();
+    gatewaytakerbasic_thread.stop();
+    to_clients_gatewaytakerbasic.close();
+    from_takerbasic.close();
+    gatewayreplay_thread.stop();
+    to_clients_gatewayreplay.close();
     from_replay.close();
+    gatewayrequests_thread.stop();
+    to_clients_gatewayrequests.close();
     from_requests.close();
+    sequencer_thread.stop();
+    to_sequencer_gatewaymakerbasic.close();
+    to_sequencer_gatewaytakerbasic.close();
+    to_sequencer_gatewayreplay.close();
+    to_sequencer_gatewayrequests.close();
     engine_thread.stop();
-    to_engine.close();
+    sequenced.close();
     totalview_thread.stop();
     to_totalview.close();
     glimpse_thread.stop();
@@ -450,32 +602,36 @@ int main(int argc, char** argv) {
                     (unsigned long long)watched.messages, watched.over ? " then ended the session" : "", (unsigned long long)watched.resume);
     }
 
-    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, order_accepted=%llu, order_executed=%llu, canceled=%llu\n",
-                maker.name().c_str(), maker.logged_in() ? maker.session_name().c_str() : "not logged in",
-                (unsigned long long)maker.entered(), (unsigned long long)maker.canceled(),
-            (unsigned long long)maker.answers().order_accepted_message,
-            (unsigned long long)maker.answers().order_executed_message,
-            (unsigned long long)maker.answers().canceled_message);
-    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, order_accepted=%llu, order_executed=%llu, canceled=%llu\n",
-                taker.name().c_str(), taker.logged_in() ? taker.session_name().c_str() : "not logged in",
-                (unsigned long long)taker.entered(), (unsigned long long)taker.canceled(),
-            (unsigned long long)taker.answers().order_accepted_message,
-            (unsigned long long)taker.answers().order_executed_message,
-            (unsigned long long)taker.answers().canceled_message);
+    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, order_accepted=%llu, order_executed=%llu, canceled=%llu, rejected_order=%llu\n",
+                makerbasic.name().c_str(), makerbasic.logged_in() ? makerbasic.session_name().c_str() : "not logged in",
+                (unsigned long long)makerbasic.entered(), (unsigned long long)makerbasic.canceled(),
+            (unsigned long long)makerbasic.answers().order_accepted_message,
+            (unsigned long long)makerbasic.answers().order_executed_message,
+            (unsigned long long)makerbasic.answers().canceled_message,
+            (unsigned long long)makerbasic.answers().rejected_order_message);
+    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, order_accepted=%llu, order_executed=%llu, canceled=%llu, rejected_order=%llu\n",
+                takerbasic.name().c_str(), takerbasic.logged_in() ? takerbasic.session_name().c_str() : "not logged in",
+                (unsigned long long)takerbasic.entered(), (unsigned long long)takerbasic.canceled(),
+            (unsigned long long)takerbasic.answers().order_accepted_message,
+            (unsigned long long)takerbasic.answers().order_executed_message,
+            (unsigned long long)takerbasic.answers().canceled_message,
+            (unsigned long long)takerbasic.answers().rejected_order_message);
     std::printf("nasdaq-simulator: trader %s replayed %zu quotes from captures/TotalView.pcap\n", replay.name().c_str(), replay_strategy.available());
-    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, order_accepted=%llu, order_executed=%llu, canceled=%llu\n",
+    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, order_accepted=%llu, order_executed=%llu, canceled=%llu, rejected_order=%llu\n",
                 replay.name().c_str(), replay.logged_in() ? replay.session_name().c_str() : "not logged in",
                 (unsigned long long)replay.entered(), (unsigned long long)replay.canceled(),
             (unsigned long long)replay.answers().order_accepted_message,
             (unsigned long long)replay.answers().order_executed_message,
-            (unsigned long long)replay.answers().canceled_message);
+            (unsigned long long)replay.answers().canceled_message,
+            (unsigned long long)replay.answers().rejected_order_message);
     std::printf("nasdaq-simulator: trader %s replayed %zu quotes from captures/Ouch.pcap\n", requests.name().c_str(), requests_strategy.available());
-    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, order_accepted=%llu, order_executed=%llu, canceled=%llu\n",
+    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, order_accepted=%llu, order_executed=%llu, canceled=%llu, rejected_order=%llu\n",
                 requests.name().c_str(), requests.logged_in() ? requests.session_name().c_str() : "not logged in",
                 (unsigned long long)requests.entered(), (unsigned long long)requests.canceled(),
             (unsigned long long)requests.answers().order_accepted_message,
             (unsigned long long)requests.answers().order_executed_message,
-            (unsigned long long)requests.answers().canceled_message);
+            (unsigned long long)requests.answers().canceled_message,
+            (unsigned long long)requests.answers().rejected_order_message);
     std::printf("nasdaq-simulator: %llu trades matched, ipc carried %llu order + %llu event messages\n",
                 (unsigned long long)trades.load(), (unsigned long long)ipc_msgs.load(), (unsigned long long)ipc_events.load());
     return 0;

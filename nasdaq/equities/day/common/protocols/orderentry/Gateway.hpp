@@ -19,6 +19,7 @@
 #include "messages/OrderAcceptedMessage.hpp"
 #include "messages/OrderExecutedMessage.hpp"
 #include "messages/CanceledMessage.hpp"
+#include "messages/RejectedOrderMessage.hpp"
 #include "structs/ServerPacketHeader.hpp"
 #include "structs/ClientPacketHeader.hpp"
 #include "messages/UnsequencedDataPacket.hpp"
@@ -28,7 +29,9 @@
 #include "../ipc/structs/CancelOrderMessage.hpp"
 #include "../ipc/structs/TradeMessage.hpp"
 #include "../ipc/structs/OrderCanceledMessage.hpp"
+#include "../ipc/structs/OrderEliminatedMessage.hpp"
 #include "../ipc/structs/OrderRefusedMessage.hpp"
+#include "../ipc/structs/OrderAcceptedMessage.hpp"
 
 namespace sim::orderentry {
 
@@ -65,6 +68,8 @@ struct Order {
     std::uint64_t reference = 0;
     std::uint64_t remaining = 0;
     std::size_t client = 0;
+    protocol::enter_order_message::fields_type entered{};   // what the client entered it with, which a response restates
+    protocol::enter_order_message request{};   // the request that admitted it, answered once the engine has it
 };
 
 // enter_order_message -> new_order_message  (NsmEquities.Ipc.Transforms.xml: ouch_enter_order)
@@ -77,6 +82,7 @@ inline ipc_ns::new_order_message to_ouch_enter_order(const protocol::enter_order
     out.quantity.set(m.fields.quantity.get().value());
     out.symbol.set(m.fields.symbol.get().value());
     out.price.set(static_cast<value_of<decltype(out.price)>>(m.fields.price.get().value()));
+    out.time_in_force.set(static_cast<value_of<decltype(out.time_in_force)>>([](char value) { switch (value) { case '5': return '0'; default: return value; } }(static_cast<char>(m.fields.time_in_force.get().value()))));
     out.timestamp.set(static_cast<value_of<decltype(out.timestamp)>>(send_time_nanos()));
     return out;
 }
@@ -104,7 +110,29 @@ inline protocol::order_accepted_message to_ouch_order_accepted(const protocol::e
     out.fields.quantity.set(m.fields.quantity.get().value());
     out.fields.symbol.set(m.fields.symbol.get().value());
     out.fields.price.set(m.fields.price.get().value());
-    out.fields.time_in_force.set(static_cast<value_of<decltype(out.fields.time_in_force)>>(static_cast<char>(m.fields.time_in_force.get().value())));
+    out.fields.time_in_force.set(static_cast<value_of<decltype(out.fields.time_in_force)>>([](char value) { switch (value) { case '5': return '0'; default: return value; } }(static_cast<char>(m.fields.time_in_force.get().value()))));
+    out.fields.display.set(static_cast<value_of<decltype(out.fields.display)>>(static_cast<char>(m.fields.display.get().value())));
+    out.fields.capacity.set(static_cast<value_of<decltype(out.fields.capacity)>>(static_cast<char>(m.fields.capacity.get().value())));
+    out.fields.inter_market_sweep_eligibility.set(static_cast<value_of<decltype(out.fields.inter_market_sweep_eligibility)>>(static_cast<char>(m.fields.inter_market_sweep_eligibility.get().value())));
+    out.fields.cross_type.set(static_cast<value_of<decltype(out.fields.cross_type)>>(static_cast<char>(m.fields.cross_type.get().value())));
+    out.fields.clordid.set(m.fields.clordid.get().value());
+    return out;
+}
+
+// enter_order_message -> order_accepted_message  (NsmEquities.Ipc.Transforms.xml: ouch_order_accepted_closed)
+inline protocol::order_accepted_message to_ouch_order_accepted_closed(const protocol::enter_order_message& m, const Order& order) {
+    (void)m;
+    (void)order;
+    protocol::order_accepted_message out{};
+    out.fields.timestamp.set(static_cast<value_of<decltype(out.fields.timestamp)>>(nanoseconds_since_midnight(static_cast<std::uint64_t>(send_time_nanos()), utc())));
+    out.fields.order_reference_number.set(static_cast<value_of<decltype(out.fields.order_reference_number)>>(order.id));
+    out.fields.order_state.set(static_cast<value_of<decltype(out.fields.order_state)>>('L'));
+    out.fields.user_ref_num.set(m.fields.user_ref_num.get().value());
+    out.fields.side.set(static_cast<value_of<decltype(out.fields.side)>>(static_cast<char>(m.fields.side.get().value())));
+    out.fields.quantity.set(m.fields.quantity.get().value());
+    out.fields.symbol.set(m.fields.symbol.get().value());
+    out.fields.price.set(m.fields.price.get().value());
+    out.fields.time_in_force.set(static_cast<value_of<decltype(out.fields.time_in_force)>>([](char value) { switch (value) { case '5': return '0'; default: return value; } }(static_cast<char>(m.fields.time_in_force.get().value()))));
     out.fields.display.set(static_cast<value_of<decltype(out.fields.display)>>(static_cast<char>(m.fields.display.get().value())));
     out.fields.capacity.set(static_cast<value_of<decltype(out.fields.capacity)>>(static_cast<char>(m.fields.capacity.get().value())));
     out.fields.inter_market_sweep_eligibility.set(static_cast<value_of<decltype(out.fields.inter_market_sweep_eligibility)>>(static_cast<char>(m.fields.inter_market_sweep_eligibility.get().value())));
@@ -153,6 +181,30 @@ inline protocol::canceled_message to_ouch_canceled(const ipc_ns::order_canceled_
     return out;
 }
 
+// order_eliminated_message -> canceled_message  (NsmEquities.Ipc.Transforms.xml: ouch_eliminated)
+inline protocol::canceled_message to_ouch_eliminated(const ipc_ns::order_eliminated_message& m, const Order& order) {
+    (void)m;
+    (void)order;
+    protocol::canceled_message out{};
+    out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(order.reference));
+    out.fields.cancel_order_reason.set(static_cast<value_of<decltype(out.fields.cancel_order_reason)>>('I'));
+    out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), utc()));
+    out.fields.quantity.set(m.quantity.get().value());
+    return out;
+}
+
+// order_eliminated_message -> canceled_message  (NsmEquities.Ipc.Transforms.xml: ouch_eliminated_market)
+inline protocol::canceled_message to_ouch_eliminated_market(const ipc_ns::order_eliminated_message& m, const Order& order) {
+    (void)m;
+    (void)order;
+    protocol::canceled_message out{};
+    out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(order.reference));
+    out.fields.cancel_order_reason.set(static_cast<value_of<decltype(out.fields.cancel_order_reason)>>('Z'));
+    out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), utc()));
+    out.fields.quantity.set(m.quantity.get().value());
+    return out;
+}
+
 // order_refused_message -> canceled_message  (NsmEquities.Ipc.Transforms.xml: ouch_refused)
 inline protocol::canceled_message to_ouch_refused(const ipc_ns::order_refused_message& m, const Order& order) {
     (void)m;
@@ -165,6 +217,18 @@ inline protocol::canceled_message to_ouch_refused(const ipc_ns::order_refused_me
     return out;
 }
 
+// order_refused_message -> rejected_order_message  (NsmEquities.Ipc.Transforms.xml: ouch_rejected)
+inline protocol::rejected_order_message to_ouch_rejected(const ipc_ns::order_refused_message& m, const Order& order) {
+    (void)m;
+    (void)order;
+    protocol::rejected_order_message out{};
+    out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(order.reference));
+    out.fields.rejected_order_reason.set(static_cast<value_of<decltype(out.fields.rejected_order_reason)>>(15));
+    out.fields.clordid.set(order.entered.clordid.get().value());
+    out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), utc()));
+    return out;
+}
+
 // The order-entry gateway: SoupBin Tcp clients in, the Ipc to the engine out, and the engine's
 // events back to the client each order belongs to. `Emit` is a callable(const char*, std::size_t)
 // taking framed Ipc messages to the engine.
@@ -173,7 +237,12 @@ class Gateway {
 public:
     using Send = std::function<void(const char*, std::size_t)>;
 
-    explicit Gateway(Emit emit) : emit_(emit) {}
+    // One of the venue's gateways, a gateway for each trader. Each numbers the orders it admits
+    // in an interleave of its own - the k-th of n gateways k, k + n, k + 2n ... - so no two of them
+    // give one number, and none has to ask another what it gave. The simulator's own scheme:
+    // Nasdaq's feeds show orders numbered by the engine as they arrive, not by any gateway.
+    // A gateway on its own - a test's - numbers from one, as the one gateway does.
+    explicit Gateway(Emit emit, std::uint64_t first = 1, std::uint64_t step = 1) : emit_(emit), next_id_(first), step_(step) {}
 
     // A login the gateway accepts; with none registered, any login is accepted.
     void allow(std::string username, std::string password) { credentials_[std::move(username)] = std::move(password); }
@@ -216,10 +285,24 @@ public:
         close(m.order_id.get().value());
     }
 
+    // The engine's order_eliminated_message: answered to the client owning each order it names.
+    void on_event(const ipc_ns::order_eliminated_message& m) {
+        if (static_cast<char>(m.time_in_force.get().value()) == '3') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_eliminated(m, found->second));
+        if (static_cast<char>(m.time_in_force.get().value()) == '0') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_eliminated_market(m, found->second));
+        fill(m.order_id.get().value(), m.quantity.get().value());
+    }
+
     // The engine's order_refused_message: answered to the client owning each order it names.
     void on_event(const ipc_ns::order_refused_message& m) {
-        if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_refused(m, found->second));
+        if (static_cast<char>(m.refusal_reason.get().value()) == 'E') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_order_accepted_closed(found->second.request, found->second));
+        if (static_cast<char>(m.refusal_reason.get().value()) == 'E') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_refused(m, found->second));
+        if (static_cast<char>(m.refusal_reason.get().value()) == 'O') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_rejected(m, found->second));
         close(m.order_id.get().value());
+    }
+
+    // The engine's order_accepted_message: answered to the client owning each order it names.
+    void on_event(const ipc_ns::order_accepted_message& m) {
+        if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_order_accepted(found->second.request, found->second));
     }
 
 private:
@@ -260,12 +343,13 @@ private:
             case static_cast<decltype(selector)>('O'): {
                 if (packet.size() < fixed_size<protocol::enter_order_message>()) return;
                 const auto& m = *protocol::enter_order_message::parse(bytes);
-                Order order{ ++next_id_, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, client };
+                Order order{ numbered(), static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, client };
                 auto ipc = to_ouch_enter_order(m, order);
                 order.remaining = ipc.quantity.get().value();
+                order.entered = m.fields;
+                std::memcpy(&order.request, packet.data(), std::min(packet.size(), sizeof order.request));   // as much of it as arrived
                 orders_[order.id] = order;
                 references_[{ client, order.reference }] = order.id;
-                respond(client, to_ouch_order_accepted(m, order));
                 detail_ipc::emit_framed(emit_, 'N', ipc);
                 return;
             }
@@ -313,13 +397,21 @@ private:
         orders_.erase(found);
     }
 
+    // The number of the next order admitted, and the gateway's next after it.
+    std::uint64_t numbered() {
+        const std::uint64_t id = next_id_;
+        next_id_ += step_;
+        return id;
+    }
+
     Emit emit_;
     std::map<std::size_t, std::unique_ptr<Client>> clients_;
     std::size_t next_client_ = 0;   // session numbers, never reused
     std::map<std::string, std::string, std::less<>> credentials_;
     std::map<std::uint64_t, Order> orders_;
     std::map<std::pair<std::size_t, std::uint64_t>, std::uint64_t> references_;
-    std::uint64_t next_id_ = 0;
+    std::uint64_t next_id_;   // the number the next order admitted is given
+    std::uint64_t step_;      // how many gateways number in turn
 };
 
 }

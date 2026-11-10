@@ -84,6 +84,8 @@ int main(int argc, char** argv) {
                 sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_delete), sizeof totalview_order_delete);
                 totalview.flush();
             },
+            [](const sim::ipc_ns::order_accepted_message&) {},
+            [](const sim::ipc_ns::order_eliminated_message&) {},
             [](const sim::ipc_ns::order_refused_message&) {},
             [&](const sim::ipc_ns::phase_announced_message& s) {
                 // phase_announced_message -> the feeds its transforms declare (NsmEquities.Ipc.Transforms.xml).

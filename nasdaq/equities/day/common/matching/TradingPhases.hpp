@@ -1,6 +1,6 @@
 #pragma once
 
-// Generated from the Nasdaq Equities engine chart.
+// Generated from the Nasdaq Equities Session engine chart.
 // The phases of a trading day, and what an order arriving in each of them
 // meets. The book itself is MatchingEngine.hpp.
 

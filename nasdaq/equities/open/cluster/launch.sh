@@ -17,7 +17,7 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 build="${1:-../build}"
 [ $# -gt 0 ] && shift
 
-if [ ! -x "$build/nasdaq_cluster_gateway" ]; then
+if [ ! -x "$build/nasdaq_cluster_gatewaymakerbasic" ]; then
     echo "launch: no nasdaq_cluster_* in $build — build the tree first:" >&2
     echo "        cmake -S .. -B $build -DCMAKE_BUILD_TYPE=Release && cmake --build $build --parallel" >&2
     exit 1
@@ -39,13 +39,17 @@ start() {
 }
 
 # Consumers before producers, so nothing writes to a link nobody is reading yet.
-start gateway "$@"
+start gatewaymakerbasic "$@"
+start gatewaytakerbasic "$@"
+start gatewayreplay "$@"
+start gatewayrequests "$@"
 start engine "$@"
+start sequencer "$@"
 start totalview "$@"
 start glimpse "$@"
 start totalviewtcp "$@"
-start maker "$@"
-start taker "$@"
+start makerbasic "$@"
+start takerbasic "$@"
 start replay "$@"
 start requests "$@"
 
@@ -57,7 +61,7 @@ start requests "$@"
 down() {
     trap - INT TERM
 
-    for index in 8 7 6 5 4 3 2 1 0; do
+    for index in 12 11 10 9 8 7 6 5 4 3 2 1 0; do
         pid="${pids[$index]}"
         name="${names[$index]}"
         if kill -0 "$pid" 2>/dev/null; then
@@ -76,7 +80,7 @@ down() {
 
 trap down INT TERM
 
-echo "launch: 9 components up — Ctrl-C to stop"
+echo "launch: 13 components up — Ctrl-C to stop"
 
 while :; do
     # A component that dies on its own takes the venue with it: a venue missing one of its parts

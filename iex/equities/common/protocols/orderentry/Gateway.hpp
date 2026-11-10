@@ -206,7 +206,7 @@ public:
     using Send = std::function<void(const char*, std::size_t)>;
 
     explicit Gateway(Emit emit, Clock clock = {}) : emit_(emit), clock_(clock) {
-        config_.sender_comp_id = "IEXG";
+        config_.comp_id = "IEXG";
     }
 
     // A login the gateway accepts, by the SenderCompID a client logs on with; the model's Logon carries no password, so none is checked.
@@ -289,15 +289,17 @@ private:
         Client(Gateway& owner, std::size_t at, Send writer)
             : gateway(owner), index(at), send(std::move(writer)), session(owner.config_, send, *this) {}
 
-        bool login(std::string_view, std::string_view text) { return gateway.login(text); }
+        bool login(std::string_view, std::string_view text, std::string& refusal) { return gateway.login(text, refusal); }
         void message(std::string_view type, std::string_view text) { gateway.message(index, type, text); }
         void logout() {}
     };
 
-    bool login(std::string_view text) const {
+    bool login(std::string_view text, std::string& refusal) const {
         if (credentials_.empty()) return true;
         const auto found = credentials_.find(protocol::field(text, Tag::SenderCompID));
-        return found != credentials_.end();
+        const bool accepted = found != credentials_.end();
+        if (!accepted) refusal = "credentials not recognised";
+        return accepted;
     }
 
     // One application message from a client, recognised by its MsgType.

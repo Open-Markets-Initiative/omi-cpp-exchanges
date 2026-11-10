@@ -13,6 +13,7 @@
 #include "../protocols/orderentry/messages/OrderAcceptedMessage.hpp"
 #include "../protocols/orderentry/messages/OrderExecutedMessage.hpp"
 #include "../protocols/orderentry/messages/CanceledMessage.hpp"
+#include "../protocols/orderentry/messages/RejectedOrderMessage.hpp"
 #include "../protocols/orderentry/messages/UnsequencedDataPacket.hpp"
 #include "../protocols/orderentry/messages/SequencedDataPacket.hpp"
 #include "../protocols/orderentry/SoupBinClient.hpp"
@@ -39,6 +40,7 @@ struct Answers {
     std::uint64_t order_accepted_message = 0;
     std::uint64_t order_executed_message = 0;
     std::uint64_t canceled_message = 0;
+    std::uint64_t rejected_order_message = 0;
 };
 
 // A strategy's intent, in the venue's own order-entry messages, on a client session.
@@ -116,6 +118,7 @@ private:
         out.fields.quantity.set(quantity);
         out.fields.symbol.set(instrument_symbol);
         out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>(price));
+        out.fields.time_in_force.set(static_cast<value_of<decltype(out.fields.time_in_force)>>(static_cast<char>('0')));
         send(out);
         ++entered_;
         return reference;
@@ -172,6 +175,7 @@ public:
             case static_cast<decltype(selector)>('A'): ++answers_.order_accepted_message; return;
             case static_cast<decltype(selector)>('E'): ++answers_.order_executed_message; return;
             case static_cast<decltype(selector)>('C'): ++answers_.canceled_message; return;
+            case static_cast<decltype(selector)>('J'): ++answers_.rejected_order_message; return;
             default: return;   // a message this trader's venue does not answer orders with
         }
     }

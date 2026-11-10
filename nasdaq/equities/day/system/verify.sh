@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generated check of the Nasdaq Stock Market Day venue as 10 separate processes, joined by rings in shared memory.
+# Generated check of the Nasdaq Stock Market Day venue as 14 separate processes, joined by rings in shared memory.
 #
 # Usage: bash verify.sh [build-directory] [seconds]
 #
@@ -32,7 +32,7 @@ atleast() { if [ -n "$2" ] && [ "$2" -ge "$3" ] 2>/dev/null; then ok "$1 ($2)"; 
 # component whose own name has a digit in it does not count as one.
 number() { grep -m1 -- "$1" "$out" | sed "s/.*$1//" | grep -oE '[0-9]+' | sed -n "$2p"; }
 
-echo "verify: Nasdaq Stock Market Day — system, 10 components, ${seconds}s"
+echo "verify: Nasdaq Stock Market Day — system, 14 components, ${seconds}s"
 
 bash "$here/launch.sh" "$build" > "$out" 2>&1 &
 launcher=$!
@@ -64,19 +64,23 @@ totalview_read=$(number "nasdaq-totalview: stopped" 1)
 totalview_published=$(number "nasdaq-totalview: stopped" 2)
 glimpse_held=$(number "nasdaq-glimpse: stopped" 1)
 totalviewtcp_held=$(number "nasdaq-totalviewtcp: stopped" 1)
-maker_entered=$(number "nasdaq-maker: stopped" 1)
-taker_entered=$(number "nasdaq-taker: stopped" 1)
+makerbasic_entered=$(number "nasdaq-makerbasic: stopped" 1)
+takerbasic_entered=$(number "nasdaq-takerbasic: stopped" 1)
 echo "verify: what the venue did"
-same "components up while it ran" "$up" 10
+same "components up while it ran" "$up" 14
 said "launch: down" "the launcher brought it down in order"
-said "nasdaq-gateway: stopped" "gateway ran and stopped cleanly"
+said "nasdaq-gatewaymakerbasic: stopped" "gatewaymakerbasic ran and stopped cleanly"
+said "nasdaq-gatewaytakerbasic: stopped" "gatewaytakerbasic ran and stopped cleanly"
+said "nasdaq-gatewayreplay: stopped" "gatewayreplay ran and stopped cleanly"
+said "nasdaq-gatewayrequests: stopped" "gatewayrequests ran and stopped cleanly"
 said "nasdaq-engine: stopped" "engine ran and stopped cleanly"
+said "nasdaq-sequencer: stopped" "sequencer ran and stopped cleanly"
 said "nasdaq-day: stopped" "day ran and stopped cleanly"
 said "nasdaq-totalview: stopped" "totalview ran and stopped cleanly"
 said "nasdaq-glimpse: stopped" "glimpse ran and stopped cleanly"
 said "nasdaq-totalviewtcp: stopped" "totalviewtcp ran and stopped cleanly"
-said "nasdaq-maker: stopped" "maker ran and stopped cleanly"
-said "nasdaq-taker: stopped" "taker ran and stopped cleanly"
+said "nasdaq-makerbasic: stopped" "makerbasic ran and stopped cleanly"
+said "nasdaq-takerbasic: stopped" "takerbasic ran and stopped cleanly"
 said "nasdaq-replay: stopped" "replay ran and stopped cleanly"
 said "nasdaq-requests: stopped" "requests ran and stopped cleanly"
 echo "verify: what it carried"
@@ -85,13 +89,13 @@ atleast "the engine emitted events" "$events" 1
 same "totalview read what the engine emitted" "$totalview_read" "$events"
 same "glimpse holds what totalview published" "$glimpse_held" "$totalview_published"
 same "totalviewtcp holds what totalview published" "$totalviewtcp_held" "$totalview_published"
-atleast "maker entered orders" "$maker_entered" 1
-atleast "taker entered orders" "$taker_entered" 1
+atleast "makerbasic entered orders" "$makerbasic_entered" 1
+atleast "takerbasic entered orders" "$takerbasic_entered" 1
 
 echo "verify: what it did not lose"
 quiet "gap(s) on" "no link reported a gap"
 same "components left running" "$(pgrep -c -f "nasdaq_system_" || true)" 0
-same "rings left in /dev/shm" "$(ls /dev/shm 2>/dev/null | grep -c -E 'gateway|engine|day|totalview|glimpse|totalviewtcp|maker|taker|replay|requests' || true)" 0
+same "rings left in /dev/shm" "$(ls /dev/shm 2>/dev/null | grep -c -E 'gatewaymakerbasic|gatewaytakerbasic|gatewayreplay|gatewayrequests|engine|sequencer|day|totalview|glimpse|totalviewtcp|makerbasic|takerbasic|replay|requests' || true)" 0
 
 echo "verify: $pass ok, $fail failed"
 rm -f "$out"

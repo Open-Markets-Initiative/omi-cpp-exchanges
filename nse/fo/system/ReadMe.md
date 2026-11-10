@@ -10,8 +10,8 @@ what a component writes to.
 | `nse_system_gateway` | `gateway/` | order entry over Tcp, a session per client, the orders it has admitted |
 | `nse_system_engine` | `engine/` | the book: it matches what it is sent and emits what happened |
 | `nse_system_mtbt` | `mtbt/` | the mtbt feed: engine events through its transforms, out as multicast and into the recording |
-| `nse_system_maker` | `maker/` | the trader Maker, a maker trading through the venue's own order entry |
-| `nse_system_taker` | `taker/` | the trader Taker, a taker trading through the venue's own order entry |
+| `nse_system_makerbasic` | `makerbasic/` | the trader MakerBasic, a makerbasic trading through the venue's own order entry |
+| `nse_system_takerbasic` | `takerbasic/` | the trader TakerBasic, a takerbasic trading through the venue's own order entry |
 | `nse_rings` | `rings/` | makes the links, and removes them: run by `launch.sh`, not by hand |
 
 ## The topology
@@ -22,17 +22,17 @@ flowchart LR
     gateway["gateway<br/><small>order entry</small>"]
     engine["engine<br/><small>matching</small>"]
     mtbt["mtbt<br/><small>feed</small>"]
-    maker["maker<br/><small>trader</small>"]
-    taker["taker<br/><small>trader</small>"]
+    makerbasic["makerbasic<br/><small>trader</small>"]
+    takerbasic["takerbasic<br/><small>trader</small>"]
     mtbt_out([Mtbt Udp])
     clients -->|Nse Nnf Tcp| gateway
     gateway -->|ipc ring| engine
     engine -->|ipc ring| gateway
     engine -->|ipc ring| mtbt
-    gateway -->|messages ring| maker
-    maker -->|messages ring| gateway
-    gateway -->|messages ring| taker
-    taker -->|messages ring| gateway
+    gateway -->|messages ring| makerbasic
+    makerbasic -->|messages ring| gateway
+    gateway -->|messages ring| takerbasic
+    takerbasic -->|messages ring| gateway
     mtbt -.-> mtbt_out
 ```
 

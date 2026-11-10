@@ -10,8 +10,8 @@
 
 #include "protocols/orderentry/Gateway.hpp"
 #include "traders/Orders.hpp"
-#include "traders/Maker.hpp"
-#include "traders/Taker.hpp"
+#include "traders/MakerBasic.hpp"
+#include "traders/TakerBasic.hpp"
 #include "protocols/marketdata/tops/PacketPublisher.hpp"
 #include "protocols/marketdata/deep/PacketPublisher.hpp"
 #include "protocols/marketdata/deepplus/PacketPublisher.hpp"
@@ -166,7 +166,7 @@ int main(int argc, char** argv) {
     auto alice_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_alice, b, n); };
     sim::traders::Trader<decltype(alice_send)> alice("Alice", "alice", "alice", alice_send);
     const std::size_t alice_client = gateway.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_alice, b, n); });
-    sim::traders::SimpleMaker<std::remove_reference_t<decltype(alice.orders())>> alice_strategy(/*mid*/10000, /*spread*/10, /*size*/100, /*levels*/3);
+    sim::traders::MakerBasic<std::remove_reference_t<decltype(alice.orders())>> alice_strategy(/*mid*/10000, /*spread*/10, /*size*/100, /*levels*/3, /*tick*/1);
     int alice_ticks = 0;
     std::chrono::steady_clock::time_point alice_paced{};   // when a served trader next orders
     sim::Turn alice_turn;
@@ -176,7 +176,7 @@ int main(int argc, char** argv) {
     auto bob_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_bob, b, n); };
     sim::traders::Trader<decltype(bob_send)> bob("Bob", "bob", "bob", bob_send);
     const std::size_t bob_client = gateway.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_bob, b, n); });
-    sim::traders::SimpleTaker<std::remove_reference_t<decltype(bob.orders())>> bob_strategy(/*mid*/10000, /*cross*/20, /*size*/50, /*period*/3);
+    sim::traders::TakerBasic<std::remove_reference_t<decltype(bob.orders())>> bob_strategy(/*mid*/10000, /*cross*/20, /*size*/50, /*period*/3);
     int bob_ticks = 0;
     std::chrono::steady_clock::time_point bob_paced{};   // when a served trader next orders
     sim::Turn bob_turn;
@@ -336,11 +336,11 @@ int main(int argc, char** argv) {
     to_deepplus.close();
 
     std::printf("iex-simulator: trader %s (%s) entered %llu, canceled %llu, ExecutionReport=%llu\n",
-                alice.name().c_str(), alice.logged_in() ? "talking" : "not talking",
+                alice.name().c_str(), alice.logged_in() ? alice.session_name().c_str() : "not logged in",
                 (unsigned long long)alice.entered(), (unsigned long long)alice.canceled(),
             (unsigned long long)alice.answers().ExecutionReport);
     std::printf("iex-simulator: trader %s (%s) entered %llu, canceled %llu, ExecutionReport=%llu\n",
-                bob.name().c_str(), bob.logged_in() ? "talking" : "not talking",
+                bob.name().c_str(), bob.logged_in() ? bob.session_name().c_str() : "not logged in",
                 (unsigned long long)bob.entered(), (unsigned long long)bob.canceled(),
             (unsigned long long)bob.answers().ExecutionReport);
     std::printf("iex-simulator: %llu trades matched, ipc carried %llu order + %llu event messages\n",

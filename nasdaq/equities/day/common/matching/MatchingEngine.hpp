@@ -12,11 +12,19 @@ namespace matching {
 
 enum class Side : std::uint8_t { Buy, Sell };
 
+// How long an order lives, as the venue's time in force means it.
+//   Session   — until the trading session it was entered in ends
+//   Canceled  — until it is canceled, through any number of sessions
+//   Immediate — what does not trade as it arrives is eliminated
+//   Date      — until the session of a date it names ends
+enum class Lifetime : std::uint8_t { Session, Canceled, Immediate, Date };
+
 struct Order {
     std::uint64_t id;
     Side          side;
     std::int64_t  price;   // in ticks
     std::uint64_t qty;
+    Lifetime      lifetime = Lifetime::Session;   // how long it lives, as its time in force means
 };
 
 // The price a market order stands at: it trades at any price, so it is ahead of every limit on
@@ -55,27 +63,39 @@ struct IgnoreCancel {
 };
 
 // Continuous price-time-priority matching engine for one instrument.
-//   on_trade(Trade)          — a fill was generated (aggressor vs resting)
-//   on_rest(const Order&)    — residual quantity now rests in the book
-//   on_canceled(const Order&) — a resting order was removed by a cancel
+//   on_trade(Trade)             — a fill was generated (aggressor vs resting)
+//   on_rest(const Order&)       — residual quantity now rests in the book
+//   on_canceled(const Order&)   — a resting order was removed by a cancel
+//   on_eliminated(const Order&) — what was left of an order never to rest was taken out
+//   on_accepted(const Order&)   — the book took an order, as it now stands, before anything it makes of it
 // Pure logic: no I/O, no threading — the owner drives it and forwards the callbacks
 // to the order gateway and the market-data feeds.
-template <typename OnTrade, typename OnRest, typename OnCanceled = IgnoreCancel>
+template <typename OnTrade, typename OnRest, typename OnCanceled = IgnoreCancel, typename OnEliminated = IgnoreCancel, typename OnAccepted = IgnoreCancel>
 class MatchingEngine {
 public:
     MatchingEngine(OnTrade on_trade, OnRest on_rest)
-        : on_trade_(on_trade), on_rest_(on_rest), on_canceled_() {}
+        : on_trade_(on_trade), on_rest_(on_rest), on_canceled_(), on_eliminated_(), on_accepted_() {}
 
     MatchingEngine(OnTrade on_trade, OnRest on_rest, OnCanceled on_canceled)
-        : on_trade_(on_trade), on_rest_(on_rest), on_canceled_(on_canceled) {}
+        : on_trade_(on_trade), on_rest_(on_rest), on_canceled_(on_canceled), on_eliminated_(), on_accepted_() {}
+
+    MatchingEngine(OnTrade on_trade, OnRest on_rest, OnCanceled on_canceled, OnEliminated on_eliminated)
+        : on_trade_(on_trade), on_rest_(on_rest), on_canceled_(on_canceled), on_eliminated_(on_eliminated), on_accepted_() {}
+
+    MatchingEngine(OnTrade on_trade, OnRest on_rest, OnCanceled on_canceled, OnEliminated on_eliminated, OnAccepted on_accepted)
+        : on_trade_(on_trade), on_rest_(on_rest), on_canceled_(on_canceled), on_eliminated_(on_eliminated), on_accepted_(on_accepted) {}
+
 
     void on_new_order(Order order) {
+        on_accepted_(order);   // taken, before anything it makes of it
         if (order.side == Side::Buy)
             cross(order, asks_, [&](std::int64_t level) { return level <= order.price; });
         else
             cross(order, bids_, [&](std::int64_t level) { return level >= order.price; });
 
-        if (order.qty > 0) rest(order);
+        if (order.qty == 0) return;
+        if (order.lifetime == Lifetime::Immediate || order.price == market(order.side)) on_eliminated_(order);   // never to rest: what is left goes
+        else rest(order);
     }
 
     // Remove a resting order by id, telling the owner what left the book. Returns true if it was found.
@@ -88,7 +108,9 @@ public:
 
     // An order held without crossing: an auction collects, and nothing trades until it uncrosses.
     // The book may stand crossed while it does.
-    void hold(Order order) { rest(order); }
+    // An order never to rest has nothing it could trade with as it arrives, so it is eliminated - the
+    // simulator's reading of a time in force no venue document here states for an auction.
+    void hold(Order order) { on_accepted_(order); if (order.lifetime == Lifetime::Immediate) on_eliminated_(order); else rest(order); }
 
     // The price an auction would cross at now, inside the band [floor, ceiling]. Of every price an
     // order is limited to - one beyond the band at the limit it is willing at, a buy above the
@@ -173,13 +195,16 @@ public:
     // An order that may trade only at one price - trade at last, at the closing auction's: it
     // crosses what rests at exactly that price, and the rest of it rests there.
     void on_new_order_at(Order order, std::int64_t price) {
+        on_accepted_(order);   // taken, before anything it makes of it
         order.price = price;
         if (order.side == Side::Buy)
             cross(order, asks_, [&](std::int64_t level) { return level == price; });
         else
             cross(order, bids_, [&](std::int64_t level) { return level == price; });
 
-        if (order.qty > 0) rest(order);
+        if (order.qty == 0) return;
+        if (order.lifetime == Lifetime::Immediate || order.price == market(order.side)) on_eliminated_(order);   // never to rest: what is left goes
+        else rest(order);
     }
 
 private:
@@ -229,6 +254,8 @@ private:
     OnTrade    on_trade_;
     OnRest     on_rest_;
     OnCanceled on_canceled_;
+    OnEliminated on_eliminated_;
+    OnAccepted   on_accepted_;
     std::uint64_t matches_ = 0;
     std::map<std::int64_t, std::deque<Order>, std::greater<std::int64_t>> bids_;  // best = highest
     std::map<std::int64_t, std::deque<Order>>                            asks_;  // best = lowest

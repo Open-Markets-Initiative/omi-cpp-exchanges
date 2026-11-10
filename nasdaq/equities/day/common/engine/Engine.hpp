@@ -38,14 +38,25 @@ class Engine {
         void operator()(const matching::Order& order) const { sim::emit_canceled(self->emit_, order); }
     };
 
-    using Book = matching::MatchingEngine<OnTrade, OnRested, OnCanceled>;
+    struct OnEliminated {
+        Engine* self;
+        void operator()(const matching::Order& order) const { sim::emit_eliminated(self->emit_, order); }
+    };
+
+    struct OnAccepted {
+        Engine* self;
+        void operator()(const matching::Order& order) const { sim::emit_accepted(self->emit_, order); }
+    };
+
+    using Book = matching::MatchingEngine<OnTrade, OnRested, OnCanceled, OnEliminated, OnAccepted>;
 
     // The day's callbacks: an order a phase does not accept, what the venue announces as its
     // phases change, each auction it uncrosses, and what the auction it collects for would cross
     // at when asked, all framed onto the Ipc for the gateway and the feeds.
     struct OnRefused {
         Engine* self;
-        void operator()(const matching::Order& order) const { sim::emit_refused(self->emit_, order); }
+        void operator()(const matching::Order& order) const { sim::emit_refused(self->emit_, order, sim::Refusal::Phase); }
+        void operator()(const matching::Order& order, sim::Refusal reason) const { sim::emit_refused(self->emit_, order, reason); }
     };
 
     struct OnAnnounced {
@@ -67,9 +78,9 @@ public:
     Engine(Emit emit, std::atomic<std::uint64_t>& trades)
         : emit_(std::move(emit)),
           trades_(trades),
-          book_(OnTrade{this}, OnRested{this}, OnCanceled{this}),
+          book_(OnTrade{this}, OnRested{this}, OnCanceled{this}, OnEliminated{this}, OnAccepted{this}),
           day_(book_, OnRefused{this}, OnAnnounced{this}, OnCrossed{this}, OnIndicated{this}),
-          server_(day_) { day_.reference(sim::instrument_reference); }
+          server_(day_, OnRefused{ this }) { day_.reference(sim::instrument_reference); }
 
     // The callbacks hold the component itself, so it stays where it was built.
     Engine(const Engine&)            = delete;
@@ -104,7 +115,7 @@ private:
     std::atomic<std::uint64_t>& trades_;
     Book                        book_;
     Day                         day_;
-    sim::IpcEngineServer<Day>  server_;
+    sim::IpcEngineServer<Day, OnRefused>  server_;
 };
 
 }

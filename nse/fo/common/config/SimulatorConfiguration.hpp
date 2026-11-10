@@ -16,10 +16,10 @@ struct RuntimeConfig {
     Endpoint to_engine_link;
     Endpoint to_clients_link;
     Endpoint to_mtbt_link;
-    Endpoint to_maker_link;
-    Endpoint from_maker_link;
-    Endpoint to_taker_link;
-    Endpoint from_taker_link;
+    Endpoint to_makerbasic_link;
+    Endpoint from_makerbasic_link;
+    Endpoint to_takerbasic_link;
+    Endpoint from_takerbasic_link;
     std::string recording_directory;
 };
 
@@ -40,14 +40,14 @@ inline RuntimeConfig load_config(int argc, char** argv) {
         ("link-to_clients.port", po::value<unsigned short>(&c.to_clients_link.port)->default_value(19001))
         ("link-to_mtbt.host", po::value<std::string>(&c.to_mtbt_link.host)->default_value("mtbt"))
         ("link-to_mtbt.port", po::value<unsigned short>(&c.to_mtbt_link.port)->default_value(19002))
-        ("link-to_maker.host", po::value<std::string>(&c.to_maker_link.host)->default_value("maker"))
-        ("link-to_maker.port", po::value<unsigned short>(&c.to_maker_link.port)->default_value(19003))
-        ("link-from_maker.host", po::value<std::string>(&c.from_maker_link.host)->default_value("gateway"))
-        ("link-from_maker.port", po::value<unsigned short>(&c.from_maker_link.port)->default_value(19004))
-        ("link-to_taker.host", po::value<std::string>(&c.to_taker_link.host)->default_value("taker"))
-        ("link-to_taker.port", po::value<unsigned short>(&c.to_taker_link.port)->default_value(19005))
-        ("link-from_taker.host", po::value<std::string>(&c.from_taker_link.host)->default_value("gateway"))
-        ("link-from_taker.port", po::value<unsigned short>(&c.from_taker_link.port)->default_value(19006))
+        ("link-to_makerbasic.host", po::value<std::string>(&c.to_makerbasic_link.host)->default_value("makerbasic"))
+        ("link-to_makerbasic.port", po::value<unsigned short>(&c.to_makerbasic_link.port)->default_value(19003))
+        ("link-from_makerbasic.host", po::value<std::string>(&c.from_makerbasic_link.host)->default_value("gateway"))
+        ("link-from_makerbasic.port", po::value<unsigned short>(&c.from_makerbasic_link.port)->default_value(19004))
+        ("link-to_takerbasic.host", po::value<std::string>(&c.to_takerbasic_link.host)->default_value("takerbasic"))
+        ("link-to_takerbasic.port", po::value<unsigned short>(&c.to_takerbasic_link.port)->default_value(19005))
+        ("link-from_takerbasic.host", po::value<std::string>(&c.from_takerbasic_link.host)->default_value("gateway"))
+        ("link-from_takerbasic.port", po::value<unsigned short>(&c.from_takerbasic_link.port)->default_value(19006))
         ("recording.directory", po::value<std::string>(&c.recording_directory)->default_value("recordings"));
 
     std::string path = "simulator.ini";

@@ -29,9 +29,11 @@ int main(int argc, char** argv) {
         sim::RuntimeConfig cfg = sim::load_config(argc, argv);
 
         // The links, attached the way their names say.
-        sim::IpcSocket to_engine("gateway -> engine", sim::IpcSocket::End::Reads, cfg.to_engine_link.host, cfg.to_engine_link.port);
-        sim::IpcSocket from_day("day -> engine", sim::IpcSocket::End::Reads, cfg.from_day_link.host, cfg.from_day_link.port);
-        sim::IpcSocket to_clients("engine -> gateway", sim::IpcSocket::End::Writes, cfg.to_clients_link.host, cfg.to_clients_link.port);
+        sim::IpcSocket sequenced("sequencer -> engine", sim::IpcSocket::End::Reads, cfg.sequenced_link.host, cfg.sequenced_link.port);
+        sim::IpcSocket to_clients_gatewaymakerbasic("engine -> gatewaymakerbasic", sim::IpcSocket::End::Writes, cfg.to_clients_gatewaymakerbasic_link.host, cfg.to_clients_gatewaymakerbasic_link.port);
+        sim::IpcSocket to_clients_gatewaytakerbasic("engine -> gatewaytakerbasic", sim::IpcSocket::End::Writes, cfg.to_clients_gatewaytakerbasic_link.host, cfg.to_clients_gatewaytakerbasic_link.port);
+        sim::IpcSocket to_clients_gatewayreplay("engine -> gatewayreplay", sim::IpcSocket::End::Writes, cfg.to_clients_gatewayreplay_link.host, cfg.to_clients_gatewayreplay_link.port);
+        sim::IpcSocket to_clients_gatewayrequests("engine -> gatewayrequests", sim::IpcSocket::End::Writes, cfg.to_clients_gatewayrequests_link.host, cfg.to_clients_gatewayrequests_link.port);
         sim::IpcSocket to_totalview("engine -> totalview", sim::IpcSocket::End::Writes, cfg.to_totalview_link.host, cfg.to_totalview_link.port);
 
         std::atomic<std::uint64_t> trades{0}, events{0};
@@ -39,26 +41,30 @@ int main(int argc, char** argv) {
         // Every event goes to each consumer, as it does in the single binary.
         auto emit = [&](const char* bytes, std::size_t length) {
             events.fetch_add(1, std::memory_order_relaxed);
-            sim::write_blocking(to_clients, bytes, length);
+            sim::write_blocking(to_clients_gatewaymakerbasic, bytes, length);
+            sim::write_blocking(to_clients_gatewaytakerbasic, bytes, length);
+            sim::write_blocking(to_clients_gatewayreplay, bytes, length);
+            sim::write_blocking(to_clients_gatewayrequests, bytes, length);
             sim::write_blocking(to_totalview, bytes, length);
         };
 
         sim::components::Engine<decltype(emit)> engine(emit, trades);
 
-        std::printf("nasdaq-engine: matching, 2 in, 2 out\n");
+        std::printf("nasdaq-engine: matching, 1 in, 5 out\n");
 
         // Nothing to do means nothing to do: back off rather than spin a core.
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
-            worked = engine.step(to_engine) || worked;
-            worked = engine.step(from_day) || worked;
-            to_clients.deliver();
+            worked = engine.step(sequenced) || worked;
+            to_clients_gatewaymakerbasic.deliver();
+            to_clients_gatewaytakerbasic.deliver();
+            to_clients_gatewayreplay.deliver();
+            to_clients_gatewayrequests.deliver();
             to_totalview.deliver();
             if (!worked) std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
 
-        if (to_engine.gaps() > 0) std::printf("nasdaq-engine: %llu gap(s) on gateway -> engine — messages were lost\n", (unsigned long long)to_engine.gaps());
-        if (from_day.gaps() > 0) std::printf("nasdaq-engine: %llu gap(s) on day -> engine — messages were lost\n", (unsigned long long)from_day.gaps());
+        if (sequenced.gaps() > 0) std::printf("nasdaq-engine: %llu gap(s) on sequencer -> engine — messages were lost\n", (unsigned long long)sequenced.gaps());
         std::printf("nasdaq-engine: stopped — %llu trades, %llu events\n",
                     (unsigned long long)trades.load(), (unsigned long long)events.load());
     } catch (const std::exception& problem) {
