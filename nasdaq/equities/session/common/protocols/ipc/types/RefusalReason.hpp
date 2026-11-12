@@ -14,11 +14,13 @@ struct refusal_reason {
 
     enum class enum_type : char {
         closed = 'E',
-        other = 'O'
+        other = 'O',
+        invalid_cross = 'C'
     };
 
-    static constexpr std::array<std::pair<std::string_view, enum_type>, 2> from_string_map = {{
+    static constexpr std::array<std::pair<std::string_view, enum_type>, 3> from_string_map = {{
         {"Closed", enum_type::closed},
+        {"Invalid Cross", enum_type::invalid_cross},
         {"Other", enum_type::other}
     }};
 
@@ -26,6 +28,7 @@ struct refusal_reason {
         switch (value) {
             case enum_type::closed: return "Closed";
             case enum_type::other: return "Other";
+            case enum_type::invalid_cross: return "Invalid Cross";
             default: return "unknown";
         }
     }
@@ -68,7 +71,7 @@ struct refusal_reason {
         if (value.has_value())
             set(value.value());
         else
-            set(enum_type::other);
+            set(enum_type::invalid_cross);
     }
 
   protected:

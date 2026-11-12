@@ -1,0 +1,47 @@
+// Odx Security Token Open — the venue's components and the links between them.
+//
+// Generated from the exchange's own declaration, so it cannot disagree with what was
+// built. Render it with:  dot -Tsvg topology.dot -o topology.svg
+
+digraph odx {
+    rankdir = LR;
+    graph [fontname = "Helvetica", bgcolor = "transparent", splines = true];
+    node  [fontname = "Helvetica", fontsize = 10, shape = box, style = "rounded,filled", fillcolor = "#eef2f7", color = "#5b6b7c"];
+    edge  [fontname = "Helvetica", fontsize = 9, color = "#5b6b7c"];
+
+    // The outside world: what reaches the venue and what leaves it.
+    clients [label = "clients", shape = note, fillcolor = "#fdf6e3"];
+    itch_out [label = "Itch\nUdp multicast", shape = note, fillcolor = "#fdf6e3"];
+
+    // The components, each its own process in the separated versions and its own thread in the single binary.
+    gatewaymakerbasic [label = "gatewaymakerbasic\norder entry"];
+    gatewaytakerbasic [label = "gatewaytakerbasic\norder entry"];
+    engine [label = "engine\nmatching"];
+    sequencer [label = "sequencer\nsequencer"];
+    day [label = "day\ntrading day"];
+    itch [label = "itch\nfeed"];
+    itchtcp [label = "itchtcp\nreplay"];
+    makerbasic [label = "makerbasic\ntrader"];
+    takerbasic [label = "takerbasic\ntrader"];
+
+    // Order entry arrives over Tcp, whichever version is running.
+    clients -> gatewaymakerbasic [label = "Fix Tcp"];
+    clients -> gatewaytakerbasic [label = "Fix Tcp"];
+
+    // Between the components: a queue in one process, a ring across several, a socket across machines.
+    gatewaymakerbasic -> sequencer [label = "ipc ring"];
+    gatewaytakerbasic -> sequencer [label = "ipc ring"];
+    day -> sequencer [label = "ipc ring"];
+    sequencer -> engine [label = "ipc ring"];
+    engine -> gatewaymakerbasic [label = "ipc ring"];
+    engine -> gatewaytakerbasic [label = "ipc ring"];
+    engine -> itch [label = "ipc ring"];
+    itch -> itchtcp [label = "messages ring"];
+    gatewaymakerbasic -> makerbasic [label = "messages ring"];
+    makerbasic -> gatewaymakerbasic [label = "messages ring"];
+    gatewaytakerbasic -> takerbasic [label = "messages ring"];
+    takerbasic -> gatewaytakerbasic [label = "messages ring"];
+
+    // And out: each feed publishes and records what it is given.
+    itch -> itch_out [style = dashed];
+}

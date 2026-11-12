@@ -51,6 +51,7 @@ int main(int argc, char** argv) {
             bool worked = false;
             worked = to_makerbasic.read([&](std::string_view bytes) { makerbasic.on_bytes(bytes.data(), bytes.size()); }) || worked;
             from_makerbasic.deliver();
+            makerbasic.tick();   // its session's heartbeats, and the venue gone silent
             if (makerbasic.logged_in() && std::chrono::steady_clock::now() >= paced) {
                 makerbasic_strategy.step(makerbasic.orders());
                 ++makerbasic_ticks;
@@ -62,6 +63,9 @@ int main(int argc, char** argv) {
 
         std::printf("nasdaq-makerbasic: stopped — entered %llu, canceled %llu over %d turn(s)\n",
                     (unsigned long long)makerbasic.entered(), (unsigned long long)makerbasic.canceled(), makerbasic_ticks);
+        if (makerbasic.silences() > 0)
+            std::printf("nasdaq-makerbasic: the venue went silent on it %llu time(s); %s\n",
+                        (unsigned long long)makerbasic.silences(), makerbasic.logged_in() ? "logged in again" : "not logged in again");
     } catch (const std::exception& problem) {
         std::fprintf(stderr, "nasdaq-makerbasic: %s\n", problem.what());
         return 1;

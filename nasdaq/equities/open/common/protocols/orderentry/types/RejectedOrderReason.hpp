@@ -6,6 +6,7 @@
 #include <array>
 #include <optional>
 #include <string_view>
+#include <type_traits>
 #include "../cache/Required.hpp"
 
 namespace nasdaq::nsmequities::orders::ouch::v5_0 {
@@ -201,21 +202,21 @@ struct rejected_order_reason {
     using result_type = required<rejected_order_reason::enum_type>;
     using storage_type = result_type;
 
-    constexpr rejected_order_reason()
+    rejected_order_reason()
      : value{ enum_type{} } {}
 
-    constexpr rejected_order_reason(enum_type v)
-     : value{ v } {}
+    rejected_order_reason(enum_type v)
+     : value{ static_cast<enum_type>(__builtin_bswap16(static_cast<std::underlying_type_t<enum_type>>(v))) } {}
 
-    [[nodiscard]] constexpr result_type get() const {
-        return result_type{value};
+    [[nodiscard]] result_type get() const {
+        return result_type{static_cast<enum_type>(__builtin_bswap16(static_cast<std::underlying_type_t<enum_type>>(value)))};
     }
 
-    constexpr void set(enum_type v) {
-        value = v;
+    void set(enum_type v) {
+        value = static_cast<enum_type>(__builtin_bswap16(static_cast<std::underlying_type_t<enum_type>>(v)));
     }
 
-    constexpr void set(result_type value) {
+    void set(result_type value) {
         if (value.has_value())
             set(value.value());
         else

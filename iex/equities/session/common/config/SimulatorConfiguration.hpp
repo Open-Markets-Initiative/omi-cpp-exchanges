@@ -2,9 +2,14 @@
 
 #include <boost/program_options.hpp>
 #include <array>
+#include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
+
+#include "../run/Clock.hpp"
 
 namespace sim {
 
@@ -38,6 +43,10 @@ struct RuntimeConfig {
     // The seconds after a served venue starts that each change of its trading day is asked for.
     std::array<int, 7> day_at;
     std::string recording_directory;
+    // How the venue keeps time: its mode, the time of day its day starts at, and the zone that is in.
+    std::string clock_mode;
+    std::string clock_start;
+    std::string clock_zone;
 };
 
 // Parse [--config <file>] (default simulator.ini); missing file / keys keep the generated defaults.
@@ -93,7 +102,10 @@ inline RuntimeConfig load_config(int argc, char** argv) {
         ("day.preclose", po::value<int>(&c.day_at[4])->default_value(240))
         ("day.close", po::value<int>(&c.day_at[5])->default_value(270))
         ("day.end", po::value<int>(&c.day_at[6])->default_value(300))
-        ("recording.directory", po::value<std::string>(&c.recording_directory)->default_value("recordings"));
+        ("recording.directory", po::value<std::string>(&c.recording_directory)->default_value("recordings"))
+        ("clock.mode", po::value<std::string>(&c.clock_mode)->default_value("Elapsed"))
+        ("clock.start", po::value<std::string>(&c.clock_start)->default_value("00:00:00"))
+        ("clock.zone", po::value<std::string>(&c.clock_zone)->default_value("UTC"));
 
     std::string path = "simulator.ini";
     for (int i = 1; i + 1 < argc; ++i)
@@ -108,6 +120,14 @@ inline RuntimeConfig load_config(int argc, char** argv) {
     po::store(file ? po::parse_config_file(file, options, /*allow_unregistered*/true)
                   : po::parse_config_file(nothing, options, /*allow_unregistered*/true), vm);
     po::notify(vm);
+    // The venue's clock, as the settings say, set before anything is stamped.
+    try {
+        sim::clock::use(c.clock_mode, c.clock_start, c.clock_zone);
+    }
+    catch (const std::runtime_error& refused) {
+        std::fprintf(stderr, "%s: %s\n", argc > 0 ? argv[0] : "simulator", refused.what());
+        std::exit(1);
+    }
     return c;
 }
 

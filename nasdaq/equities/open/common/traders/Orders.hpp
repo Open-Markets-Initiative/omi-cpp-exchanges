@@ -8,12 +8,17 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <chrono>
 #include "../protocols/orderentry/messages/EnterOrderMessage.hpp"
 #include "../protocols/orderentry/messages/CancelOrderMessage.hpp"
 #include "../protocols/orderentry/messages/OrderAcceptedMessage.hpp"
+#include "../protocols/orderentry/messages/ReplacedMessage.hpp"
+#include "../protocols/orderentry/messages/OrderModifiedMessage.hpp"
 #include "../protocols/orderentry/messages/OrderExecutedMessage.hpp"
 #include "../protocols/orderentry/messages/CanceledMessage.hpp"
 #include "../protocols/orderentry/messages/RejectedOrderMessage.hpp"
+#include "../protocols/orderentry/messages/ReplaceOrderMessage.hpp"
+#include "../protocols/orderentry/messages/ModifyOrderMessage.hpp"
 #include "../protocols/orderentry/messages/UnsequencedDataPacket.hpp"
 #include "../protocols/orderentry/messages/SequencedDataPacket.hpp"
 #include "../protocols/orderentry/SoupBinClient.hpp"
@@ -38,6 +43,8 @@ constexpr std::size_t fixed_size() {
 // What the venue answered, counted by the message each response transform builds (NsmEquities.Ipc.Transforms.xml).
 struct Answers {
     std::uint64_t order_accepted_message = 0;
+    std::uint64_t replaced_message = 0;
+    std::uint64_t order_modified_message = 0;
     std::uint64_t order_executed_message = 0;
     std::uint64_t canceled_message = 0;
     std::uint64_t rejected_order_message = 0;
@@ -97,7 +104,39 @@ public:
                 const std::uint64_t reference = entered->second;
                 out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(reference));
                 send(out);
-                ++canceled_;
+                if (out.fields.quantity.get().value() == 0) ++canceled_;
+                return reference;
+            }
+            case static_cast<decltype(selector)>('M'): {
+                if (length < fixed_size<protocol::modify_order_message>() - sizeof(protocol::client_packet_header)) return 0;
+                protocol::modify_order_message out{};
+                // the captured message, then the reference this trader knows its own order by
+                std::memcpy(reinterpret_cast<char*>(&out) + sizeof(protocol::client_packet_header), message,
+                            std::min(length, sizeof out - sizeof(protocol::client_packet_header)));
+                // the capture's own reference, so a request acting on an earlier order still names it
+                const std::uint64_t captured = static_cast<std::uint64_t>(out.fields.user_ref_num.get().value());
+                const auto entered = replayed_.find(captured);
+                if (entered == replayed_.end()) return 0;   // an order this trader never entered
+                const std::uint64_t reference = entered->second;
+                out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(reference));
+                send(out);
+                return reference;
+            }
+            case static_cast<decltype(selector)>('U'): {
+                if (length < fixed_size<protocol::replace_order_message>() - sizeof(protocol::client_packet_header)) return 0;
+                protocol::replace_order_message out{};
+                // the captured message, then the reference this trader knows its own order by
+                std::memcpy(reinterpret_cast<char*>(&out) + sizeof(protocol::client_packet_header), message,
+                            std::min(length, sizeof out - sizeof(protocol::client_packet_header)));
+                // the capture's own reference, so a request acting on an earlier order still names it
+                const std::uint64_t captured = static_cast<std::uint64_t>(out.fields.user_ref_num.get().value());
+                const auto entered = replayed_.find(static_cast<std::uint64_t>(out.fields.orig_user_ref_num.get().value()));
+                if (entered == replayed_.end()) return 0;   // an order this trader never entered
+                out.fields.orig_user_ref_num.set(static_cast<value_of<decltype(out.fields.orig_user_ref_num)>>(entered->second));
+                const std::uint64_t reference = ++next_;
+                replayed_[captured] = reference;
+                out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(reference));
+                send(out);
                 return reference;
             }
             default: return 0;   // a message this venue's order entry does not map
@@ -119,6 +158,8 @@ private:
         out.fields.symbol.set(instrument_symbol);
         out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>(price));
         out.fields.time_in_force.set(static_cast<value_of<decltype(out.fields.time_in_force)>>(static_cast<char>('0')));
+        out.fields.display.set(static_cast<value_of<decltype(out.fields.display)>>(static_cast<char>('Y')));
+        out.fields.cross_type.set(static_cast<value_of<decltype(out.fields.cross_type)>>(static_cast<char>('N')));
         send(out);
         ++entered_;
         return reference;
@@ -163,16 +204,33 @@ public:
 
     void on_bytes(const char* data, std::size_t length) { session_.on_bytes(data, length); }
 
+    // The time: the session fires what is due - its heartbeats, and the end of a venue gone
+    // silent. A trader the venue has gone silent on logs in again, asking to resume at the next
+    // number it is owed, once a second until it is let in. What the venue sent in between is not
+    // sent again: the venue's order entry keeps no stream to serve it from, and an order this
+    // trader left resting is reported, if at all, to the session it was entered on.
+    void tick() {
+        session_.tick();
+        if (!lost_ || logged_in()) return;
+        const auto now = std::chrono::steady_clock::now();
+        if (now < retry_) return;
+        session_.login(username_, password_, {}, session_.next_sequence());
+        retry_ = now + std::chrono::seconds(1);
+    }
+
     // The session's handler: what the venue said back.
-    void accepted(auto session, auto) { session_name_ = session; }
+    void accepted(auto session, auto) { lost_ = false; session_name_ = session; }
     void rejected(soupbin::status reason) { refused_ = static_cast<char>(reason); }
     void ended() {}
+    void silent() { lost_ = true; retry_ = {}; ++silences_; }   // the venue has said nothing for longer than the session allows
 
     void message(std::string_view packet) {
         if (packet.size() <= sizeof(protocol::server_packet_header)) return;
         auto selector = protocol::sequenced_data_packet::parse(reinterpret_cast<const std::byte*>(packet.data()))->fields.sequenced_message_type.get().value();
         switch (selector) {
             case static_cast<decltype(selector)>('A'): ++answers_.order_accepted_message; return;
+            case static_cast<decltype(selector)>('U'): ++answers_.replaced_message; return;
+            case static_cast<decltype(selector)>('M'): ++answers_.order_modified_message; return;
             case static_cast<decltype(selector)>('E'): ++answers_.order_executed_message; return;
             case static_cast<decltype(selector)>('C'): ++answers_.canceled_message; return;
             case static_cast<decltype(selector)>('J'): ++answers_.rejected_order_message; return;
@@ -185,6 +243,7 @@ public:
     const Answers& answers() const { return answers_; }
     bool logged_in() const { return session_.logged_in(); }
     char refused() const { return refused_; }
+    std::uint64_t silences() const { return silences_; }   // how many times the venue went silent on it
     std::uint64_t entered() const { return orders_.entered(); }
     std::uint64_t canceled() const { return orders_.canceled(); }
 
@@ -197,6 +256,9 @@ private:
     Orders<Session> orders_;
     Answers     answers_{};
     char        refused_ = 0;
+    bool        lost_ = false;                              // the venue went silent, and it has not been let in since
+    std::chrono::steady_clock::time_point retry_{};          // when it next asks to be let in again
+    std::uint64_t silences_ = 0;
 };
 
 }

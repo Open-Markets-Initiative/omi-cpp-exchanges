@@ -107,7 +107,7 @@ private:
 // back. Its `Send` writes to the venue; the trader is its own session handler. The strategy
 // stays outside it, driving `orders()`, so any strategy runs any venue. It logs on as its
 // user name, which a FIX venue knows a client by (SenderCompID), to the venue's own (TargetCompID).
-template <typename Send, typename Clock = protocol::SystemClock>
+template <typename Send, typename Clock = sim::clock::Nanos>   // the venue's clock: SendingTime, and what its timers wait from
 class Trader {
 public:
     using Session = protocol::Initiator<Send, Trader&>;

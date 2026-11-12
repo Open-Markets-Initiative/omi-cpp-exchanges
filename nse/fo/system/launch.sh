@@ -27,6 +27,10 @@ cd "$build" || exit 1
 # are a cycle, so there is no start order that would let each component make its own.
 "./nse_rings" create || exit 1
 
+# One moment the venue's day began, for every component: what a simulated day counts its time from,
+# so the processes' clocks agree. One already set - a restart carrying the day on - is kept.
+export SIM_CLOCK_ANCHOR="${SIM_CLOCK_ANCHOR:-$(date +%s%N)}"
+
 pids=()
 names=()
 

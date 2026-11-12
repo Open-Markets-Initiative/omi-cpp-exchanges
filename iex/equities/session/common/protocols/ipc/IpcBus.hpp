@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <chrono>
+#include "../../run/Clock.hpp"
 #include <cstdio>
 #include <optional>
 #include <string_view>
@@ -159,9 +160,7 @@ inline std::uint64_t sequence_of(std::string_view bytes) {
 // captured as each message is framed onto the bus. Carried through the transforms onto
 // every feed message's timestamp field.
 inline std::int64_t send_time_nanos() {
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(
-               std::chrono::system_clock::now().time_since_epoch())
-        .count();
+    return sim::clock::now_nanos();   // the venue's clock: the wall clock, or its simulated day
 }
 
 namespace detail_ipc {

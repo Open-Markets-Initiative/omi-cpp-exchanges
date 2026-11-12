@@ -6,10 +6,13 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <cerrno>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <map>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -79,7 +82,19 @@ public:
     bool poll(Handler handler, Gone gone) {
         if (fd_ < 0) return false;
 
-        bool worked = false;
+        bool worked = flush();
+        for (const int client : std::set<int>(slow_)) {   // too slow to keep up: let go, as a venue lets a slow consumer go
+            for (std::size_t i = 0; i < clients_.size(); ++i) {
+                if (clients_[i] != client) continue;
+                ::close(client);
+                clients_.erase(clients_.begin() + static_cast<long>(i));
+                break;
+            }
+            pending_.erase(client);
+            slow_.erase(client);
+            gone(client);
+            worked = true;
+        }
         for (int client; (client = ::accept(fd_, nullptr, nullptr)) >= 0; ) {
             set_nonblocking(client);
             clients_.push_back(client);
@@ -97,6 +112,8 @@ public:
             } else if (n == 0) {
                 ::close(client);
                 clients_.erase(clients_.begin() + static_cast<long>(i));   // client hung up
+                pending_.erase(client);
+                slow_.erase(client);
                 gone(client);
                 worked = true;
             } else {
@@ -110,11 +127,64 @@ public:
     template <typename Handler>
     bool poll(Handler handler) { return poll(handler, [](int) {}); }
 
-    static void send(int client, const char* data, std::size_t len) {
-        ::send(client, data, len, MSG_NOSIGNAL);   // never SIGPIPE us if the client hung up
+    // Send to a client: what its socket takes now, and the rest - a frame cut short included - kept, in
+    // order, for the polls that follow to send as the socket takes it. Nothing is dropped. A client
+    // whose kept bytes pass `most` is too slow to keep up, and the next poll lets it go.
+    void send(int client, const char* data, std::size_t len) {
+        if (const auto kept = pending_.find(client); kept != pending_.end()) {
+            kept->second.bytes.append(data, len);
+            if (kept->second.bytes.size() - kept->second.at > most) slow_.insert(client);
+            return;
+        }
+        const auto sent = ::send(client, data, len, MSG_NOSIGNAL | MSG_DONTWAIT);   // never SIGPIPE us if the client hung up
+        if (sent == static_cast<ssize_t>(len)) return;
+        if (sent < 0 && errno != EAGAIN && errno != EWOULDBLOCK) return;   // gone: the next poll sees it hang up
+        const auto took = sent > 0 ? static_cast<std::size_t>(sent) : 0;
+        pending_[client].bytes.assign(data + took, len - took);
     }
 
+    // Has a client more kept for it than a producer should add to? One that sends a stream - TIP's
+    // basic data, a replay - waits for it to drain rather than piling more on.
+    bool backed_up(int client) const {
+        const auto kept = pending_.find(client);
+        return kept != pending_.end() && kept->second.bytes.size() - kept->second.at >= backlog;
+    }
+
+    // What a client's socket would not take yet, and how much of it has gone since.
+    struct Pending { std::string bytes; std::size_t at = 0; };
+
+    static constexpr std::size_t backlog = std::size_t{ 1 } << 20;   // 1 MiB: a producer waits
+    static constexpr std::size_t most    = std::size_t{ 64 } << 20;  // 64 MiB: the client is let go
+
 private:
+    // Send what was kept for each client, as far as its socket takes it.
+    bool flush() {
+        bool worked = false;
+        for (auto kept = pending_.begin(); kept != pending_.end(); ) {
+            auto& waiting = kept->second;
+            const auto sent = ::send(kept->first, waiting.bytes.data() + waiting.at, waiting.bytes.size() - waiting.at, MSG_NOSIGNAL | MSG_DONTWAIT);
+            if (sent > 0) {
+                waiting.at += static_cast<std::size_t>(sent);
+                worked = true;
+            } else if (sent < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+                waiting.at = waiting.bytes.size();   // gone: the poll sees it hang up
+            }
+            if (waiting.at == waiting.bytes.size()) {
+                kept = pending_.erase(kept);
+            } else {
+                if (waiting.at > (std::size_t{ 1 } << 16) && waiting.at * 2 > waiting.bytes.size()) {
+                    waiting.bytes.erase(0, waiting.at);   // what has gone, given back now and then rather than each time
+                    waiting.at = 0;
+                }
+                ++kept;
+            }
+        }
+        return worked;
+    }
+
+    std::map<int, Pending> pending_;   // what each client's socket has not taken yet
+    std::set<int>          slow_;      // clients past `most`, let go at the next poll
+
     static void set_nonblocking(int fd) {
         ::fcntl(fd, F_SETFL, ::fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
     }

@@ -6,6 +6,7 @@
 #include <array>
 #include <optional>
 #include <string_view>
+#include <type_traits>
 #include "../cache/Required.hpp"
 
 namespace nse::nsefo::orderentry::nnf::v9_50 {
@@ -786,21 +787,21 @@ struct error_code {
     using result_type = required<error_code::enum_type>;
     using storage_type = result_type;
 
-    constexpr error_code()
+    error_code()
      : value{ enum_type{} } {}
 
-    constexpr error_code(enum_type v)
-     : value{ v } {}
+    error_code(enum_type v)
+     : value{ static_cast<enum_type>(__builtin_bswap16(static_cast<std::underlying_type_t<enum_type>>(v))) } {}
 
-    [[nodiscard]] constexpr result_type get() const {
-        return result_type{value};
+    [[nodiscard]] result_type get() const {
+        return result_type{static_cast<enum_type>(__builtin_bswap16(static_cast<std::underlying_type_t<enum_type>>(value)))};
     }
 
-    constexpr void set(enum_type v) {
-        value = v;
+    void set(enum_type v) {
+        value = static_cast<enum_type>(__builtin_bswap16(static_cast<std::underlying_type_t<enum_type>>(v)));
     }
 
-    constexpr void set(result_type value) {
+    void set(result_type value) {
         if (value.has_value())
             set(value.value());
         else

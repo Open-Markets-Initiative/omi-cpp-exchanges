@@ -79,6 +79,11 @@ private:
         }
 
         if (frame.size() < at + 20) return {};
+        // The datagram ends where IPv4 says it does: a short frame is padded out to Ethernet's least,
+        // and the padding is no part of it. A total of 0 - a segment the sender's card was to cut - is
+        // taken as the frame.
+        const auto total = static_cast<std::size_t>(static_cast<std::uint8_t>(frame[at + 2]) << 8 | static_cast<std::uint8_t>(frame[at + 3]));
+        if (total >= 20 && frame.size() > at + total) frame = frame.substr(0, at + total);
         const auto ihl = static_cast<std::size_t>(frame[at] & 0x0f) * 4;
         const auto protocol = static_cast<std::uint8_t>(frame[at + 9]);
         if (frame.size() < at + ihl) return {};

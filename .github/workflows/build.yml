@@ -92,44 +92,98 @@ jobs:
         working-directory: nse/fo/distributed
         run: bash verify.sh ../../../build/nse/fo 8
 
-      - name: Configure Nasdaq Stock Market Open Simulator
-        run: cmake -S nasdaq/equities/open -B build/nasdaq/equities/open -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-14
+      - name: Configure Odx Equities Open Simulator
+        run: cmake -S odx/equities/open -B build/odx/equities/open -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-14
 
-      - name: Build Nasdaq Stock Market Open Simulator
-        run: cmake --build build/nasdaq/equities/open --parallel $(nproc)
+      - name: Build Odx Equities Open Simulator
+        run: cmake --build build/odx/equities/open --parallel $(nproc)
 
-      - name: Test Nasdaq Stock Market Open Simulator
-        run: ./build/nasdaq/equities/open/simulator_tests
+      - name: Test Odx Equities Open Simulator
+        run: ./build/odx/equities/open/simulator_tests
 
-      - name: Run Nasdaq Stock Market Open Simulator
-        working-directory: nasdaq/equities/open
-        run: ../../../build/nasdaq/equities/open/nasdaq_simulator
+      - name: Run Odx Equities Open Simulator
+        working-directory: odx/equities/open
+        run: ../../../build/odx/equities/open/odx_simulator
 
-      - name: Verify Nasdaq Stock Market Open Components (system)
-        working-directory: nasdaq/equities/open/system
-        run: bash verify.sh ../../../../build/nasdaq/equities/open 8
+      - name: Verify Odx Equities Open Components (system)
+        working-directory: odx/equities/open/system
+        run: bash verify.sh ../../../../build/odx/equities/open 8
 
-      - name: Verify Nasdaq Stock Market Open Components (distributed)
-        working-directory: nasdaq/equities/open/distributed
-        run: bash verify.sh ../../../../build/nasdaq/equities/open 8
+      - name: Verify Odx Equities Open Components (distributed)
+        working-directory: odx/equities/open/distributed
+        run: bash verify.sh ../../../../build/odx/equities/open 8
 
-      - name: Configure Nasdaq Stock Market Session Simulator
-        run: cmake -S nasdaq/equities/session -B build/nasdaq/equities/session -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-14
+      - name: Configure Odx Equities Session Simulator
+        run: cmake -S odx/equities/session -B build/odx/equities/session -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-14
 
-      - name: Build Nasdaq Stock Market Session Simulator
-        run: cmake --build build/nasdaq/equities/session --parallel $(nproc)
+      - name: Build Odx Equities Session Simulator
+        run: cmake --build build/odx/equities/session --parallel $(nproc)
 
-      - name: Test Nasdaq Stock Market Session Simulator
-        run: ./build/nasdaq/equities/session/simulator_tests
+      - name: Test Odx Equities Session Simulator
+        run: ./build/odx/equities/session/simulator_tests
 
-      - name: Run Nasdaq Stock Market Session Simulator
-        working-directory: nasdaq/equities/session
-        run: ../../../build/nasdaq/equities/session/nasdaq_simulator
+      - name: Run Odx Equities Session Simulator
+        working-directory: odx/equities/session
+        run: ../../../build/odx/equities/session/odx_simulator
 
-      - name: Verify Nasdaq Stock Market Session Components (system)
-        working-directory: nasdaq/equities/session/system
-        run: bash verify.sh ../../../../build/nasdaq/equities/session 8
+      - name: Verify Odx Equities Session Components (system)
+        working-directory: odx/equities/session/system
+        run: bash verify.sh ../../../../build/odx/equities/session 8
 
-      - name: Verify Nasdaq Stock Market Session Components (distributed)
-        working-directory: nasdaq/equities/session/distributed
-        run: bash verify.sh ../../../../build/nasdaq/equities/session 8
+      - name: Verify Odx Equities Session Components (distributed)
+        working-directory: odx/equities/session/distributed
+        run: bash verify.sh ../../../../build/odx/equities/session 8
+
+      - name: Configure Odx Security Token Open Simulator
+        run: cmake -S odx/securitytoken/open -B build/odx/securitytoken/open -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-14
+
+      - name: Build Odx Security Token Open Simulator
+        run: cmake --build build/odx/securitytoken/open --parallel $(nproc)
+
+      - name: Test Odx Security Token Open Simulator
+        run: ./build/odx/securitytoken/open/simulator_tests
+
+      - name: Run Odx Security Token Open Simulator
+        working-directory: odx/securitytoken/open
+        run: ../../../build/odx/securitytoken/open/odx_simulator
+
+      - name: Verify Odx Security Token Open Components (system)
+        working-directory: odx/securitytoken/open/system
+        run: bash verify.sh ../../../../build/odx/securitytoken/open 8
+
+      - name: Verify Odx Security Token Open Components (distributed)
+        working-directory: odx/securitytoken/open/distributed
+        run: bash verify.sh ../../../../build/odx/securitytoken/open 8
+
+      - name: Test Odx Security Token Open Connections
+        working-directory: odx/securitytoken/open
+        env:
+          ODX_SIMULATOR: ../../../build/odx/securitytoken/open/odx_simulator
+        run: python3 common/tests/Connections.py
+
+      - name: Configure Odx Security Token Session Simulator
+        run: cmake -S odx/securitytoken/session -B build/odx/securitytoken/session -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-14
+
+      - name: Build Odx Security Token Session Simulator
+        run: cmake --build build/odx/securitytoken/session --parallel $(nproc)
+
+      - name: Test Odx Security Token Session Simulator
+        run: ./build/odx/securitytoken/session/simulator_tests
+
+      - name: Run Odx Security Token Session Simulator
+        working-directory: odx/securitytoken/session
+        run: ../../../build/odx/securitytoken/session/odx_simulator
+
+      - name: Verify Odx Security Token Session Components (system)
+        working-directory: odx/securitytoken/session/system
+        run: bash verify.sh ../../../../build/odx/securitytoken/session 8
+
+      - name: Verify Odx Security Token Session Components (distributed)
+        working-directory: odx/securitytoken/session/distributed
+        run: bash verify.sh ../../../../build/odx/securitytoken/session 8
+
+      - name: Test Odx Security Token Session Connections
+        working-directory: odx/securitytoken/session
+        env:
+          ODX_SIMULATOR: ../../../build/odx/securitytoken/session/odx_simulator
+        run: python3 common/tests/Connections.py

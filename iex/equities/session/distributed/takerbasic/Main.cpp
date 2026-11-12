@@ -51,6 +51,7 @@ int main(int argc, char** argv) {
             bool worked = false;
             worked = to_takerbasic.read([&](std::string_view bytes) { takerbasic.on_bytes(bytes.data(), bytes.size()); }) || worked;
             from_takerbasic.deliver();
+            takerbasic.tick();   // its session's heartbeats, and the venue gone silent
             if (takerbasic.logged_in() && std::chrono::steady_clock::now() >= paced) {
                 takerbasic_strategy.step(takerbasic.orders());
                 ++takerbasic_ticks;

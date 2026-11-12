@@ -1,6 +1,7 @@
 #pragma once
 
 #include <charconv>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -20,17 +21,27 @@ namespace sim::orderentry::soupbin {
 // The states the client rests in, as its chart names them.
 enum class ClientState { NotLoggedIn, LoggingIn, LoggedIn, Ended };
 
+// The time a client's timers wait by, in nanoseconds: a steady clock, since a timer waits
+// an interval and no interval should move when the wall clock does.
+struct ClientClock {
+    std::int64_t operator()() const {
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+};
+
 // The client side of a session: log in, send requests, read the venue's answers.
 // Send:    callable(const char*, std::size_t) writing to the venue
+// Clock:   callable() telling the time in nanoseconds, which its timers wait by
 // Handler: what the client tells the service:
 // accepted(session, sequence_number)
 // rejected(status)
 // message(packet)
 // ended()
-template <typename Send, typename Handler>
+// silent()
+template <typename Send, typename Handler, typename Clock = ClientClock>
 class Client {
 public:
-    Client(Send send, Handler& handler) : send_(send), handler_(handler) {}
+    Client(Send send, Handler& handler, Clock clock = {}) : send_(send), handler_(handler), clock_(clock) {}
 
     bool not_logged_in() const { return state_ == ClientState::NotLoggedIn; }
     bool logging_in() const { return state_ == ClientState::LoggingIn; }
@@ -39,27 +50,49 @@ public:
     std::uint64_t next_sequence() const { return next_sequence_; }
 
     void unsequenced(const char* message, std::size_t length) {
+        now_ns_ = clock_();
         const bool outer = busy_;
         busy_ = true;
         frame(static_cast<code>('U'), message, length);
+        beat_due_ = due(heartbeat_interval_ * 1'000'000'000);
         if (!outer) drain();
     }
     void heartbeat() {
+        now_ns_ = clock_();
         const bool outer = busy_;
         busy_ = true;
         frame(static_cast<code>('R'), nullptr, 0);
+        beat_due_ = due(heartbeat_interval_ * 1'000'000'000);
         if (!outer) drain();
     }
     void logout() {
+        now_ns_ = clock_();
         const bool outer = busy_;
         busy_ = true;
+        switch (state_) {
+            case ClientState::LoggedIn:
+                beat_due_ = 0;
+                silence_due_ = 0;
+                break;
+            default:
+                break;
+        }
         frame(static_cast<code>('O'), nullptr, 0);
         state_ = ClientState::NotLoggedIn;
         if (!outer) drain();
     }
     void login(std::string_view username = {}, std::string_view password = {}, std::string_view session_id = {}, std::uint64_t requested_sequence_number = 0) {
+        now_ns_ = clock_();
         const bool outer = busy_;
         busy_ = true;
+        switch (state_) {
+            case ClientState::LoggedIn:
+                beat_due_ = 0;
+                silence_due_ = 0;
+                break;
+            default:
+                break;
+        }
         {
             char requested_sequence_number_text[24];
             const auto requested_sequence_number_written = std::to_chars(requested_sequence_number_text, requested_sequence_number_text + sizeof requested_sequence_number_text, requested_sequence_number);
@@ -74,11 +107,32 @@ public:
         if (!outer) drain();
     }
 
+    // The time now: every timer due by it fires, the earliest first, and two due together in
+    // the order the chart starts them. Called as often as the owner can; a timer fires late by
+    // as long as the owner leaves between calls.
+    void tick() {
+        now_ns_ = clock_();
+        const bool outer = busy_;
+        busy_ = true;
+        for (;;) {
+            std::int64_t* due = nullptr;
+            for (std::int64_t* timer : {&beat_due_, &silence_due_}) {
+                if (*timer != 0 && *timer <= now_ns_ && (due == nullptr || *timer < *due)) due = timer;
+            }
+            if (due == nullptr) break;
+            *due = 0;
+            if (due == &beat_due_) fire_heartbeat();
+            else if (due == &silence_due_) fire_silence();
+        }
+        if (!outer) drain();
+    }
+
     // Bytes read from the venue. Each is handled once the client has finished the transition
     // it is in: a venue answering on the same thread - a replay read in process - answers before
     // the client has entered the state its answer belongs to, and a statechart takes one event
     // at a time.
     void on_bytes(const char* data, std::size_t length) {
+        now_ns_ = clock_();
         pending_.append(data, length);
         if (!busy_) drain();
     }
@@ -121,11 +175,15 @@ private:
                         if (sequence_number != static_cast<std::remove_cvref_t<decltype(sequence_number)>>(0)) {
                             next_sequence_ = sequence_number;
                             handler_.accepted(reply.fields.accepted_session.get_trimmed().value(), next_sequence_);
+                            beat_due_ = due(heartbeat_interval_ * 1'000'000'000);
+                            silence_due_ = due(silence_interval_ * 1'000'000'000);
                             state_ = ClientState::LoggedIn;
                             break;
                         }
                         {
                             handler_.accepted(reply.fields.accepted_session.get_trimmed().value(), next_sequence_);
+                            beat_due_ = due(heartbeat_interval_ * 1'000'000'000);
+                            silence_due_ = due(silence_interval_ * 1'000'000'000);
                             state_ = ClientState::LoggedIn;
                             break;
                         }
@@ -151,18 +209,24 @@ private:
                         {
                             handler_.message(std::string_view(packet, length));
                             next_sequence_ = next_sequence_ + 1;
+                            silence_due_ = due(silence_interval_ * 1'000'000'000);
                             break;
                         }
                     }
                     case static_cast<code>('Z'): {
                         {
+                            beat_due_ = 0;
+                            silence_due_ = 0;
                             handler_.ended();
                             state_ = ClientState::Ended;
                             break;
                         }
                     }
                     default: {
-                        break;   // heartbeats and anything else the client need not answer
+                        {
+                            silence_due_ = due(silence_interval_ * 1'000'000'000);
+                            break;
+                        }
                     }
                 }
                 break;
@@ -170,6 +234,36 @@ private:
                 break;   // nothing the chart answers here
         }
     }
+
+    // Timer.Heartbeat, in whichever state answers it; dropped in any other.
+    void fire_heartbeat() {
+        switch (state_) {
+            case ClientState::LoggedIn: {
+                frame(static_cast<code>('R'), nullptr, 0);
+                beat_due_ = due(heartbeat_interval_ * 1'000'000'000);
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    // Timer.Silence, in whichever state answers it; dropped in any other.
+    void fire_silence() {
+        switch (state_) {
+            case ClientState::LoggedIn: {
+                beat_due_ = 0;
+                silence_due_ = 0;
+                handler_.silent();
+                state_ = ClientState::NotLoggedIn;
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    std::int64_t due(const std::int64_t wait_ns) const { return wait_ns > 0 ? now_ns_ + wait_ns : 0; }
 
     // One packet to the venue: its header, then its payload.
     void frame(code value, const char* payload, std::size_t length) {
@@ -183,10 +277,16 @@ private:
 
     Send send_;
     Handler& handler_;
+    Clock clock_;
+    std::int64_t now_ns_ = 0;   // the time the client last read its clock at
     std::string buffer_;
     std::string pending_;
     bool busy_ = false;
     std::uint64_t next_sequence_ = 1;
+    std::int64_t heartbeat_interval_ = 1;   // seconds
+    std::int64_t silence_interval_ = 15;   // seconds
+    std::int64_t beat_due_ = 0;   // when the timer Beat is due; 0 when it is not running
+    std::int64_t silence_due_ = 0;   // when the timer Silence is due; 0 when it is not running
     ClientState state_ = ClientState::NotLoggedIn;
 };
 

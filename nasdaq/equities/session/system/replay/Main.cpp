@@ -57,6 +57,7 @@ int main(int argc, char** argv) {
             bool worked = false;
             worked = to_replay.read([&](std::string_view bytes) { replay.on_bytes(bytes.data(), bytes.size()); }) || worked;
             from_replay.deliver();
+            replay.tick();   // its session's heartbeats, and the venue gone silent
             if (replay.logged_in() && std::chrono::steady_clock::now() >= paced) {
                 replay_strategy.step(replay.orders());
                 ++replay_ticks;
@@ -68,6 +69,9 @@ int main(int argc, char** argv) {
 
         std::printf("nasdaq-replay: stopped — entered %llu, canceled %llu over %d turn(s)\n",
                     (unsigned long long)replay.entered(), (unsigned long long)replay.canceled(), replay_ticks);
+        if (replay.silences() > 0)
+            std::printf("nasdaq-replay: the venue went silent on it %llu time(s); %s\n",
+                        (unsigned long long)replay.silences(), replay.logged_in() ? "logged in again" : "not logged in again");
     } catch (const std::exception& problem) {
         std::fprintf(stderr, "nasdaq-replay: %s\n", problem.what());
         return 1;

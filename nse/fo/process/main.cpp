@@ -155,7 +155,7 @@ int main(int argc, char** argv) {
         if (order_entry) worked = order_entry->poll([&](int fd, std::string_view bytes) {
             auto session = sessions.find(fd);
             if (session == sessions.end())
-                session = sessions.emplace(fd, gateway.connect([fd](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); })).first;
+                session = sessions.emplace(fd, gateway.connect([server = order_entry.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })).first;
             gateway.on_bytes(session->second, bytes.data(), bytes.size());
         }, [&](int fd) {
             if (const auto gone = sessions.find(fd); gone != sessions.end()) {

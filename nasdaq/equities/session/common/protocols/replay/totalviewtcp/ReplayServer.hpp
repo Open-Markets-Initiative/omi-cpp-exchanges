@@ -65,6 +65,17 @@ public:
         return worked;
     }
 
+    // The time: every session fires what is due by it - its heartbeats, and the end of a client
+    // gone silent. The loop calls it.
+    void tick() { for (auto& held : clients_) held.second->session.tick(); }
+
+    // Has a client's session ended - gone silent past what the session allows? Its connection is
+    // then the loop's to close.
+    bool ended(std::size_t client) const {
+        const auto held = clients_.find(client);
+        return held == clients_.end() || held->second->lost;
+    }
+
     std::uint64_t seen() const { return seen_; }
     std::size_t stored() const { return stream_.size(); }
     std::size_t clients() const { return clients_.size(); }
@@ -92,6 +103,8 @@ private:
         }
         void message(std::string_view) {}   // a replay client sends nothing but its login
         void logout() { live = false; serving = false; }
+        void silent() { lost = true; live = false; serving = false; }   // heard nothing for longer than the session allows
+        bool lost = false;
     };
 
     // A login is refused with the reason the exchange states, or the first the model gives.

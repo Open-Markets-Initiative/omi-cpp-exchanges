@@ -51,6 +51,7 @@ int main(int argc, char** argv) {
             bool worked = false;
             worked = to_takerbasic.read([&](std::string_view bytes) { takerbasic.on_bytes(bytes.data(), bytes.size()); }) || worked;
             from_takerbasic.deliver();
+            takerbasic.tick();   // its session's heartbeats, and the venue gone silent
             if (takerbasic.logged_in() && std::chrono::steady_clock::now() >= paced) {
                 takerbasic_strategy.step(takerbasic.orders());
                 ++takerbasic_ticks;
@@ -63,6 +64,9 @@ int main(int argc, char** argv) {
         if (to_takerbasic.gaps() > 0) std::printf("nasdaq-takerbasic: %llu gap(s) on gatewaytakerbasic -> takerbasic — messages were lost\n", (unsigned long long)to_takerbasic.gaps());
         std::printf("nasdaq-takerbasic: stopped — entered %llu, canceled %llu over %d turn(s)\n",
                     (unsigned long long)takerbasic.entered(), (unsigned long long)takerbasic.canceled(), takerbasic_ticks);
+        if (takerbasic.silences() > 0)
+            std::printf("nasdaq-takerbasic: the venue went silent on it %llu time(s); %s\n",
+                        (unsigned long long)takerbasic.silences(), takerbasic.logged_in() ? "logged in again" : "not logged in again");
     } catch (const std::exception& problem) {
         std::fprintf(stderr, "nasdaq-takerbasic: %s\n", problem.what());
         return 1;

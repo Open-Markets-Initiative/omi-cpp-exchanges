@@ -72,7 +72,9 @@ BOOST_AUTO_TEST_CASE(gateway_admits_fills_and_cancels_an_order) {
         [](const sim::ipc_ns::order_refused_message&) {},
         [](const sim::ipc_ns::phase_announced_message&) {},
         [](const sim::ipc_ns::cross_completed_message&) {},
-        [](const sim::ipc_ns::imbalance_indicated_message&) {});
+        [](const sim::ipc_ns::imbalance_indicated_message&) {},
+        [](const sim::ipc_ns::order_replaced_message&) {},
+        [](const sim::ipc_ns::order_reduced_message&) {});
     auto event_emit = [&](const char* b, std::size_t n) { events.on_message(std::string_view(b, n)); };
     matching::MatchingEngine engine(
         [&](const matching::Trade& t)  { sim::emit_trade(event_emit, t); },
@@ -109,6 +111,8 @@ BOOST_AUTO_TEST_CASE(gateway_admits_fills_and_cancels_an_order) {
     order.fields.price.set(10000);
     order.fields.symbol.set("ZVZZT");
     order.fields.time_in_force.set(static_cast<std::remove_cvref_t<decltype(order.fields.time_in_force.get().value())>>('0'));
+    order.fields.display.set(static_cast<std::remove_cvref_t<decltype(order.fields.display.get().value())>>('Y'));
+    order.fields.cross_type.set(static_cast<std::remove_cvref_t<decltype(order.fields.cross_type.get().value())>>('N'));
     gateway.on_bytes(client, whole(order).data(), whole(order).size());
     BOOST_REQUIRE_EQUAL(sent.size(), 2u);
     BOOST_CHECK_EQUAL(gateway.open_orders(), 1u);
@@ -157,7 +161,9 @@ BOOST_AUTO_TEST_CASE(VerifyEachTradersGatewayAnswersOnlyItsOwnOrders) {
         [](const sim::ipc_ns::order_refused_message&) {},
         [](const sim::ipc_ns::phase_announced_message&) {},
         [](const sim::ipc_ns::cross_completed_message&) {},
-        [](const sim::ipc_ns::imbalance_indicated_message&) {});
+        [](const sim::ipc_ns::imbalance_indicated_message&) {},
+        [](const sim::ipc_ns::order_replaced_message&) {},
+        [](const sim::ipc_ns::order_reduced_message&) {});
 
     // TakerBasic's gateway, gateway 2 of 4: it numbers 2, 6, 10 ...
     std::vector<std::string> takerbasic_sent;
@@ -176,7 +182,9 @@ BOOST_AUTO_TEST_CASE(VerifyEachTradersGatewayAnswersOnlyItsOwnOrders) {
         [](const sim::ipc_ns::order_refused_message&) {},
         [](const sim::ipc_ns::phase_announced_message&) {},
         [](const sim::ipc_ns::cross_completed_message&) {},
-        [](const sim::ipc_ns::imbalance_indicated_message&) {});
+        [](const sim::ipc_ns::imbalance_indicated_message&) {},
+        [](const sim::ipc_ns::order_replaced_message&) {},
+        [](const sim::ipc_ns::order_reduced_message&) {});
 
     // The engine's events, told to every gateway.
     auto event_emit = [&](const char* b, std::size_t n) {
@@ -234,6 +242,8 @@ BOOST_AUTO_TEST_CASE(VerifyEachTradersGatewayAnswersOnlyItsOwnOrders) {
     buy.fields.price.set(10000);
     buy.fields.symbol.set("ZVZZT");
     buy.fields.time_in_force.set(static_cast<std::remove_cvref_t<decltype(buy.fields.time_in_force.get().value())>>('0'));
+    buy.fields.display.set(static_cast<std::remove_cvref_t<decltype(buy.fields.display.get().value())>>('Y'));
+    buy.fields.cross_type.set(static_cast<std::remove_cvref_t<decltype(buy.fields.cross_type.get().value())>>('N'));
     gatewaymakerbasic.on_bytes(makerbasic_client, whole(buy).data(), whole(buy).size());
     BOOST_REQUIRE_EQUAL(makerbasic_sent.size(), 2u);
     BOOST_REQUIRE_EQUAL(takerbasic_sent.size(), 1u);
@@ -249,6 +259,8 @@ BOOST_AUTO_TEST_CASE(VerifyEachTradersGatewayAnswersOnlyItsOwnOrders) {
     sell.fields.price.set(10000);
     sell.fields.symbol.set("ZVZZT");
     sell.fields.time_in_force.set(static_cast<std::remove_cvref_t<decltype(sell.fields.time_in_force.get().value())>>('0'));
+    sell.fields.display.set(static_cast<std::remove_cvref_t<decltype(sell.fields.display.get().value())>>('Y'));
+    sell.fields.cross_type.set(static_cast<std::remove_cvref_t<decltype(sell.fields.cross_type.get().value())>>('N'));
     gatewaytakerbasic.on_bytes(takerbasic_client, whole(sell).data(), whole(sell).size());
     BOOST_REQUIRE_EQUAL(makerbasic_sent.size(), 3u);
     BOOST_REQUIRE_EQUAL(takerbasic_sent.size(), 3u);
@@ -285,7 +297,9 @@ BOOST_AUTO_TEST_CASE(VerifyRefusedOrderIsCanceledClosed) {
         [&](const sim::ipc_ns::order_refused_message& j) { gateway.on_event(j); },
         [](const sim::ipc_ns::phase_announced_message&) {},
         [](const sim::ipc_ns::cross_completed_message&) {},
-        [](const sim::ipc_ns::imbalance_indicated_message&) {});
+        [](const sim::ipc_ns::imbalance_indicated_message&) {},
+        [](const sim::ipc_ns::order_replaced_message&) {},
+        [](const sim::ipc_ns::order_reduced_message&) {});
     auto event_emit = [&](const char* b, std::size_t n) { events.on_message(std::string_view(b, n)); };
     std::atomic<std::uint64_t> trades{0};
     sim::components::Engine<decltype(event_emit)> engine(event_emit, trades);
@@ -327,6 +341,8 @@ BOOST_AUTO_TEST_CASE(VerifyRefusedOrderIsCanceledClosed) {
     order.fields.price.set(10000);
     order.fields.symbol.set("ZVZZT");
     order.fields.time_in_force.set(static_cast<std::remove_cvref_t<decltype(order.fields.time_in_force.get().value())>>('0'));
+    order.fields.display.set(static_cast<std::remove_cvref_t<decltype(order.fields.display.get().value())>>('Y'));
+    order.fields.cross_type.set(static_cast<std::remove_cvref_t<decltype(order.fields.cross_type.get().value())>>('N'));
     gateway.on_bytes(client, whole(order).data(), whole(order).size());
     // Refused by the day, and so accepted and then canceled, as the venue answers a refusal by its phase.
     BOOST_REQUIRE_EQUAL(sent.size(), 3u);
@@ -357,7 +373,9 @@ BOOST_AUTO_TEST_CASE(VerifyCrossFillIsFlaggedWithItsCross) {
         [&](const sim::ipc_ns::order_refused_message& j) { gateway.on_event(j); },
         [](const sim::ipc_ns::phase_announced_message&) {},
         [](const sim::ipc_ns::cross_completed_message&) {},
-        [](const sim::ipc_ns::imbalance_indicated_message&) {});
+        [](const sim::ipc_ns::imbalance_indicated_message&) {},
+        [](const sim::ipc_ns::order_replaced_message&) {},
+        [](const sim::ipc_ns::order_reduced_message&) {});
     auto event_emit = [&](const char* b, std::size_t n) { events.on_message(std::string_view(b, n)); };
     std::atomic<std::uint64_t> trades{0};
     sim::components::Engine<decltype(event_emit)> engine(event_emit, trades);
@@ -393,6 +411,8 @@ BOOST_AUTO_TEST_CASE(VerifyCrossFillIsFlaggedWithItsCross) {
     order.fields.price.set(10000);
     order.fields.symbol.set("ZVZZT");
     order.fields.time_in_force.set(static_cast<std::remove_cvref_t<decltype(order.fields.time_in_force.get().value())>>('0'));
+    order.fields.display.set(static_cast<std::remove_cvref_t<decltype(order.fields.display.get().value())>>('Y'));
+    order.fields.cross_type.set(static_cast<std::remove_cvref_t<decltype(order.fields.cross_type.get().value())>>('N'));
     gateway.on_bytes(client, whole(order).data(), whole(order).size());
     // Accepted at the gateway, then held for the cross.
     BOOST_REQUIRE_EQUAL(sent.size(), 2u);
@@ -418,7 +438,9 @@ BOOST_AUTO_TEST_CASE(VerifyCollectingAuctionIndicatesItsImbalance) {
         [](const sim::ipc_ns::order_refused_message&) {},
         [](const sim::ipc_ns::phase_announced_message&) {},
         [](const sim::ipc_ns::cross_completed_message&) {},
-        [&](const sim::ipc_ns::imbalance_indicated_message& i) { indicated.push_back(i); });
+        [&](const sim::ipc_ns::imbalance_indicated_message& i) { indicated.push_back(i); },
+        [](const sim::ipc_ns::order_replaced_message&) {},
+        [](const sim::ipc_ns::order_reduced_message&) {});
     auto event_emit = [&](const char* b, std::size_t n) { events.on_message(std::string_view(b, n)); };
     std::atomic<std::uint64_t> trades{0};
     sim::components::Engine<decltype(event_emit)> engine(event_emit, trades);

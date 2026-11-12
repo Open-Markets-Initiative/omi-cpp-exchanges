@@ -66,6 +66,14 @@ int main(int argc, char** argv) {
                     glimpse_sessions.erase(gone);
                 }
             }) || worked;
+            glimpse.tick();
+            for (auto session = glimpse_sessions.begin(); session != glimpse_sessions.end(); ) {
+                if (!glimpse.ended(session->second)) { ++session; continue; }
+                glimpse_server.close(session->first);
+                glimpse.disconnect(session->second);
+                session = glimpse_sessions.erase(session);
+                worked = true;
+            }
             // What it has to serve a waiting client, a step at a time.
             worked = glimpse.pump() || worked;
             if (!worked) std::this_thread::sleep_for(std::chrono::microseconds(50));

@@ -66,6 +66,14 @@ int main(int argc, char** argv) {
                     totalviewtcp_sessions.erase(gone);
                 }
             }) || worked;
+            totalviewtcp.tick();
+            for (auto session = totalviewtcp_sessions.begin(); session != totalviewtcp_sessions.end(); ) {
+                if (!totalviewtcp.ended(session->second)) { ++session; continue; }
+                totalviewtcp_server.close(session->first);
+                totalviewtcp.disconnect(session->second);
+                session = totalviewtcp_sessions.erase(session);
+                worked = true;
+            }
             // What it has to serve a waiting client, a step at a time.
             worked = totalviewtcp.pump() || worked;
             if (!worked) std::this_thread::sleep_for(std::chrono::microseconds(50));

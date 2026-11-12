@@ -15,6 +15,10 @@
 #include "structs/OrderCanceledMessage.hpp"
 #include "structs/OrderAcceptedMessage.hpp"
 #include "structs/OrderEliminatedMessage.hpp"
+#include "structs/ReplaceOrderMessage.hpp"
+#include "structs/OrderReplacedMessage.hpp"
+#include "structs/ReduceOrderMessage.hpp"
+#include "structs/OrderReducedMessage.hpp"
 #include "structs/OrderRefusedMessage.hpp"
 #include "structs/PhaseAnnouncedMessage.hpp"
 #include "structs/PhaseRequestMessage.hpp"
@@ -47,9 +51,21 @@ constexpr std::optional<matching::Lifetime> lifetime_of(Code code) {
     }
 }
 
+// The one cross an order trades in, none for one that trades continuously, by the code of its cross type, as the venue codes it; none for a code that means nothing to the engine yet.
+template <typename Code>
+constexpr std::optional<matching::Cross> cross_of(Code code) {
+    switch (static_cast<long long>(code)) {
+        case 'N': return matching::Cross::None;
+        case 'O': return matching::Cross::Opening;
+        case 'C': return matching::Cross::Closing;
+        case 'H': return matching::Cross::Intraday;
+        default: return std::nullopt;
+    }
+}
+
 
 // Why the engine refused an order: its type, or how long it lives, is none the engine has.
-enum class Refusal { Lifetime, Phase };
+enum class Refusal { Lifetime, Phase, Cross };
 
 // What a server built straight over a book - a test's - does with an order it refuses, with
 // nobody to tell: says so, as the engine does of an order for an instrument it does not trade.
@@ -75,6 +91,10 @@ struct IpcType {
     static constexpr char ImbalanceIndicated = 'I';
     static constexpr char OrderEliminated    = 'E';
     static constexpr char OrderAccepted      = 'A';
+    static constexpr char ReplaceOrder       = 'M';
+    static constexpr char OrderReplaced      = 'W';
+    static constexpr char ReduceOrder        = 'D';
+    static constexpr char OrderReduced       = 'Y';
 };
 
 // The instrument the engine trades — stamped on the symbol field of every Ipc message.
@@ -91,6 +111,8 @@ inline bool stamp_sequence(char* frame, std::size_t length, std::uint64_t sequen
         case IpcType::CancelOrder: { if (length < 3 + sizeof(ipc_ns::cancel_order_message)) return false; auto* m = ipc_ns::cancel_order_message::parse(data); m->sequence.set(sequence); m->timestamp.set(time); return true; }
         case IpcType::PhaseRequest: { if (length < 3 + sizeof(ipc_ns::phase_request_message)) return false; auto* m = ipc_ns::phase_request_message::parse(data); m->sequence.set(sequence); m->timestamp.set(time); return true; }
         case IpcType::ImbalanceRequest: { if (length < 3 + sizeof(ipc_ns::imbalance_request_message)) return false; auto* m = ipc_ns::imbalance_request_message::parse(data); m->sequence.set(sequence); m->timestamp.set(time); return true; }
+        case IpcType::ReplaceOrder: { if (length < 3 + sizeof(ipc_ns::replace_order_message)) return false; auto* m = ipc_ns::replace_order_message::parse(data); m->sequence.set(sequence); m->timestamp.set(time); return true; }
+        case IpcType::ReduceOrder: { if (length < 3 + sizeof(ipc_ns::reduce_order_message)) return false; auto* m = ipc_ns::reduce_order_message::parse(data); m->sequence.set(sequence); m->timestamp.set(time); return true; }
         default: return false;
     }
 }
@@ -105,6 +127,8 @@ inline std::uint64_t sequence_of(std::string_view bytes) {
         case IpcType::CancelOrder: return bytes.size() < 3 + sizeof(ipc_ns::cancel_order_message) ? 0 : ipc_ns::cancel_order_message::parse(const_cast<std::byte*>(data))->sequence.get().value();
         case IpcType::PhaseRequest: return bytes.size() < 3 + sizeof(ipc_ns::phase_request_message) ? 0 : ipc_ns::phase_request_message::parse(const_cast<std::byte*>(data))->sequence.get().value();
         case IpcType::ImbalanceRequest: return bytes.size() < 3 + sizeof(ipc_ns::imbalance_request_message) ? 0 : ipc_ns::imbalance_request_message::parse(const_cast<std::byte*>(data))->sequence.get().value();
+        case IpcType::ReplaceOrder: return bytes.size() < 3 + sizeof(ipc_ns::replace_order_message) ? 0 : ipc_ns::replace_order_message::parse(const_cast<std::byte*>(data))->sequence.get().value();
+        case IpcType::ReduceOrder: return bytes.size() < 3 + sizeof(ipc_ns::reduce_order_message) ? 0 : ipc_ns::reduce_order_message::parse(const_cast<std::byte*>(data))->sequence.get().value();
         default: return 0;
     }
 }
@@ -150,6 +174,7 @@ public:
         m.price.set(order.price == matching::market(order.side) ? 2147483647 : order.price);
         m.quantity.set(static_cast<std::uint32_t>(order.qty));
         m.time_in_force.set(static_cast<std::remove_cvref_t<decltype(m.time_in_force.get().value())>>(order.lifetime == matching::Lifetime::Session ? '0' : '3'));
+        m.display.set(static_cast<std::remove_cvref_t<decltype(m.display.get().value())>>(order.shown ? 'Y' : 'N'));
         detail_ipc::emit_framed(emit_, IpcType::NewOrder, m);
     }
 
@@ -189,13 +214,14 @@ public:
                 const matching::Side side = static_cast<char>(m->side.get().value()) == 'B' ? matching::Side::Buy : matching::Side::Sell;
                 const bool market = m->price.get().value() == 2147483647 || m->price.get().value() == 2000000000;   // its price says so
                 const std::optional<matching::Lifetime> lifetime = lifetime_of(m->time_in_force.get().value());
-                if (!lifetime) {
+                const std::optional<matching::Cross> only = cross_of(m->cross_type.get().value());
+                if (!lifetime || (!only || *only == matching::Cross::Opening || *only == matching::Cross::Intraday || *only == matching::Cross::Closing)) {
                     matching::Order refused{};
                     refused.id    = m->order_id.get().value();
                     refused.side  = side;
                     refused.price = m->price.get().value();
                     refused.qty   = m->quantity.get().value();
-                    on_refused_(refused, Refusal::Lifetime);
+                    on_refused_(refused, !lifetime ? Refusal::Lifetime : Refusal::Cross);
                     return true;
                 }
                 engine_.on_new_order(matching::Order{
@@ -204,6 +230,7 @@ public:
                     market ? matching::market(side) : m->price.get().value(),
                     m->quantity.get().value(),
                     *lifetime,
+                    static_cast<char>(m->display.get().value()) != 'N',
                 });
                 return true;
             }
@@ -211,6 +238,42 @@ public:
                 if (bytes.size() < 3 + sizeof(ipc_ns::cancel_order_message)) return false;
                 const auto* m = ipc_ns::cancel_order_message::parse(const_cast<std::byte*>(data));
                 engine_.on_cancel(m->order_id.get().value());
+                return true;
+            }
+            case IpcType::ReplaceOrder: {
+                if (bytes.size() < 3 + sizeof(ipc_ns::replace_order_message)) return false;
+                const auto* m = ipc_ns::replace_order_message::parse(const_cast<std::byte*>(data));
+                const matching::Side side = static_cast<char>(m->side.get().value()) == 'B' ? matching::Side::Buy : matching::Side::Sell;
+                const bool market = m->price.get().value() == 2147483647 || m->price.get().value() == 2000000000;   // its price says so
+                const std::optional<matching::Lifetime> lifetime = lifetime_of(m->time_in_force.get().value());
+                const std::optional<matching::Cross> only = cross_of(m->cross_type.get().value());
+                if (!lifetime || (!only || *only == matching::Cross::Opening || *only == matching::Cross::Intraday || *only == matching::Cross::Closing)) {
+                    matching::Order refused{};
+                    refused.id    = m->replacement_id.get().value();
+                    refused.side  = side;
+                    refused.price = m->price.get().value();
+                    refused.qty   = m->quantity.get().value();
+                    on_refused_(refused, !lifetime ? Refusal::Lifetime : Refusal::Cross);
+                    return true;
+                }
+                const matching::Order order = matching::Order{
+                    m->replacement_id.get().value(),
+                    side,
+                    market ? matching::market(side) : m->price.get().value(),
+                    m->quantity.get().value(),
+                    *lifetime,
+                    static_cast<char>(m->display.get().value()) != 'N',
+                };
+                // To the day, which replaces; an engine without one - a test's bare book - replaces nothing.
+                if constexpr (requires { engine_.on_replace(order, m->order_id.get().value()); })
+                    engine_.on_replace(order, m->order_id.get().value());
+                return true;
+            }
+            case IpcType::ReduceOrder: {
+                if (bytes.size() < 3 + sizeof(ipc_ns::reduce_order_message)) return false;
+                const auto* m = ipc_ns::reduce_order_message::parse(const_cast<std::byte*>(data));
+                if constexpr (requires { engine_.on_reduce(m->order_id.get().value(), m->quantity.get().value()); })
+                    engine_.on_reduce(m->order_id.get().value(), m->quantity.get().value());
                 return true;
             }
             case IpcType::ImbalanceRequest: {
@@ -241,7 +304,7 @@ struct IgnoreEvent {
 
 // Event-side endpoint: decodes engine events off the bus and hands them to the
 // consumers (feed publishers / gateway exec reports) as matching types.
-template <typename OnTrade, typename OnRest, typename OnCanceled = IgnoreEvent, typename OnAccepted = IgnoreEvent, typename OnEliminated = IgnoreEvent, typename OnRefused = IgnoreEvent>
+template <typename OnTrade, typename OnRest, typename OnCanceled = IgnoreEvent, typename OnAccepted = IgnoreEvent, typename OnEliminated = IgnoreEvent, typename OnRefused = IgnoreEvent, typename OnReplaced = IgnoreEvent, typename OnReduced = IgnoreEvent>
 class IpcEventServer {
 public:
     IpcEventServer(OnTrade on_trade, OnRest on_rest)
@@ -250,8 +313,8 @@ public:
     IpcEventServer(OnTrade on_trade, OnRest on_rest, OnCanceled on_canceled)
         : on_trade_(on_trade), on_rest_(on_rest), on_canceled_(on_canceled) {}
 
-    IpcEventServer(OnTrade on_trade, OnRest on_rest, OnCanceled on_canceled, OnAccepted on_accepted, OnEliminated on_eliminated, OnRefused on_refused)
-        : on_trade_(on_trade), on_rest_(on_rest), on_canceled_(on_canceled), on_accepted_(on_accepted), on_eliminated_(on_eliminated), on_refused_(on_refused) {}
+    IpcEventServer(OnTrade on_trade, OnRest on_rest, OnCanceled on_canceled, OnAccepted on_accepted, OnEliminated on_eliminated, OnRefused on_refused, OnReplaced on_replaced, OnReduced on_reduced)
+        : on_trade_(on_trade), on_rest_(on_rest), on_canceled_(on_canceled), on_accepted_(on_accepted), on_eliminated_(on_eliminated), on_refused_(on_refused), on_replaced_(on_replaced), on_reduced_(on_reduced) {}
     bool on_message(std::string_view bytes) {
         if (bytes.size() < 3) return false;
         const std::byte* data = reinterpret_cast<const std::byte*>(bytes.data()) + 3;
@@ -287,6 +350,16 @@ public:
                 on_refused_(*ipc_ns::order_refused_message::parse(const_cast<std::byte*>(data)));
                 return true;
             }
+            case IpcType::OrderReplaced: {
+                if (bytes.size() < 3 + sizeof(ipc_ns::order_replaced_message)) return false;
+                on_replaced_(*ipc_ns::order_replaced_message::parse(const_cast<std::byte*>(data)));
+                return true;
+            }
+            case IpcType::OrderReduced: {
+                if (bytes.size() < 3 + sizeof(ipc_ns::order_reduced_message)) return false;
+                on_reduced_(*ipc_ns::order_reduced_message::parse(const_cast<std::byte*>(data)));
+                return true;
+            }
             default:
                 return false;
         }
@@ -299,6 +372,8 @@ private:
     OnAccepted  on_accepted_;
     OnEliminated on_eliminated_;
     OnRefused   on_refused_;
+    OnReplaced  on_replaced_;
+    OnReduced   on_reduced_;
 };
 
 // Event-side encoders: matching-engine events as Ipc messages (consumed by feed
@@ -314,6 +389,8 @@ inline void emit_trade(Emit& emit, const matching::Trade& trade) {
     m.price.set(trade.price);
     m.quantity.set(static_cast<std::uint32_t>(trade.qty));
     m.auction.set(static_cast<std::remove_cvref_t<decltype(m.auction.get().value())>>(auctioned(trade.cross)));
+    m.resting_display.set(static_cast<std::remove_cvref_t<decltype(m.resting_display.get().value())>>(trade.resting_shown ? 'Y' : 'N'));
+    m.aggressor_display.set(static_cast<std::remove_cvref_t<decltype(m.aggressor_display.get().value())>>(trade.aggressor_shown ? 'Y' : 'N'));
     detail_ipc::emit_framed(emit, IpcType::Trade, m);
 }
 
@@ -326,6 +403,7 @@ inline void emit_rested(Emit& emit, const matching::Order& order) {
     m.side.set(static_cast<std::remove_cvref_t<decltype(m.side.get().value())>>(order.side == matching::Side::Buy ? 'B' : 'S'));
     m.price.set(order.price);
     m.quantity.set(static_cast<std::uint32_t>(order.qty));
+    m.display.set(static_cast<std::remove_cvref_t<decltype(m.display.get().value())>>(order.shown ? 'Y' : 'N'));
     detail_ipc::emit_framed(emit, IpcType::OrderRested, m);
 }
 
@@ -334,6 +412,7 @@ inline void emit_canceled(Emit& emit, const matching::Order& order) {
     ipc_ns::order_canceled_message m{};
     m.timestamp.set(send_time_nanos());
     m.order_id.set(order.id);
+    m.display.set(static_cast<std::remove_cvref_t<decltype(m.display.get().value())>>(order.shown ? 'Y' : 'N'));
     detail_ipc::emit_framed(emit, IpcType::OrderCanceled, m);
 }
 
@@ -352,10 +431,38 @@ inline void emit_eliminated(Emit& emit, const matching::Order& order) {
     m.timestamp.set(send_time_nanos());
     m.order_id.set(order.id);
     m.side.set(static_cast<std::remove_cvref_t<decltype(m.side.get().value())>>(order.side == matching::Side::Buy ? 'B' : 'S'));
-    m.price.set(order.price);
+    m.price.set(order.price == matching::market(order.side) ? 2147483647 : order.price);
     m.quantity.set(static_cast<std::uint32_t>(order.qty));
+    m.display.set(static_cast<std::remove_cvref_t<decltype(m.display.get().value())>>(order.shown ? 'Y' : 'N'));
     m.time_in_force.set(static_cast<std::remove_cvref_t<decltype(m.time_in_force.get().value())>>(order.lifetime == matching::Lifetime::Session ? '0' : '3'));
     detail_ipc::emit_framed(emit, IpcType::OrderEliminated, m);
+}
+
+
+template <typename Emit>
+inline void emit_replaced(Emit& emit, std::uint64_t replaced, const matching::Order& order) {
+    ipc_ns::order_replaced_message m{};
+    m.timestamp.set(send_time_nanos());
+    m.order_id.set(replaced);
+    m.replacement_id.set(order.id);
+    m.symbol.set(instrument_symbol);
+    m.side.set(static_cast<std::remove_cvref_t<decltype(m.side.get().value())>>(order.side == matching::Side::Buy ? 'B' : 'S'));
+    m.price.set(order.price == matching::market(order.side) ? 2147483647 : order.price);
+    m.quantity.set(static_cast<std::uint32_t>(order.qty));
+    m.display.set(static_cast<std::remove_cvref_t<decltype(m.display.get().value())>>(order.shown ? 'Y' : 'N'));
+    detail_ipc::emit_framed(emit, IpcType::OrderReplaced, m);
+}
+
+
+template <typename Emit>
+inline void emit_reduced(Emit& emit, const matching::Order& order, std::uint64_t taken) {
+    ipc_ns::order_reduced_message m{};
+    m.timestamp.set(send_time_nanos());
+    m.symbol.set(instrument_symbol);
+    m.order_id.set(order.id);
+    m.quantity.set(static_cast<std::uint32_t>(taken));
+    m.display.set(static_cast<std::remove_cvref_t<decltype(m.display.get().value())>>(order.shown ? 'Y' : 'N'));
+    detail_ipc::emit_framed(emit, IpcType::OrderReduced, m);
 }
 
 // The trading day's events: an order the engine did not take - the phase it arrived in does not,
@@ -366,6 +473,6 @@ inline void emit_refused(Emit& emit, const matching::Order& order, Refusal reaso
     ipc_ns::order_refused_message m{};
     m.timestamp.set(send_time_nanos());
     m.order_id.set(order.id);
-    m.refusal_reason.set(static_cast<std::remove_cvref_t<decltype(m.refusal_reason.get().value())>>(reason == Refusal::Phase ? 'E' : 'O'));
+    m.refusal_reason.set(static_cast<std::remove_cvref_t<decltype(m.refusal_reason.get().value())>>(reason == Refusal::Phase ? 'E' : reason == Refusal::Lifetime ? 'O' : 'C'));
     detail_ipc::emit_framed(emit, IpcType::OrderRefused, m);
 }}

@@ -9,6 +9,8 @@
 #include "../types/Price.hpp"
 #include "../types/Quantity.hpp"
 #include "../types/TimeInForce.hpp"
+#include "../types/Display.hpp"
+#include "../types/CrossType.hpp"
 
 namespace nasdaq::nsmequities::matchingengine::ipc::v2026 {
 
@@ -26,6 +28,8 @@ struct new_order_message {
     ipc_matchingengine::price price;
     ipc_matchingengine::quantity quantity;
     ipc_matchingengine::time_in_force time_in_force;
+    ipc_matchingengine::display display;
+    ipc_matchingengine::cross_type cross_type;
 
     // parse method
     static new_order_message* parse(std::byte* buffer) {
@@ -47,7 +51,9 @@ static_assert(offsetof(new_order_message, side) == 32, "unexpected offset of new
 static_assert(offsetof(new_order_message, price) == 33, "unexpected offset of new_order_message::price");
 static_assert(offsetof(new_order_message, quantity) == 41, "unexpected offset of new_order_message::quantity");
 static_assert(offsetof(new_order_message, time_in_force) == 45, "unexpected offset of new_order_message::time_in_force");
-static_assert(sizeof(new_order_message) == 46, "unexpected sizeof new_order_message");
+static_assert(offsetof(new_order_message, display) == 46, "unexpected offset of new_order_message::display");
+static_assert(offsetof(new_order_message, cross_type) == 47, "unexpected offset of new_order_message::cross_type");
+static_assert(sizeof(new_order_message) == 48, "unexpected sizeof new_order_message");
 
 #pragma pack(pop)
 }

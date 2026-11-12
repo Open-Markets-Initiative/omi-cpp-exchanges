@@ -14,6 +14,8 @@
 #include "../../marketdata/totalview/messages/AddOrderNoMpidAttributionMessage.hpp"
 #include "../../marketdata/totalview/messages/OrderDeleteMessage.hpp"
 #include "../../marketdata/totalview/messages/OrderExecutedMessage.hpp"
+#include "../../marketdata/totalview/messages/OrderReplaceMessage.hpp"
+#include "../../marketdata/totalview/messages/OrderCancelMessage.hpp"
 
 namespace sim::replay::glimpse {
 
@@ -79,6 +81,35 @@ public:
                 resting.fields.shares.set(static_cast<std::remove_cvref_t<decltype(resting.fields.shares.get().value())>>(open - executed));
                 break;
             }
+            case 'U': {
+                const auto& m = *feed_ns::order_replace_message::parse(const_cast<std::byte*>(bytes));
+                const std::uint64_t reference = static_cast<std::uint64_t>(m.fields.original_order_reference_number.get().value());
+                // A replaced order leaves the book, and its replacement rests in its stead: the order as it was
+                // added, under the new reference, quantity and price.
+                auto held = book_.find(reference);
+                if (held == book_.end()) break;
+                std::string replaced = std::move(held->second);
+                book_.erase(held);
+                auto& rests = *feed_ns::add_order_no_mpid_attribution_message::parse(reinterpret_cast<std::byte*>(replaced.data()));
+                rests.fields.order_reference_number.set(static_cast<std::remove_cvref_t<decltype(rests.fields.order_reference_number.get().value())>>(m.fields.new_order_reference_number.get().value()));
+                rests.fields.shares.set(static_cast<std::remove_cvref_t<decltype(rests.fields.shares.get().value())>>(m.fields.shares.get().value()));
+                rests.fields.price.set(static_cast<std::remove_cvref_t<decltype(rests.fields.price.get().value())>>(m.fields.price.get().value()));
+                book_[static_cast<std::uint64_t>(m.fields.new_order_reference_number.get().value())] = std::move(replaced);
+                break;
+            }
+            case 'X': {
+                const auto& m = *feed_ns::order_cancel_message::parse(const_cast<std::byte*>(bytes));
+                const std::uint64_t reference = static_cast<std::uint64_t>(m.fields.order_reference_number.get().value());
+                // A partial cancel takes its shares off the order where it rests.
+                auto held = book_.find(reference);
+                if (held == book_.end()) break;
+                auto& resting = *feed_ns::add_order_no_mpid_attribution_message::parse(reinterpret_cast<std::byte*>(held->second.data()));
+                const auto canceled = static_cast<std::uint64_t>(m.fields.canceled_shares.get().value());
+                const auto open = static_cast<std::uint64_t>(resting.fields.shares.get().value());
+                if (canceled >= open) { book_.erase(held); break; }
+                resting.fields.shares.set(static_cast<std::remove_cvref_t<decltype(resting.fields.shares.get().value())>>(open - canceled));
+                break;
+            }
             default: break;   // a message the book is not kept from
         }
     }
@@ -95,6 +126,17 @@ public:
             worked = true;
         }
         return worked;
+    }
+
+    // The time: every session fires what is due by it - its heartbeats, and the end of a client
+    // gone silent. The loop calls it.
+    void tick() { for (auto& held : clients_) held.second->session.tick(); }
+
+    // Has a client's session ended - gone silent past what the session allows? Its connection is
+    // then the loop's to close.
+    bool ended(std::size_t client) const {
+        const auto held = clients_.find(client);
+        return held == clients_.end() || held->second->lost;
     }
 
     std::uint64_t seen() const { return seen_; }
@@ -124,6 +166,8 @@ private:
         }
         void message(std::string_view) {}   // a replay client sends nothing but its login
         void logout() { live = false; serving = false; }
+        void silent() { lost = true; live = false; serving = false; }   // heard nothing for longer than the session allows
+        bool lost = false;
     };
 
     // A login is refused with the reason the exchange states, or the first the model gives.

@@ -200,7 +200,7 @@ inline void to_fix_canceled(protocol::Writer& out, const ipc_ns::order_canceled_
 // The order-entry gateway: Fix clients in, the Ipc to the engine out, and the engine's
 // events back to the client each order belongs to. `Emit` is a callable(const char*, std::size_t)
 // taking framed Ipc messages to the engine; `Clock` tells the time.
-template <typename Emit, typename Clock = protocol::SystemClock>
+template <typename Emit, typename Clock = sim::clock::Nanos>   // the venue's clock: SendingTime, and what its timers wait from
 class Gateway {
 public:
     using Send = std::function<void(const char*, std::size_t)>;

@@ -1,0 +1,80 @@
+// Odx Equities Open — the venue's components and the links between them.
+//
+// Generated from the exchange's own declaration, so it cannot disagree with what was
+// built. Render it with:  dot -Tsvg topology.dot -o topology.svg
+
+digraph odx {
+    rankdir = LR;
+    graph [fontname = "Helvetica", bgcolor = "transparent", splines = true];
+    node  [fontname = "Helvetica", fontsize = 10, shape = box, style = "rounded,filled", fillcolor = "#eef2f7", color = "#5b6b7c"];
+    edge  [fontname = "Helvetica", fontsize = 9, color = "#5b6b7c"];
+
+    // The outside world: what reaches the venue and what leaves it.
+    clients [label = "clients", shape = note, fillcolor = "#fdf6e3"];
+    itch_out [label = "Itch\nUdp multicast", shape = note, fillcolor = "#fdf6e3"];
+
+    // The components, each its own process in the separated versions and its own thread in the single binary.
+    subgraph cluster_entry {
+        label = "entry";
+        style = "rounded,dashed"; color = "#9aa7b4"; fontsize = 10;
+        gatewaymakerbasic [label = "gatewaymakerbasic\norder entry"];
+        gatewaytakerbasic [label = "gatewaytakerbasic\norder entry"];
+        gatewayreplay [label = "gatewayreplay\norder entry"];
+    }
+    subgraph cluster_matching {
+        label = "matching";
+        style = "rounded,dashed"; color = "#9aa7b4"; fontsize = 10;
+        engine [label = "engine\nmatching"];
+        sequencer [label = "sequencer\nsequencer"];
+    }
+    subgraph cluster_day {
+        label = "day";
+        style = "rounded,dashed"; color = "#9aa7b4"; fontsize = 10;
+        day [label = "day\ntrading day"];
+    }
+    subgraph cluster_data {
+        label = "data";
+        style = "rounded,dashed"; color = "#9aa7b4"; fontsize = 10;
+        itch [label = "itch\nfeed"];
+    }
+    subgraph cluster_recovery {
+        label = "recovery";
+        style = "rounded,dashed"; color = "#9aa7b4"; fontsize = 10;
+        glimpse [label = "glimpse\nreplay"];
+        itchtcp [label = "itchtcp\nreplay"];
+    }
+    subgraph cluster_clients {
+        label = "clients";
+        style = "rounded,dashed"; color = "#9aa7b4"; fontsize = 10;
+        makerbasic [label = "makerbasic\ntrader"];
+        takerbasic [label = "takerbasic\ntrader"];
+        replay [label = "replay\ntrader"];
+    }
+
+    // Order entry arrives over Tcp, whichever version is running.
+    clients -> gatewaymakerbasic [label = "SoupBin Tcp"];
+    clients -> gatewaytakerbasic [label = "SoupBin Tcp"];
+    clients -> gatewayreplay [label = "SoupBin Tcp"];
+
+    // Between the components: a queue in one process, a ring across several, a socket across machines.
+    gatewaymakerbasic -> sequencer [label = "ipc Tcp"];
+    gatewaytakerbasic -> sequencer [label = "ipc Tcp"];
+    gatewayreplay -> sequencer [label = "ipc Tcp"];
+    day -> sequencer [label = "ipc Tcp"];
+    sequencer -> engine [label = "ipc Tcp"];
+    engine -> gatewaymakerbasic [label = "ipc Tcp"];
+    engine -> gatewaytakerbasic [label = "ipc Tcp"];
+    engine -> gatewayreplay [label = "ipc Tcp"];
+    engine -> itch [label = "ipc Tcp"];
+    itch -> glimpse [label = "messages Tcp"];
+    itch -> itchtcp [label = "messages Tcp"];
+    gatewaymakerbasic -> makerbasic [label = "messages Tcp"];
+    makerbasic -> gatewaymakerbasic [label = "messages Tcp"];
+    gatewaytakerbasic -> takerbasic [label = "messages Tcp"];
+    takerbasic -> gatewaytakerbasic [label = "messages Tcp"];
+    gatewayreplay -> replay [label = "messages Tcp"];
+    replay -> gatewayreplay [label = "messages Tcp"];
+
+    // And out: each feed publishes and records what it is given.
+    itch -> itch_out [style = dashed];
+}

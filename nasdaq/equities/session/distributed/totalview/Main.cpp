@@ -48,44 +48,63 @@ int main(int argc, char** argv) {
         sim::IpcEventServer totalview_events(
             [&](const sim::ipc_ns::trade_message& t) {
                 // trade_message -> the feeds its transforms declare (NsmEquities.Ipc.Transforms.xml).
-                if (static_cast<char>(t.auction.get().value()) == 'N') {
+                if (static_cast<char>(t.auction.get().value()) == 'N' && static_cast<char>(t.resting_display.get().value()) != 'N') {
                     auto totalview_order_executed = sim::to_totalview_order_executed(t);
                     totalview.publish_message(reinterpret_cast<const char*>(&totalview_order_executed), sizeof totalview_order_executed);
                     sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_executed), sizeof totalview_order_executed);
                     sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_executed), sizeof totalview_order_executed);
                 }
-                if (static_cast<char>(t.auction.get().value()) != 'N') {
+                if (static_cast<char>(t.resting_display.get().value()) == 'Y' && static_cast<char>(t.auction.get().value()) != 'N') {
                     auto totalview_crossed_resting = sim::to_totalview_crossed_resting(t);
                     totalview.publish_message(reinterpret_cast<const char*>(&totalview_crossed_resting), sizeof totalview_crossed_resting);
                     sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_crossed_resting), sizeof totalview_crossed_resting);
                     sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_crossed_resting), sizeof totalview_crossed_resting);
                 }
-                if (static_cast<char>(t.auction.get().value()) != 'N') {
+                if (static_cast<char>(t.aggressor_display.get().value()) == 'Y' && static_cast<char>(t.auction.get().value()) != 'N') {
                     auto totalview_crossed_aggressor = sim::to_totalview_crossed_aggressor(t);
                     totalview.publish_message(reinterpret_cast<const char*>(&totalview_crossed_aggressor), sizeof totalview_crossed_aggressor);
                     sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_crossed_aggressor), sizeof totalview_crossed_aggressor);
                     sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_crossed_aggressor), sizeof totalview_crossed_aggressor);
                 }
+                if (static_cast<char>(t.auction.get().value()) == 'N' && static_cast<char>(t.resting_display.get().value()) != 'Y') {
+                    auto totalview_hidden_executed = sim::to_totalview_hidden_executed(t);
+                    totalview.publish_message(reinterpret_cast<const char*>(&totalview_hidden_executed), sizeof totalview_hidden_executed);
+                    sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_hidden_executed), sizeof totalview_hidden_executed);
+                    sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_hidden_executed), sizeof totalview_hidden_executed);
+                }
                 totalview.flush();
             },
             [&](const sim::ipc_ns::order_rested_message& o) {
                 // order_rested_message -> the feeds its transforms declare (NsmEquities.Ipc.Transforms.xml).
-                auto totalview_add_order = sim::to_totalview_add_order(o);
-                totalview.publish_message(reinterpret_cast<const char*>(&totalview_add_order), sizeof totalview_add_order);
-                sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_add_order), sizeof totalview_add_order);
-                sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_add_order), sizeof totalview_add_order);
+                if (static_cast<char>(o.display.get().value()) == 'Y') {
+                    auto totalview_add_order = sim::to_totalview_add_order(o);
+                    totalview.publish_message(reinterpret_cast<const char*>(&totalview_add_order), sizeof totalview_add_order);
+                    sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_add_order), sizeof totalview_add_order);
+                    sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_add_order), sizeof totalview_add_order);
+                }
                 totalview.flush();
             },
             [&](const sim::ipc_ns::order_canceled_message& c) {
                 // order_canceled_message -> the feeds its transforms declare (NsmEquities.Ipc.Transforms.xml).
-                auto totalview_order_delete = sim::to_totalview_order_delete(c);
-                totalview.publish_message(reinterpret_cast<const char*>(&totalview_order_delete), sizeof totalview_order_delete);
-                sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_delete), sizeof totalview_order_delete);
-                sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_delete), sizeof totalview_order_delete);
+                if (static_cast<char>(c.display.get().value()) == 'Y') {
+                    auto totalview_order_delete = sim::to_totalview_order_delete(c);
+                    totalview.publish_message(reinterpret_cast<const char*>(&totalview_order_delete), sizeof totalview_order_delete);
+                    sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_delete), sizeof totalview_order_delete);
+                    sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_delete), sizeof totalview_order_delete);
+                }
                 totalview.flush();
             },
             [](const sim::ipc_ns::order_accepted_message&) {},
-            [](const sim::ipc_ns::order_eliminated_message&) {},
+            [&](const sim::ipc_ns::order_eliminated_message& e) {
+                // order_eliminated_message -> the feeds its transforms declare (NsmEquities.Ipc.Transforms.xml).
+                if (static_cast<char>(e.display.get().value()) == 'Y') {
+                    auto totalview_order_expired = sim::to_totalview_order_expired(e);
+                    totalview.publish_message(reinterpret_cast<const char*>(&totalview_order_expired), sizeof totalview_order_expired);
+                    sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_expired), sizeof totalview_order_expired);
+                    sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_expired), sizeof totalview_order_expired);
+                }
+                totalview.flush();
+            },
             [](const sim::ipc_ns::order_refused_message&) {},
             [&](const sim::ipc_ns::phase_announced_message& s) {
                 // phase_announced_message -> the feeds its transforms declare (NsmEquities.Ipc.Transforms.xml).
@@ -124,6 +143,26 @@ int main(int argc, char** argv) {
                     totalview.publish_message(reinterpret_cast<const char*>(&totalview_noii_insufficient), sizeof totalview_noii_insufficient);
                     sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_noii_insufficient), sizeof totalview_noii_insufficient);
                     sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_noii_insufficient), sizeof totalview_noii_insufficient);
+                }
+                totalview.flush();
+            },
+            [&](const sim::ipc_ns::order_replaced_message& w) {
+                // order_replaced_message -> the feeds its transforms declare (NsmEquities.Ipc.Transforms.xml).
+                if (static_cast<char>(w.display.get().value()) == 'Y') {
+                    auto totalview_order_replace = sim::to_totalview_order_replace(w);
+                    totalview.publish_message(reinterpret_cast<const char*>(&totalview_order_replace), sizeof totalview_order_replace);
+                    sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_replace), sizeof totalview_order_replace);
+                    sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_replace), sizeof totalview_order_replace);
+                }
+                totalview.flush();
+            },
+            [&](const sim::ipc_ns::order_reduced_message& y) {
+                // order_reduced_message -> the feeds its transforms declare (NsmEquities.Ipc.Transforms.xml).
+                if (static_cast<char>(y.display.get().value()) == 'Y') {
+                    auto totalview_order_cancel = sim::to_totalview_order_cancel(y);
+                    totalview.publish_message(reinterpret_cast<const char*>(&totalview_order_cancel), sizeof totalview_order_cancel);
+                    sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_cancel), sizeof totalview_order_cancel);
+                    sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_cancel), sizeof totalview_order_cancel);
                 }
                 totalview.flush();
             });

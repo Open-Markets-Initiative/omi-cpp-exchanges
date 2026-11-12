@@ -193,7 +193,8 @@ int main(int argc, char** argv) {
     sim::MessageQueue from_makerbasic("makerbasic -> gatewaymakerbasic");
     auto makerbasic_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_makerbasic, b, n); };
     sim::traders::Trader<decltype(makerbasic_send)> makerbasic("MakerBasic", "alice", "alice", makerbasic_send);
-    const std::size_t makerbasic_client = gatewaymakerbasic.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_makerbasic, b, n); });
+    auto makerbasic_reply = [&](const char* b, std::size_t n) { sim::write_blocking(to_makerbasic, b, n); };
+    std::size_t makerbasic_client = gatewaymakerbasic.connect(makerbasic_reply);
     sim::traders::MakerBasic<std::remove_reference_t<decltype(makerbasic.orders())>> makerbasic_strategy(/*mid*/10000, /*spread*/10, /*size*/100, /*levels*/3, /*tick*/1);
     int makerbasic_ticks = 0;
     std::chrono::steady_clock::time_point makerbasic_paced{};   // when a served trader next orders
@@ -203,7 +204,8 @@ int main(int argc, char** argv) {
     sim::MessageQueue from_takerbasic("takerbasic -> gatewaytakerbasic");
     auto takerbasic_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_takerbasic, b, n); };
     sim::traders::Trader<decltype(takerbasic_send)> takerbasic("TakerBasic", "bob", "bob", takerbasic_send);
-    const std::size_t takerbasic_client = gatewaytakerbasic.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_takerbasic, b, n); });
+    auto takerbasic_reply = [&](const char* b, std::size_t n) { sim::write_blocking(to_takerbasic, b, n); };
+    std::size_t takerbasic_client = gatewaytakerbasic.connect(takerbasic_reply);
     sim::traders::TakerBasic<std::remove_reference_t<decltype(takerbasic.orders())>> takerbasic_strategy(/*mid*/10000, /*cross*/20, /*size*/50, /*period*/3);
     int takerbasic_ticks = 0;
     std::chrono::steady_clock::time_point takerbasic_paced{};   // when a served trader next orders
@@ -236,7 +238,7 @@ int main(int argc, char** argv) {
         bool worked = to_deep.read([&](std::string_view message) { deep_events.on_message(message); });
         // Snapshot requests are served by the feed that retains the segments.
         if (deep_snap_srv) worked = deep_snap_srv->poll([&](int fd, std::string_view request) {
-            deep_snap.on_message(request, [&](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); });
+            deep_snap.on_message(request, [&](const char* b, std::size_t n) { deep_snap_srv->send(fd, b, n); });
         }) || worked;
         return worked;
     });
@@ -244,7 +246,7 @@ int main(int argc, char** argv) {
         bool worked = to_tops.read([&](std::string_view message) { tops_events.on_message(message); });
         // Snapshot requests are served by the feed that retains the segments.
         if (tops_snap_srv) worked = tops_snap_srv->poll([&](int fd, std::string_view request) {
-            tops_snap.on_message(request, [&](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); });
+            tops_snap.on_message(request, [&](const char* b, std::size_t n) { tops_snap_srv->send(fd, b, n); });
         }) || worked;
         return worked;
     });
@@ -252,7 +254,7 @@ int main(int argc, char** argv) {
         bool worked = to_deepplus.read([&](std::string_view message) { deepplus_events.on_message(message); });
         // Snapshot requests are served by the feed that retains the segments.
         if (deepplus_snap_srv) worked = deepplus_snap_srv->poll([&](int fd, std::string_view request) {
-            deepplus_snap.on_message(request, [&](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); });
+            deepplus_snap.on_message(request, [&](const char* b, std::size_t n) { deepplus_snap_srv->send(fd, b, n); });
         }) || worked;
         return worked;
     });
@@ -262,7 +264,7 @@ int main(int argc, char** argv) {
         if (gatewaymakerbasic_order_entry) worked = gatewaymakerbasic_order_entry->poll([&](int fd, std::string_view bytes) {
             auto session = gatewaymakerbasic_sessions.find(fd);
             if (session == gatewaymakerbasic_sessions.end())
-                session = gatewaymakerbasic_sessions.emplace(fd, gatewaymakerbasic.connect([fd](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); })).first;
+                session = gatewaymakerbasic_sessions.emplace(fd, gatewaymakerbasic.connect([server = gatewaymakerbasic_order_entry.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })).first;
             gatewaymakerbasic.on_bytes(session->second, bytes.data(), bytes.size());
         }, [&](int fd) {
             if (const auto gone = gatewaymakerbasic_sessions.find(fd); gone != gatewaymakerbasic_sessions.end()) {
@@ -270,6 +272,19 @@ int main(int argc, char** argv) {
                 gatewaymakerbasic_sessions.erase(gone);
             }
         }) || worked;
+        gatewaymakerbasic.tick();
+        if (gatewaymakerbasic.ended(makerbasic_client)) {
+            gatewaymakerbasic.disconnect(makerbasic_client);
+            makerbasic_client = gatewaymakerbasic.connect(makerbasic_reply);
+            worked = true;
+        }
+        for (auto session = gatewaymakerbasic_sessions.begin(); session != gatewaymakerbasic_sessions.end(); ) {
+            if (!gatewaymakerbasic.ended(session->second)) { ++session; continue; }
+            if (gatewaymakerbasic_order_entry) gatewaymakerbasic_order_entry->close(session->first);
+            gatewaymakerbasic.disconnect(session->second);
+            session = gatewaymakerbasic_sessions.erase(session);
+            worked = true;
+        }
         return worked;
     });
     sim::Component gatewaytakerbasic_thread("gatewaytakerbasic", [&] {
@@ -278,7 +293,7 @@ int main(int argc, char** argv) {
         if (gatewaytakerbasic_order_entry) worked = gatewaytakerbasic_order_entry->poll([&](int fd, std::string_view bytes) {
             auto session = gatewaytakerbasic_sessions.find(fd);
             if (session == gatewaytakerbasic_sessions.end())
-                session = gatewaytakerbasic_sessions.emplace(fd, gatewaytakerbasic.connect([fd](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); })).first;
+                session = gatewaytakerbasic_sessions.emplace(fd, gatewaytakerbasic.connect([server = gatewaytakerbasic_order_entry.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })).first;
             gatewaytakerbasic.on_bytes(session->second, bytes.data(), bytes.size());
         }, [&](int fd) {
             if (const auto gone = gatewaytakerbasic_sessions.find(fd); gone != gatewaytakerbasic_sessions.end()) {
@@ -286,10 +301,24 @@ int main(int argc, char** argv) {
                 gatewaytakerbasic_sessions.erase(gone);
             }
         }) || worked;
+        gatewaytakerbasic.tick();
+        if (gatewaytakerbasic.ended(takerbasic_client)) {
+            gatewaytakerbasic.disconnect(takerbasic_client);
+            takerbasic_client = gatewaytakerbasic.connect(takerbasic_reply);
+            worked = true;
+        }
+        for (auto session = gatewaytakerbasic_sessions.begin(); session != gatewaytakerbasic_sessions.end(); ) {
+            if (!gatewaytakerbasic.ended(session->second)) { ++session; continue; }
+            if (gatewaytakerbasic_order_entry) gatewaytakerbasic_order_entry->close(session->first);
+            gatewaytakerbasic.disconnect(session->second);
+            session = gatewaytakerbasic_sessions.erase(session);
+            worked = true;
+        }
         return worked;
     });
     sim::Component makerbasic_thread("makerbasic", [&] {
         bool worked = to_makerbasic.read([&](std::string_view bytes) { makerbasic.on_bytes(bytes.data(), bytes.size()); });
+        makerbasic.tick();   // its session's heartbeats, and the venue gone silent
         // A served venue runs free; the startup run takes turns, so it is the same every time.
         // Served, the trader takes in what has arrived on every pass and orders at its own pace,
         // twenty times a second: sleeping in the step would leave the venue's answers waiting.
@@ -309,6 +338,7 @@ int main(int argc, char** argv) {
     });
     sim::Component takerbasic_thread("takerbasic", [&] {
         bool worked = to_takerbasic.read([&](std::string_view bytes) { takerbasic.on_bytes(bytes.data(), bytes.size()); });
+        takerbasic.tick();   // its session's heartbeats, and the venue gone silent
         // A served venue runs free; the startup run takes turns, so it is the same every time.
         // Served, the trader takes in what has arrived on every pass and orders at its own pace,
         // twenty times a second: sleeping in the step would leave the venue's answers waiting.

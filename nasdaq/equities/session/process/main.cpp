@@ -99,44 +99,63 @@ int main(int argc, char** argv) {
     sim::IpcEventServer totalview_events(
         [&](const sim::ipc_ns::trade_message& t) {
             // trade_message -> the feeds its transforms declare (NsmEquities.Ipc.Transforms.xml).
-            if (static_cast<char>(t.auction.get().value()) == 'N') {
+            if (static_cast<char>(t.auction.get().value()) == 'N' && static_cast<char>(t.resting_display.get().value()) != 'N') {
                 auto totalview_order_executed = sim::to_totalview_order_executed(t);
                 totalview.publish_message(reinterpret_cast<const char*>(&totalview_order_executed), sizeof totalview_order_executed);
                 sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_executed), sizeof totalview_order_executed);
                 sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_executed), sizeof totalview_order_executed);
             }
-            if (static_cast<char>(t.auction.get().value()) != 'N') {
+            if (static_cast<char>(t.resting_display.get().value()) == 'Y' && static_cast<char>(t.auction.get().value()) != 'N') {
                 auto totalview_crossed_resting = sim::to_totalview_crossed_resting(t);
                 totalview.publish_message(reinterpret_cast<const char*>(&totalview_crossed_resting), sizeof totalview_crossed_resting);
                 sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_crossed_resting), sizeof totalview_crossed_resting);
                 sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_crossed_resting), sizeof totalview_crossed_resting);
             }
-            if (static_cast<char>(t.auction.get().value()) != 'N') {
+            if (static_cast<char>(t.aggressor_display.get().value()) == 'Y' && static_cast<char>(t.auction.get().value()) != 'N') {
                 auto totalview_crossed_aggressor = sim::to_totalview_crossed_aggressor(t);
                 totalview.publish_message(reinterpret_cast<const char*>(&totalview_crossed_aggressor), sizeof totalview_crossed_aggressor);
                 sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_crossed_aggressor), sizeof totalview_crossed_aggressor);
                 sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_crossed_aggressor), sizeof totalview_crossed_aggressor);
             }
+            if (static_cast<char>(t.auction.get().value()) == 'N' && static_cast<char>(t.resting_display.get().value()) != 'Y') {
+                auto totalview_hidden_executed = sim::to_totalview_hidden_executed(t);
+                totalview.publish_message(reinterpret_cast<const char*>(&totalview_hidden_executed), sizeof totalview_hidden_executed);
+                sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_hidden_executed), sizeof totalview_hidden_executed);
+                sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_hidden_executed), sizeof totalview_hidden_executed);
+            }
             totalview.flush();
         },
         [&](const sim::ipc_ns::order_rested_message& o) {
             // order_rested_message -> the feeds its transforms declare (NsmEquities.Ipc.Transforms.xml).
-            auto totalview_add_order = sim::to_totalview_add_order(o);
-            totalview.publish_message(reinterpret_cast<const char*>(&totalview_add_order), sizeof totalview_add_order);
-            sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_add_order), sizeof totalview_add_order);
-            sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_add_order), sizeof totalview_add_order);
+            if (static_cast<char>(o.display.get().value()) == 'Y') {
+                auto totalview_add_order = sim::to_totalview_add_order(o);
+                totalview.publish_message(reinterpret_cast<const char*>(&totalview_add_order), sizeof totalview_add_order);
+                sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_add_order), sizeof totalview_add_order);
+                sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_add_order), sizeof totalview_add_order);
+            }
             totalview.flush();
         },
         [&](const sim::ipc_ns::order_canceled_message& c) {
             // order_canceled_message -> the feeds its transforms declare (NsmEquities.Ipc.Transforms.xml).
-            auto totalview_order_delete = sim::to_totalview_order_delete(c);
-            totalview.publish_message(reinterpret_cast<const char*>(&totalview_order_delete), sizeof totalview_order_delete);
-            sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_delete), sizeof totalview_order_delete);
-            sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_delete), sizeof totalview_order_delete);
+            if (static_cast<char>(c.display.get().value()) == 'Y') {
+                auto totalview_order_delete = sim::to_totalview_order_delete(c);
+                totalview.publish_message(reinterpret_cast<const char*>(&totalview_order_delete), sizeof totalview_order_delete);
+                sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_delete), sizeof totalview_order_delete);
+                sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_delete), sizeof totalview_order_delete);
+            }
             totalview.flush();
         },
         [](const sim::ipc_ns::order_accepted_message&) {},
-        [](const sim::ipc_ns::order_eliminated_message&) {},
+        [&](const sim::ipc_ns::order_eliminated_message& e) {
+            // order_eliminated_message -> the feeds its transforms declare (NsmEquities.Ipc.Transforms.xml).
+            if (static_cast<char>(e.display.get().value()) == 'Y') {
+                auto totalview_order_expired = sim::to_totalview_order_expired(e);
+                totalview.publish_message(reinterpret_cast<const char*>(&totalview_order_expired), sizeof totalview_order_expired);
+                sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_expired), sizeof totalview_order_expired);
+                sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_expired), sizeof totalview_order_expired);
+            }
+            totalview.flush();
+        },
         [](const sim::ipc_ns::order_refused_message&) {},
         [&](const sim::ipc_ns::phase_announced_message& s) {
             // phase_announced_message -> the feeds its transforms declare (NsmEquities.Ipc.Transforms.xml).
@@ -177,6 +196,26 @@ int main(int argc, char** argv) {
                 sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_noii_insufficient), sizeof totalview_noii_insufficient);
             }
             totalview.flush();
+        },
+        [&](const sim::ipc_ns::order_replaced_message& w) {
+            // order_replaced_message -> the feeds its transforms declare (NsmEquities.Ipc.Transforms.xml).
+            if (static_cast<char>(w.display.get().value()) == 'Y') {
+                auto totalview_order_replace = sim::to_totalview_order_replace(w);
+                totalview.publish_message(reinterpret_cast<const char*>(&totalview_order_replace), sizeof totalview_order_replace);
+                sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_replace), sizeof totalview_order_replace);
+                sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_replace), sizeof totalview_order_replace);
+            }
+            totalview.flush();
+        },
+        [&](const sim::ipc_ns::order_reduced_message& y) {
+            // order_reduced_message -> the feeds its transforms declare (NsmEquities.Ipc.Transforms.xml).
+            if (static_cast<char>(y.display.get().value()) == 'Y') {
+                auto totalview_order_cancel = sim::to_totalview_order_cancel(y);
+                totalview.publish_message(reinterpret_cast<const char*>(&totalview_order_cancel), sizeof totalview_order_cancel);
+                sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_cancel), sizeof totalview_order_cancel);
+                sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_cancel), sizeof totalview_order_cancel);
+            }
+            totalview.flush();
         });
 
     // MakerBasic's gateway: each client's session reaches the engine as framed Ipc messages.
@@ -200,7 +239,9 @@ int main(int argc, char** argv) {
         [&](const sim::ipc_ns::order_refused_message& j) { gatewaymakerbasic.on_event(j); },
         [](const sim::ipc_ns::phase_announced_message&) {},
         [](const sim::ipc_ns::cross_completed_message&) {},
-        [](const sim::ipc_ns::imbalance_indicated_message&) {});
+        [](const sim::ipc_ns::imbalance_indicated_message&) {},
+        [&](const sim::ipc_ns::order_replaced_message& w) { gatewaymakerbasic.on_event(w); },
+        [&](const sim::ipc_ns::order_reduced_message& y) { gatewaymakerbasic.on_event(y); });
 
     // TakerBasic's gateway: each client's session reaches the engine as framed Ipc messages.
     auto gatewaytakerbasic_emit = [&](const char* b, std::size_t n) {
@@ -223,7 +264,9 @@ int main(int argc, char** argv) {
         [&](const sim::ipc_ns::order_refused_message& j) { gatewaytakerbasic.on_event(j); },
         [](const sim::ipc_ns::phase_announced_message&) {},
         [](const sim::ipc_ns::cross_completed_message&) {},
-        [](const sim::ipc_ns::imbalance_indicated_message&) {});
+        [](const sim::ipc_ns::imbalance_indicated_message&) {},
+        [&](const sim::ipc_ns::order_replaced_message& w) { gatewaytakerbasic.on_event(w); },
+        [&](const sim::ipc_ns::order_reduced_message& y) { gatewaytakerbasic.on_event(y); });
 
     // Replay's gateway: each client's session reaches the engine as framed Ipc messages.
     auto gatewayreplay_emit = [&](const char* b, std::size_t n) {
@@ -246,7 +289,9 @@ int main(int argc, char** argv) {
         [&](const sim::ipc_ns::order_refused_message& j) { gatewayreplay.on_event(j); },
         [](const sim::ipc_ns::phase_announced_message&) {},
         [](const sim::ipc_ns::cross_completed_message&) {},
-        [](const sim::ipc_ns::imbalance_indicated_message&) {});
+        [](const sim::ipc_ns::imbalance_indicated_message&) {},
+        [&](const sim::ipc_ns::order_replaced_message& w) { gatewayreplay.on_event(w); },
+        [&](const sim::ipc_ns::order_reduced_message& y) { gatewayreplay.on_event(y); });
 
     // Requests's gateway: each client's session reaches the engine as framed Ipc messages.
     auto gatewayrequests_emit = [&](const char* b, std::size_t n) {
@@ -269,7 +314,9 @@ int main(int argc, char** argv) {
         [&](const sim::ipc_ns::order_refused_message& j) { gatewayrequests.on_event(j); },
         [](const sim::ipc_ns::phase_announced_message&) {},
         [](const sim::ipc_ns::cross_completed_message&) {},
-        [](const sim::ipc_ns::imbalance_indicated_message&) {});
+        [](const sim::ipc_ns::imbalance_indicated_message&) {},
+        [&](const sim::ipc_ns::order_replaced_message& w) { gatewayrequests.on_event(w); },
+        [&](const sim::ipc_ns::order_reduced_message& y) { gatewayrequests.on_event(y); });
 
     // The engine's events, framed onto every consumer's queue.
     auto event_emit = [&](const char* b, std::size_t n) {
@@ -300,7 +347,8 @@ int main(int argc, char** argv) {
     sim::MessageQueue from_makerbasic("makerbasic -> gatewaymakerbasic");
     auto makerbasic_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_makerbasic, b, n); };
     sim::traders::Trader<decltype(makerbasic_send)> makerbasic("MakerBasic", "ALICE1", "alice00001", makerbasic_send);
-    const std::size_t makerbasic_client = gatewaymakerbasic.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_makerbasic, b, n); });
+    auto makerbasic_reply = [&](const char* b, std::size_t n) { sim::write_blocking(to_makerbasic, b, n); };
+    std::size_t makerbasic_client = gatewaymakerbasic.connect(makerbasic_reply);
     sim::traders::MakerBasic<std::remove_reference_t<decltype(makerbasic.orders())>> makerbasic_strategy(/*mid*/10000, /*spread*/10, /*size*/100, /*levels*/3, /*tick*/1);
     int makerbasic_ticks = 0;
     std::chrono::steady_clock::time_point makerbasic_paced{};   // when a served trader next orders
@@ -310,7 +358,8 @@ int main(int argc, char** argv) {
     sim::MessageQueue from_takerbasic("takerbasic -> gatewaytakerbasic");
     auto takerbasic_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_takerbasic, b, n); };
     sim::traders::Trader<decltype(takerbasic_send)> takerbasic("TakerBasic", "BOB001", "bob0000001", takerbasic_send);
-    const std::size_t takerbasic_client = gatewaytakerbasic.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_takerbasic, b, n); });
+    auto takerbasic_reply = [&](const char* b, std::size_t n) { sim::write_blocking(to_takerbasic, b, n); };
+    std::size_t takerbasic_client = gatewaytakerbasic.connect(takerbasic_reply);
     sim::traders::TakerBasic<std::remove_reference_t<decltype(takerbasic.orders())>> takerbasic_strategy(/*mid*/10000, /*cross*/20, /*size*/50, /*period*/3);
     int takerbasic_ticks = 0;
     std::chrono::steady_clock::time_point takerbasic_paced{};   // when a served trader next orders
@@ -320,7 +369,8 @@ int main(int argc, char** argv) {
     sim::MessageQueue from_replay("replay -> gatewayreplay");
     auto replay_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_replay, b, n); };
     sim::traders::Trader<decltype(replay_send)> replay("Replay", "CAROL1", "carol00001", replay_send);
-    const std::size_t replay_client = gatewayreplay.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_replay, b, n); });
+    auto replay_reply = [&](const char* b, std::size_t n) { sim::write_blocking(to_replay, b, n); };
+    std::size_t replay_client = gatewayreplay.connect(replay_reply);
     // Replay takes its orders from a capture of Nasdaq.NsmEquities.TotalView.Itch.v5.0.2026: what that market showed,
     // posted here as this trader's own orders. A capture it cannot read leaves it quiet.
     sim::traders::Capture replay_capture("captures/TotalView.pcap");
@@ -336,7 +386,8 @@ int main(int argc, char** argv) {
     sim::MessageQueue from_requests("requests -> gatewayrequests");
     auto requests_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_requests, b, n); };
     sim::traders::Trader<decltype(requests_send)> requests("Requests", "DAVE01", "dave000001", requests_send);
-    const std::size_t requests_client = gatewayrequests.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_requests, b, n); });
+    auto requests_reply = [&](const char* b, std::size_t n) { sim::write_blocking(to_requests, b, n); };
+    std::size_t requests_client = gatewayrequests.connect(requests_reply);
     // Requests takes its orders from a capture of this venue's own order entry: the requests a
     // client sent, replayed here as this trader's own. A capture it cannot read leaves it quiet.
     sim::traders::Capture requests_capture("captures/Ouch.pcap");
@@ -394,6 +445,14 @@ int main(int argc, char** argv) {
                 glimpse_sessions.erase(gone);
             }
         }) || worked;
+        glimpse.tick();
+        for (auto session = glimpse_sessions.begin(); session != glimpse_sessions.end(); ) {
+            if (!glimpse.ended(session->second)) { ++session; continue; }
+            if (glimpse_server) glimpse_server->close(session->first);
+            glimpse.disconnect(session->second);
+            session = glimpse_sessions.erase(session);
+            worked = true;
+        }
         return glimpse.pump() || worked;
     });
     sim::Component totalviewtcp_thread("totalviewtcp", [&] {
@@ -409,6 +468,14 @@ int main(int argc, char** argv) {
                 totalviewtcp_sessions.erase(gone);
             }
         }) || worked;
+        totalviewtcp.tick();
+        for (auto session = totalviewtcp_sessions.begin(); session != totalviewtcp_sessions.end(); ) {
+            if (!totalviewtcp.ended(session->second)) { ++session; continue; }
+            if (totalviewtcp_server) totalviewtcp_server->close(session->first);
+            totalviewtcp.disconnect(session->second);
+            session = totalviewtcp_sessions.erase(session);
+            worked = true;
+        }
         return totalviewtcp.pump() || worked;
     });
     sim::Component gatewaymakerbasic_thread("gatewaymakerbasic", [&] {
@@ -425,6 +492,19 @@ int main(int argc, char** argv) {
                 gatewaymakerbasic_sessions.erase(gone);
             }
         }) || worked;
+        gatewaymakerbasic.tick();
+        if (gatewaymakerbasic.ended(makerbasic_client)) {
+            gatewaymakerbasic.disconnect(makerbasic_client);
+            makerbasic_client = gatewaymakerbasic.connect(makerbasic_reply);
+            worked = true;
+        }
+        for (auto session = gatewaymakerbasic_sessions.begin(); session != gatewaymakerbasic_sessions.end(); ) {
+            if (!gatewaymakerbasic.ended(session->second)) { ++session; continue; }
+            if (gatewaymakerbasic_order_entry) gatewaymakerbasic_order_entry->close(session->first);
+            gatewaymakerbasic.disconnect(session->second);
+            session = gatewaymakerbasic_sessions.erase(session);
+            worked = true;
+        }
         return worked;
     });
     sim::Component gatewaytakerbasic_thread("gatewaytakerbasic", [&] {
@@ -441,6 +521,19 @@ int main(int argc, char** argv) {
                 gatewaytakerbasic_sessions.erase(gone);
             }
         }) || worked;
+        gatewaytakerbasic.tick();
+        if (gatewaytakerbasic.ended(takerbasic_client)) {
+            gatewaytakerbasic.disconnect(takerbasic_client);
+            takerbasic_client = gatewaytakerbasic.connect(takerbasic_reply);
+            worked = true;
+        }
+        for (auto session = gatewaytakerbasic_sessions.begin(); session != gatewaytakerbasic_sessions.end(); ) {
+            if (!gatewaytakerbasic.ended(session->second)) { ++session; continue; }
+            if (gatewaytakerbasic_order_entry) gatewaytakerbasic_order_entry->close(session->first);
+            gatewaytakerbasic.disconnect(session->second);
+            session = gatewaytakerbasic_sessions.erase(session);
+            worked = true;
+        }
         return worked;
     });
     sim::Component gatewayreplay_thread("gatewayreplay", [&] {
@@ -457,6 +550,19 @@ int main(int argc, char** argv) {
                 gatewayreplay_sessions.erase(gone);
             }
         }) || worked;
+        gatewayreplay.tick();
+        if (gatewayreplay.ended(replay_client)) {
+            gatewayreplay.disconnect(replay_client);
+            replay_client = gatewayreplay.connect(replay_reply);
+            worked = true;
+        }
+        for (auto session = gatewayreplay_sessions.begin(); session != gatewayreplay_sessions.end(); ) {
+            if (!gatewayreplay.ended(session->second)) { ++session; continue; }
+            if (gatewayreplay_order_entry) gatewayreplay_order_entry->close(session->first);
+            gatewayreplay.disconnect(session->second);
+            session = gatewayreplay_sessions.erase(session);
+            worked = true;
+        }
         return worked;
     });
     sim::Component gatewayrequests_thread("gatewayrequests", [&] {
@@ -473,10 +579,24 @@ int main(int argc, char** argv) {
                 gatewayrequests_sessions.erase(gone);
             }
         }) || worked;
+        gatewayrequests.tick();
+        if (gatewayrequests.ended(requests_client)) {
+            gatewayrequests.disconnect(requests_client);
+            requests_client = gatewayrequests.connect(requests_reply);
+            worked = true;
+        }
+        for (auto session = gatewayrequests_sessions.begin(); session != gatewayrequests_sessions.end(); ) {
+            if (!gatewayrequests.ended(session->second)) { ++session; continue; }
+            if (gatewayrequests_order_entry) gatewayrequests_order_entry->close(session->first);
+            gatewayrequests.disconnect(session->second);
+            session = gatewayrequests_sessions.erase(session);
+            worked = true;
+        }
         return worked;
     });
     sim::Component makerbasic_thread("makerbasic", [&] {
         bool worked = to_makerbasic.read([&](std::string_view bytes) { makerbasic.on_bytes(bytes.data(), bytes.size()); });
+        makerbasic.tick();   // its session's heartbeats, and the venue gone silent
         // A served venue runs free; the startup run takes turns, so it is the same every time.
         // Served, the trader takes in what has arrived on every pass and orders at its own pace,
         // twenty times a second: sleeping in the step would leave the venue's answers waiting.
@@ -496,6 +616,7 @@ int main(int argc, char** argv) {
     });
     sim::Component takerbasic_thread("takerbasic", [&] {
         bool worked = to_takerbasic.read([&](std::string_view bytes) { takerbasic.on_bytes(bytes.data(), bytes.size()); });
+        takerbasic.tick();   // its session's heartbeats, and the venue gone silent
         // A served venue runs free; the startup run takes turns, so it is the same every time.
         // Served, the trader takes in what has arrived on every pass and orders at its own pace,
         // twenty times a second: sleeping in the step would leave the venue's answers waiting.
@@ -515,6 +636,7 @@ int main(int argc, char** argv) {
     });
     sim::Component replay_thread("replay", [&] {
         bool worked = to_replay.read([&](std::string_view bytes) { replay.on_bytes(bytes.data(), bytes.size()); });
+        replay.tick();   // its session's heartbeats, and the venue gone silent
         // A served venue runs free; the startup run takes turns, so it is the same every time.
         // Served, the trader takes in what has arrived on every pass and orders at its own pace,
         // twenty times a second: sleeping in the step would leave the venue's answers waiting.
@@ -534,6 +656,7 @@ int main(int argc, char** argv) {
     });
     sim::Component requests_thread("requests", [&] {
         bool worked = to_requests.read([&](std::string_view bytes) { requests.on_bytes(bytes.data(), bytes.size()); });
+        requests.tick();   // its session's heartbeats, and the venue gone silent
         // A served venue runs free; the startup run takes turns, so it is the same every time.
         // Served, the trader takes in what has arrived on every pass and orders at its own pace,
         // twenty times a second: sleeping in the step would leave the venue's answers waiting.
@@ -660,6 +783,7 @@ int main(int argc, char** argv) {
             void rejected(sim::replay::glimpse::soupbin::status reason) { refused = static_cast<char>(reason); }
             void message(std::string_view) { ++messages; }
             void ended() { over = true; }
+            void silent() { over = true; }
         } watched;
         std::size_t session = 0;
         auto to_service = [&](const char* b, std::size_t n) { glimpse.on_bytes(session, b, n); };
@@ -681,6 +805,7 @@ int main(int argc, char** argv) {
             void rejected(sim::replay::totalviewtcp::soupbin::status reason) { refused = static_cast<char>(reason); }
             void message(std::string_view) { ++messages; }
             void ended() { over = true; }
+            void silent() { over = true; }
         } watched;
         std::size_t session = 0;
         auto to_service = [&](const char* b, std::size_t n) { totalviewtcp.on_bytes(session, b, n); };
@@ -692,36 +817,56 @@ int main(int argc, char** argv) {
                     (unsigned long long)watched.messages, watched.over ? " then ended the session" : "", (unsigned long long)watched.resume);
     }
 
-    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, order_accepted=%llu, order_executed=%llu, canceled=%llu, rejected_order=%llu\n",
+    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, order_accepted=%llu, replaced=%llu, order_modified=%llu, order_executed=%llu, canceled=%llu, rejected_order=%llu\n",
                 makerbasic.name().c_str(), makerbasic.logged_in() ? makerbasic.session_name().c_str() : "not logged in",
                 (unsigned long long)makerbasic.entered(), (unsigned long long)makerbasic.canceled(),
             (unsigned long long)makerbasic.answers().order_accepted_message,
+            (unsigned long long)makerbasic.answers().replaced_message,
+            (unsigned long long)makerbasic.answers().order_modified_message,
             (unsigned long long)makerbasic.answers().order_executed_message,
             (unsigned long long)makerbasic.answers().canceled_message,
             (unsigned long long)makerbasic.answers().rejected_order_message);
-    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, order_accepted=%llu, order_executed=%llu, canceled=%llu, rejected_order=%llu\n",
+    if (makerbasic.silences() > 0)
+        std::printf("nasdaq-simulator: trader %s: the venue went silent on it %llu time(s); %s\n", makerbasic.name().c_str(),
+                    (unsigned long long)makerbasic.silences(), makerbasic.logged_in() ? "logged in again" : "not logged in again");
+    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, order_accepted=%llu, replaced=%llu, order_modified=%llu, order_executed=%llu, canceled=%llu, rejected_order=%llu\n",
                 takerbasic.name().c_str(), takerbasic.logged_in() ? takerbasic.session_name().c_str() : "not logged in",
                 (unsigned long long)takerbasic.entered(), (unsigned long long)takerbasic.canceled(),
             (unsigned long long)takerbasic.answers().order_accepted_message,
+            (unsigned long long)takerbasic.answers().replaced_message,
+            (unsigned long long)takerbasic.answers().order_modified_message,
             (unsigned long long)takerbasic.answers().order_executed_message,
             (unsigned long long)takerbasic.answers().canceled_message,
             (unsigned long long)takerbasic.answers().rejected_order_message);
+    if (takerbasic.silences() > 0)
+        std::printf("nasdaq-simulator: trader %s: the venue went silent on it %llu time(s); %s\n", takerbasic.name().c_str(),
+                    (unsigned long long)takerbasic.silences(), takerbasic.logged_in() ? "logged in again" : "not logged in again");
     std::printf("nasdaq-simulator: trader %s replayed %zu quotes from captures/TotalView.pcap\n", replay.name().c_str(), replay_strategy.available());
-    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, order_accepted=%llu, order_executed=%llu, canceled=%llu, rejected_order=%llu\n",
+    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, order_accepted=%llu, replaced=%llu, order_modified=%llu, order_executed=%llu, canceled=%llu, rejected_order=%llu\n",
                 replay.name().c_str(), replay.logged_in() ? replay.session_name().c_str() : "not logged in",
                 (unsigned long long)replay.entered(), (unsigned long long)replay.canceled(),
             (unsigned long long)replay.answers().order_accepted_message,
+            (unsigned long long)replay.answers().replaced_message,
+            (unsigned long long)replay.answers().order_modified_message,
             (unsigned long long)replay.answers().order_executed_message,
             (unsigned long long)replay.answers().canceled_message,
             (unsigned long long)replay.answers().rejected_order_message);
+    if (replay.silences() > 0)
+        std::printf("nasdaq-simulator: trader %s: the venue went silent on it %llu time(s); %s\n", replay.name().c_str(),
+                    (unsigned long long)replay.silences(), replay.logged_in() ? "logged in again" : "not logged in again");
     std::printf("nasdaq-simulator: trader %s replayed %zu quotes from captures/Ouch.pcap\n", requests.name().c_str(), requests_strategy.available());
-    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, order_accepted=%llu, order_executed=%llu, canceled=%llu, rejected_order=%llu\n",
+    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, order_accepted=%llu, replaced=%llu, order_modified=%llu, order_executed=%llu, canceled=%llu, rejected_order=%llu\n",
                 requests.name().c_str(), requests.logged_in() ? requests.session_name().c_str() : "not logged in",
                 (unsigned long long)requests.entered(), (unsigned long long)requests.canceled(),
             (unsigned long long)requests.answers().order_accepted_message,
+            (unsigned long long)requests.answers().replaced_message,
+            (unsigned long long)requests.answers().order_modified_message,
             (unsigned long long)requests.answers().order_executed_message,
             (unsigned long long)requests.answers().canceled_message,
             (unsigned long long)requests.answers().rejected_order_message);
+    if (requests.silences() > 0)
+        std::printf("nasdaq-simulator: trader %s: the venue went silent on it %llu time(s); %s\n", requests.name().c_str(),
+                    (unsigned long long)requests.silences(), requests.logged_in() ? "logged in again" : "not logged in again");
     std::printf("nasdaq-simulator: %llu trades matched, ipc carried %llu order + %llu event messages\n",
                 (unsigned long long)trades.load(), (unsigned long long)ipc_msgs.load(), (unsigned long long)ipc_events.load());
     return 0;

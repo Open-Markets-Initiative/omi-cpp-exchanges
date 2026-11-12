@@ -9,6 +9,8 @@
 #include "../types/Price.hpp"
 #include "../types/Quantity.hpp"
 #include "../types/Auction.hpp"
+#include "../types/RestingDisplay.hpp"
+#include "../types/AggressorDisplay.hpp"
 
 namespace nasdaq::nsmequities::matchingengine::ipc::v2026 {
 
@@ -26,6 +28,8 @@ struct trade_message {
     ipc_matchingengine::price price;
     ipc_matchingengine::quantity quantity;
     ipc_matchingengine::auction auction;
+    ipc_matchingengine::resting_display resting_display;
+    ipc_matchingengine::aggressor_display aggressor_display;
 
     // parse method
     static trade_message* parse(std::byte* buffer) {
@@ -47,7 +51,9 @@ static_assert(offsetof(trade_message, symbol) == 32, "unexpected offset of trade
 static_assert(offsetof(trade_message, price) == 40, "unexpected offset of trade_message::price");
 static_assert(offsetof(trade_message, quantity) == 48, "unexpected offset of trade_message::quantity");
 static_assert(offsetof(trade_message, auction) == 52, "unexpected offset of trade_message::auction");
-static_assert(sizeof(trade_message) == 53, "unexpected sizeof trade_message");
+static_assert(offsetof(trade_message, resting_display) == 53, "unexpected offset of trade_message::resting_display");
+static_assert(offsetof(trade_message, aggressor_display) == 54, "unexpected offset of trade_message::aggressor_display");
+static_assert(sizeof(trade_message) == 55, "unexpected sizeof trade_message");
 
 #pragma pack(pop)
 }

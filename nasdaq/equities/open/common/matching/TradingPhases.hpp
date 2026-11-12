@@ -41,13 +41,27 @@ public:
         }
         return false;
     }
+    // A reduce, answering whether the order was in the book: lowered where it stands in a phase
+    // that takes cancels, as a cancel is taken. A phase that refuses cancels answers no.
+    bool on_reduce(std::uint64_t id, std::uint64_t qty) {
+        switch (phase_) {
+            case Phase::Continuous: return engine_.reduce(id, qty);
+        }
+        return false;
+    }
 
     // A replace: the order as it now stands, under the id it already has. It is taken
     // out and given again as the phase it arrives in says, so it loses its place; one
     // that was not in the book to take out is refused.
-    void on_replace(Order order) {
+    // A replace: the replacement as it is to stand, under its own id, and the order it replaces.
+    // One that only lowers the quantity, at the price the order rests at, is lowered where it
+    // stands and keeps its place and its id. Any other takes the order out and gives the
+    // replacement as the phase it arrives in gives an order: what of it rests is the replace,
+    // and one that rests nothing is the replace with nothing left. A refusal leaves the order
+    // as it rests.
+    void on_replace(Order order, std::uint64_t replaced) {
         switch (phase_) {
-            case Phase::Continuous: if (!engine_.on_cancel(order.id)) { on_refused_(order); return; } engine_.on_new_order(order); return;
+            case Phase::Continuous: if (!engine_.take_replaced(replaced)) { on_refused_(order); return; } engine_.on_new_order(order); engine_.replaced(order); return;
         }
     }
 

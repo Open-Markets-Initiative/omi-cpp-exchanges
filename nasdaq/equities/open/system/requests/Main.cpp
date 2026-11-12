@@ -57,6 +57,7 @@ int main(int argc, char** argv) {
             bool worked = false;
             worked = to_requests.read([&](std::string_view bytes) { requests.on_bytes(bytes.data(), bytes.size()); }) || worked;
             from_requests.deliver();
+            requests.tick();   // its session's heartbeats, and the venue gone silent
             if (requests.logged_in() && std::chrono::steady_clock::now() >= paced) {
                 requests_strategy.step(requests.orders());
                 ++requests_ticks;
@@ -68,6 +69,9 @@ int main(int argc, char** argv) {
 
         std::printf("nasdaq-requests: stopped — entered %llu, canceled %llu over %d turn(s)\n",
                     (unsigned long long)requests.entered(), (unsigned long long)requests.canceled(), requests_ticks);
+        if (requests.silences() > 0)
+            std::printf("nasdaq-requests: the venue went silent on it %llu time(s); %s\n",
+                        (unsigned long long)requests.silences(), requests.logged_in() ? "logged in again" : "not logged in again");
     } catch (const std::exception& problem) {
         std::fprintf(stderr, "nasdaq-requests: %s\n", problem.what());
         return 1;

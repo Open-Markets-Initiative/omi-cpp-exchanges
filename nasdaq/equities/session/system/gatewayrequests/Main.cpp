@@ -65,11 +65,14 @@ int main(int argc, char** argv) {
             [&](const sim::ipc_ns::order_refused_message& j) { gatewayrequests.on_event(j); },
             [](const sim::ipc_ns::phase_announced_message&) {},
             [](const sim::ipc_ns::cross_completed_message&) {},
-            [](const sim::ipc_ns::imbalance_indicated_message&) {});
+            [](const sim::ipc_ns::imbalance_indicated_message&) {},
+            [&](const sim::ipc_ns::order_replaced_message& w) { gatewayrequests.on_event(w); },
+            [&](const sim::ipc_ns::order_reduced_message& y) { gatewayrequests.on_event(y); });
 
         // A session per trader process, against the link that carries it. To the gateway a
         // trader on a link is what a client on a socket is: somewhere to write bytes.
-        const std::size_t requests_client = gatewayrequests.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_requests, b, n); });
+        auto requests_reply = [&](const char* b, std::size_t n) { sim::write_blocking(to_requests, b, n); };
+        std::size_t requests_client = gatewayrequests.connect(requests_reply);
 
         // Order entry over Tcp: a session per socket, opened as each client arrives.
         net::TcpServer order_entry(cfg.order_entry.host, cfg.gatewayrequests_port);
@@ -94,6 +97,19 @@ int main(int argc, char** argv) {
                     sessions.erase(gone);
                 }
             }) || worked;
+            gatewayrequests.tick();
+            if (gatewayrequests.ended(requests_client)) {
+                gatewayrequests.disconnect(requests_client);
+                requests_client = gatewayrequests.connect(requests_reply);
+                worked = true;
+            }
+            for (auto session = sessions.begin(); session != sessions.end(); ) {
+                if (!gatewayrequests.ended(session->second)) { ++session; continue; }
+                order_entry.close(session->first);
+                gatewayrequests.disconnect(session->second);
+                session = sessions.erase(session);
+                worked = true;
+            }
             to_sequencer_gatewayrequests.deliver();
             to_requests.deliver();
             if (!worked) std::this_thread::sleep_for(std::chrono::microseconds(50));

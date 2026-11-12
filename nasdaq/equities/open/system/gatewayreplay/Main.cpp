@@ -62,11 +62,14 @@ int main(int argc, char** argv) {
             [&](const sim::ipc_ns::order_canceled_message& c) { gatewayreplay.on_event(c); },
             [&](const sim::ipc_ns::order_accepted_message& a) { gatewayreplay.on_event(a); },
             [&](const sim::ipc_ns::order_eliminated_message& e) { gatewayreplay.on_event(e); },
-            [&](const sim::ipc_ns::order_refused_message& j) { gatewayreplay.on_event(j); });
+            [&](const sim::ipc_ns::order_refused_message& j) { gatewayreplay.on_event(j); },
+            [&](const sim::ipc_ns::order_replaced_message& w) { gatewayreplay.on_event(w); },
+            [&](const sim::ipc_ns::order_reduced_message& y) { gatewayreplay.on_event(y); });
 
         // A session per trader process, against the link that carries it. To the gateway a
         // trader on a link is what a client on a socket is: somewhere to write bytes.
-        const std::size_t replay_client = gatewayreplay.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_replay, b, n); });
+        auto replay_reply = [&](const char* b, std::size_t n) { sim::write_blocking(to_replay, b, n); };
+        std::size_t replay_client = gatewayreplay.connect(replay_reply);
 
         // Order entry over Tcp: a session per socket, opened as each client arrives.
         net::TcpServer order_entry(cfg.order_entry.host, cfg.gatewayreplay_port);
@@ -91,6 +94,19 @@ int main(int argc, char** argv) {
                     sessions.erase(gone);
                 }
             }) || worked;
+            gatewayreplay.tick();
+            if (gatewayreplay.ended(replay_client)) {
+                gatewayreplay.disconnect(replay_client);
+                replay_client = gatewayreplay.connect(replay_reply);
+                worked = true;
+            }
+            for (auto session = sessions.begin(); session != sessions.end(); ) {
+                if (!gatewayreplay.ended(session->second)) { ++session; continue; }
+                order_entry.close(session->first);
+                gatewayreplay.disconnect(session->second);
+                session = sessions.erase(session);
+                worked = true;
+            }
             to_sequencer_gatewayreplay.deliver();
             to_replay.deliver();
             if (!worked) std::this_thread::sleep_for(std::chrono::microseconds(50));

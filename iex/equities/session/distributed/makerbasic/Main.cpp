@@ -51,6 +51,7 @@ int main(int argc, char** argv) {
             bool worked = false;
             worked = to_makerbasic.read([&](std::string_view bytes) { makerbasic.on_bytes(bytes.data(), bytes.size()); }) || worked;
             from_makerbasic.deliver();
+            makerbasic.tick();   // its session's heartbeats, and the venue gone silent
             if (makerbasic.logged_in() && std::chrono::steady_clock::now() >= paced) {
                 makerbasic_strategy.step(makerbasic.orders());
                 ++makerbasic_ticks;

@@ -63,7 +63,8 @@ int main(int argc, char** argv) {
 
         // A session per trader process, against the link that carries it. To the gateway a
         // trader on a link is what a client on a socket is: somewhere to write bytes.
-        const std::size_t makerbasic_client = gatewaymakerbasic.connect([&](const char* b, std::size_t n) { sim::write_blocking(to_makerbasic, b, n); });
+        auto makerbasic_reply = [&](const char* b, std::size_t n) { sim::write_blocking(to_makerbasic, b, n); };
+        std::size_t makerbasic_client = gatewaymakerbasic.connect(makerbasic_reply);
 
         // Order entry over Tcp: a session per socket, opened as each client arrives.
         net::TcpServer order_entry(cfg.order_entry.host, cfg.gatewaymakerbasic_port);
@@ -80,7 +81,7 @@ int main(int argc, char** argv) {
             worked = order_entry.poll([&](int fd, std::string_view bytes) {
                 auto session = sessions.find(fd);
                 if (session == sessions.end())
-                    session = sessions.emplace(fd, gatewaymakerbasic.connect([fd](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); })).first;
+                    session = sessions.emplace(fd, gatewaymakerbasic.connect([&order_entry, fd](const char* b, std::size_t n) { order_entry.send(fd, b, n); })).first;
                 gatewaymakerbasic.on_bytes(session->second, bytes.data(), bytes.size());
             }, [&](int fd) {
                 if (const auto gone = sessions.find(fd); gone != sessions.end()) {
@@ -88,6 +89,19 @@ int main(int argc, char** argv) {
                     sessions.erase(gone);
                 }
             }) || worked;
+            gatewaymakerbasic.tick();
+            if (gatewaymakerbasic.ended(makerbasic_client)) {
+                gatewaymakerbasic.disconnect(makerbasic_client);
+                makerbasic_client = gatewaymakerbasic.connect(makerbasic_reply);
+                worked = true;
+            }
+            for (auto session = sessions.begin(); session != sessions.end(); ) {
+                if (!gatewaymakerbasic.ended(session->second)) { ++session; continue; }
+                order_entry.close(session->first);
+                gatewaymakerbasic.disconnect(session->second);
+                session = sessions.erase(session);
+                worked = true;
+            }
             to_sequencer_gatewaymakerbasic.deliver();
             to_makerbasic.deliver();
             if (!worked) std::this_thread::sleep_for(std::chrono::microseconds(50));

@@ -48,7 +48,17 @@ class Engine {
         void operator()(const matching::Order& order) const { sim::emit_accepted(self->emit_, order); }
     };
 
-    using Book = matching::MatchingEngine<OnTrade, OnRested, OnCanceled, OnEliminated, OnAccepted>;
+    struct OnReplaced {
+        Engine* self;
+        void operator()(std::uint64_t replaced, const matching::Order& order) const { sim::emit_replaced(self->emit_, replaced, order); }
+    };
+
+    struct OnReduced {
+        Engine* self;
+        void operator()(const matching::Order& order, std::uint64_t taken) const { sim::emit_reduced(self->emit_, order, taken); }
+    };
+
+    using Book = matching::MatchingEngine<OnTrade, OnRested, OnCanceled, OnEliminated, OnAccepted, OnReplaced, OnReduced>;
 
     // The day's callback: an order the phase it arrived in does not accept, framed onto the Ipc
     // for the gateway.
@@ -64,7 +74,7 @@ public:
     Engine(Emit emit, std::atomic<std::uint64_t>& trades)
         : emit_(std::move(emit)),
           trades_(trades),
-          book_(OnTrade{this}, OnRested{this}, OnCanceled{this}, OnEliminated{this}, OnAccepted{this}),
+          book_(OnTrade{this}, OnRested{this}, OnCanceled{this}, OnEliminated{this}, OnAccepted{this}, OnReplaced{this}, OnReduced{this}),
           day_(book_, OnRefused{this}),
           server_(day_, OnRefused{ this }) {}
 

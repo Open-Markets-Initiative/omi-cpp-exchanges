@@ -5,7 +5,7 @@
 #include <cstring>
 #include <charconv>
 #include <string_view>
-#include <chrono>
+#include "../../../run/Clock.hpp"
 #include "structs/IextpHeader.hpp"
 
 namespace sim::tops {
@@ -49,7 +49,7 @@ public:
         header->message_count.set(count_);
         header->stream_offset.set(offset_);
         header->first_message_sequence_number.set(seq_ - count_);
-        header->send_time.set(static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()));
+        header->send_time.set(static_cast<std::uint64_t>(sim::clock::now_nanos()));
         publish_(buffer_, size_);
         offset_ += size_ - sizeof(*header);
         reset();

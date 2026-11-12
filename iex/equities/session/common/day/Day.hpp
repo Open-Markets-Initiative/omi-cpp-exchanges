@@ -74,7 +74,7 @@ public:
     // sees it is serving, so they may be handed over while that thread is already running.
     void serve(const Times& at) {
         at_ = at;
-        started_ = std::chrono::steady_clock::now();
+        sim::clock::start_day();
         serving_.store(true, std::memory_order_release);
     }
 
@@ -86,7 +86,7 @@ public:
     // back off.
     bool step() {
         if (!serving_.load(std::memory_order_acquire)) return false;
-        const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started_).count();
+        const auto now = sim::clock::day_ms();   // the day's time, as the venue's clock keeps it
 
         if (next_ < schedule.size() && now >= at_[next_] * 1000LL) {
             const auto made = next_++;
@@ -117,7 +117,6 @@ private:
 
     Emit                                  emit_;
     Times                                 at_{};
-    std::chrono::steady_clock::time_point started_{};
     std::atomic<bool>                     serving_{false};
     std::size_t                           next_ = 0;
     int                                   asking_ = -1;   // the indication the collection now is asked about by, or -1

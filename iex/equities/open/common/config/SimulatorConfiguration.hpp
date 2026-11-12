@@ -1,9 +1,14 @@
 #pragma once
 
 #include <boost/program_options.hpp>
+#include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
+
+#include "../run/Clock.hpp"
 
 namespace sim {
 
@@ -34,6 +39,10 @@ struct RuntimeConfig {
     Endpoint to_takerbasic_link;
     Endpoint from_takerbasic_link;
     std::string recording_directory;
+    // How the venue keeps time: its mode, the time of day its day starts at, and the zone that is in.
+    std::string clock_mode;
+    std::string clock_start;
+    std::string clock_zone;
 };
 
 // Parse [--config <file>] (default simulator.ini); missing file / keys keep the generated defaults.
@@ -80,7 +89,10 @@ inline RuntimeConfig load_config(int argc, char** argv) {
         ("link-to_takerbasic.port", po::value<unsigned short>(&c.to_takerbasic_link.port)->default_value(19010))
         ("link-from_takerbasic.host", po::value<std::string>(&c.from_takerbasic_link.host)->default_value("gatewaytakerbasic"))
         ("link-from_takerbasic.port", po::value<unsigned short>(&c.from_takerbasic_link.port)->default_value(19011))
-        ("recording.directory", po::value<std::string>(&c.recording_directory)->default_value("recordings"));
+        ("recording.directory", po::value<std::string>(&c.recording_directory)->default_value("recordings"))
+        ("clock.mode", po::value<std::string>(&c.clock_mode)->default_value("Elapsed"))
+        ("clock.start", po::value<std::string>(&c.clock_start)->default_value("00:00:00"))
+        ("clock.zone", po::value<std::string>(&c.clock_zone)->default_value("UTC"));
 
     std::string path = "simulator.ini";
     for (int i = 1; i + 1 < argc; ++i)
@@ -95,6 +107,14 @@ inline RuntimeConfig load_config(int argc, char** argv) {
     po::store(file ? po::parse_config_file(file, options, /*allow_unregistered*/true)
                   : po::parse_config_file(nothing, options, /*allow_unregistered*/true), vm);
     po::notify(vm);
+    // The venue's clock, as the settings say, set before anything is stamped.
+    try {
+        sim::clock::use(c.clock_mode, c.clock_start, c.clock_zone);
+    }
+    catch (const std::runtime_error& refused) {
+        std::fprintf(stderr, "%s: %s\n", argc > 0 ? argv[0] : "simulator", refused.what());
+        std::exit(1);
+    }
     return c;
 }
 
