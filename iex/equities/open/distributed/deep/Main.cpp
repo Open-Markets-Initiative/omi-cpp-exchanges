@@ -63,7 +63,11 @@ int main(int argc, char** argv) {
                 deep.flush();
             },
             [](const sim::ipc_ns::order_canceled_message&) {},
-            [](const sim::ipc_ns::order_refused_message&) {});
+            [](const sim::ipc_ns::order_accepted_message&) {},
+            [](const sim::ipc_ns::order_eliminated_message&) {},
+            [](const sim::ipc_ns::order_refused_message&) {},
+            [](const sim::ipc_ns::order_replaced_message&) {},
+            [](const sim::ipc_ns::cancel_refused_message&) {});
 
         std::printf("iex-deep: publishing to %s:%u\n", cfg.deep_feed.host.c_str(), (unsigned)cfg.deep_feed.port);
 
@@ -71,7 +75,8 @@ int main(int argc, char** argv) {
         // Nothing to do means nothing to do: back off rather than spin a core.
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
-            worked = to_deep.read([&](std::string_view message) { deep_events.on_message(message); ++handled; }) || worked;
+            worked = to_deep.read([&](std::string_view message) { if (const auto asked = sim::book_end_of(message)) deep_rec.mark(*asked); deep_events.on_message(message); ++handled; }) || worked;
+            deep.idle();
             if (!worked) std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
 

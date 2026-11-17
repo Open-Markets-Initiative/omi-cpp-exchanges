@@ -1,6 +1,6 @@
 #pragma once
 
-namespace nasdaq::nsmequities::totalview::glimpse::v5_0 {
+namespace nasdaq::nsmequities::totalview::glimpse::v5_0_2026 {
 
 // Client Heartbeat
 struct client_heartbeat {

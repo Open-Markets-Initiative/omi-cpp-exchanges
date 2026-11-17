@@ -125,9 +125,14 @@ public:
 
     // Close one client from this side: its session has ended - it went silent past what the
     // session allows. The caller forgets the session itself, as `gone` would have it do.
+    // Close a client from this side. What is still kept for it is offered its socket once more first:
+    // a session that ends with a last word - SoupBinTCP's Login Reject, a Terminate - says it before
+    // the connection goes, where the socket will take it.
     void close(int client) {
         for (std::size_t i = 0; i < clients_.size(); ++i) {
             if (clients_[i] != client) continue;
+            if (const auto kept = pending_.find(client); kept != pending_.end())
+                (void)::send(client, kept->second.bytes.data() + kept->second.at, kept->second.bytes.size() - kept->second.at, MSG_NOSIGNAL | MSG_DONTWAIT);
             ::close(client);
             clients_.erase(clients_.begin() + static_cast<long>(i));
             pending_.erase(client);

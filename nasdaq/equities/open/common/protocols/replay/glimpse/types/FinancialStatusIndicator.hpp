@@ -7,7 +7,7 @@
 #include <string_view>
 #include "../cache/Required.hpp"
 
-namespace nasdaq::nsmequities::totalview::glimpse::v5_0 {
+namespace nasdaq::nsmequities::totalview::glimpse::v5_0_2026 {
 
 // financial_status_indicator
 struct financial_status_indicator {

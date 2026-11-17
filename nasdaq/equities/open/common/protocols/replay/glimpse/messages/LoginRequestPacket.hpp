@@ -7,9 +7,9 @@
 #include "../types/RequestedSession.hpp"
 #include "../types/RequestedSequenceNumber.hpp"
 
-namespace nasdaq::nsmequities::totalview::glimpse::v5_0 {
+namespace nasdaq::nsmequities::totalview::glimpse::v5_0_2026 {
 
-namespace glimpse_totalview = ::nasdaq::nsmequities::totalview::glimpse::v5_0;
+namespace glimpse_totalview = ::nasdaq::nsmequities::totalview::glimpse::v5_0_2026;
 
 #pragma pack(push, 1)
 

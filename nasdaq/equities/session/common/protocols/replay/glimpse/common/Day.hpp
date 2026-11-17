@@ -23,7 +23,7 @@
 
 // A time of day counted from midnight (Epoch Midnight) names no day: placed on one, in the zone the
 // model states its midnight in, it is an instant, UTC Unix nanoseconds
-namespace nasdaq::nsmequities::totalview::glimpse::v5_0::calendar {
+namespace nasdaq::nsmequities::totalview::glimpse::v5_0_2026::calendar {
 
 constexpr std::int64_t nanoseconds_per_second = 1'000'000'000;
 constexpr std::int64_t seconds_per_day = 86'400;

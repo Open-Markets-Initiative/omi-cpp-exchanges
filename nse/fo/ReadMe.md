@@ -1,9 +1,9 @@
 # Nse Futures and Options Simulator
 
-Generated exchange simulator for Nse Futures and Options: an order-entry gateway, a continuous price-time matching engine,
+Generated exchange simulator for Nse Futures and Options: an order-entry gateway, an always open price-time matching engine,
 market data feed publishers
 and traders that exercise the exchange end to end. Every link between two components carries
-framed Nse.NseFo.MatchingEngine.Ipc.v1.0 messages: the gateway owns the client sockets, the engine owns the
+framed Nse.NseFo.MatchingEngine.Ipc.v2026 messages: the gateway owns the client sockets, the engine owns the
 book, and each feed owns its market data.
 
 The components are generated once, into `common/`, and deployed three ways - `process/`, one binary with a thread per component, `system/`, a process per component on this host, `distributed/`, a process per component across machines. Each directory has a ReadMe of its own.
@@ -33,8 +33,15 @@ and a `verify.sh` that runs the venue and checks what its components carried.
 | Order Entry | Nse.NseFo.OrderEntry.Nnf.v9.50 |
 | Order Entry Session | Nse.Nnf |
 | Market Data (Mtbt) | Nse.NseFo.Mtbt.Tbt.v7.1 |
-| Internal Messaging | Nse.NseFo.MatchingEngine.Ipc.v1.0 |
+| Always Open | Nse.NseFo.FuturesAndOptions.Open.TradingSession |
+| Internal Messaging | Nse.NseFo.MatchingEngine.Ipc.v2026 |
 
+## Always Open
+
+The engine runs `Nse.NseFo.FuturesAndOptions.Open.TradingSession`: one phase, whatever the time, in which an order
+trades what it crosses and rests the rest, and a cancel takes it out of the book. The chart
+answers no change of phase, so nothing asks it one. What it refuses is said on the internal
+messaging, and answered to the client whose order it was.
 ## Build
 
 Requirements: C++20, CMake 3.28+, Boost

@@ -431,6 +431,7 @@ inline std::size_t encode(const OrderCancelReplaceRequest& m, char* out) {
     p = detail::put_str(p, FixTag::SymbolSfx, m.symbol_sfx, sizeof(m.symbol_sfx));
     p = detail::put_dec(p, FixTag::MinQty, m.min_qty);
     p = detail::put_chr(p, FixTag::ExtendedExecInst, m.extended_exec_inst);
+    p = detail::put_dec(p, FixTag::PegDifference, m.peg_difference);
     return static_cast<std::size_t>(p - out);
 }
 
@@ -463,6 +464,7 @@ inline bool decode(std::string_view msg, OrderCancelReplaceRequest& out) {
             case FixTag::SymbolSfx: detail::get_str(v, out.symbol_sfx, sizeof(out.symbol_sfx)); break;
             case FixTag::MinQty: out.min_qty = detail::get_dec(v); break;
             case FixTag::ExtendedExecInst: out.extended_exec_inst = detail::get_chr(v); break;
+            case FixTag::PegDifference: out.peg_difference = detail::get_dec(v); break;
             default: break;
         }
         i = soh + 1;

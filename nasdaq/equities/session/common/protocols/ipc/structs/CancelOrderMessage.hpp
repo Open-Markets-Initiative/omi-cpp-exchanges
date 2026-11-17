@@ -4,6 +4,7 @@
 #include "../types/Timestamp.hpp"
 #include "../types/Sequence.hpp"
 #include "../types/OrderId.hpp"
+#include "../types/Symbol.hpp"
 
 namespace nasdaq::nsmequities::matchingengine::ipc::v2026 {
 
@@ -16,6 +17,7 @@ struct cancel_order_message {
     ipc_matchingengine::timestamp timestamp;
     ipc_matchingengine::sequence sequence;
     ipc_matchingengine::order_id order_id;
+    ipc_matchingengine::symbol symbol;
 
     // parse method
     static cancel_order_message* parse(std::byte* buffer) {
@@ -32,7 +34,8 @@ struct cancel_order_message {
 static_assert(offsetof(cancel_order_message, timestamp) == 0, "unexpected offset of cancel_order_message::timestamp");
 static_assert(offsetof(cancel_order_message, sequence) == 8, "unexpected offset of cancel_order_message::sequence");
 static_assert(offsetof(cancel_order_message, order_id) == 16, "unexpected offset of cancel_order_message::order_id");
-static_assert(sizeof(cancel_order_message) == 24, "unexpected sizeof cancel_order_message");
+static_assert(offsetof(cancel_order_message, symbol) == 24, "unexpected offset of cancel_order_message::symbol");
+static_assert(sizeof(cancel_order_message) == 32, "unexpected sizeof cancel_order_message");
 
 #pragma pack(pop)
 }

@@ -39,10 +39,13 @@ echo "verify: Investors Exchange Equities Session — system, 10 components, ${s
 # seconds simulator.ini gives each change are a real day's minutes.
 scratch="$(mktemp -d)"
 sed -e '/^\[day\]/,/^\[/ s|^preopen = .*|preopen = 0|' \
+    -e '/^\[day\]/,/^\[/ s|^openinglockin = .*|openinglockin = 3|' \
+    -e '/^\[day\]/,/^\[/ s|^openinglockout = .*|openinglockout = 4|' \
     -e '/^\[day\]/,/^\[/ s|^open = .*|open = 4|' \
     -e '/^\[day\]/,/^\[/ s|^halt = .*|halt = 8|' \
     -e '/^\[day\]/,/^\[/ s|^resume = .*|resume = 10|' \
     -e '/^\[day\]/,/^\[/ s|^preclose = .*|preclose = 14|' \
+    -e '/^\[day\]/,/^\[/ s|^closinglockout = .*|closinglockout = 18|' \
     -e '/^\[day\]/,/^\[/ s|^close = .*|close = 18|' \
     -e '/^\[day\]/,/^\[/ s|^end = .*|end = 20|' \
     "$here/../simulator.ini" > "$scratch/simulator.ini"

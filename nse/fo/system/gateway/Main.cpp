@@ -59,7 +59,8 @@ int main(int argc, char** argv) {
         sim::IpcEventServer client_events(
             [&](const sim::ipc_ns::trade_message& t) { gateway.on_event(t); },
             [](const sim::ipc_ns::order_rested_message&) {},
-            [&](const sim::ipc_ns::order_canceled_message& c) { gateway.on_event(c); });
+            [&](const sim::ipc_ns::order_canceled_message& c) { gateway.on_event(c); },
+            [](const sim::ipc_ns::order_refused_message&) {});
 
         // A session per trader process, against the link that carries it. To the gateway a
         // trader on a link is what a client on a socket is: somewhere to write bytes.

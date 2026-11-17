@@ -6,7 +6,7 @@
 #include <algorithm>
 #include "../cache/Required.hpp"
 
-namespace nasdaq::nsmequities::totalview::glimpse::v5_0 {
+namespace nasdaq::nsmequities::totalview::glimpse::v5_0_2026 {
 
 // requested_sequence_number
 struct requested_sequence_number {

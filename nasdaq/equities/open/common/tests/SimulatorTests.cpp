@@ -69,7 +69,9 @@ BOOST_AUTO_TEST_CASE(gateway_admits_fills_and_cancels_an_order) {
         [](const sim::ipc_ns::order_eliminated_message&) {},
         [](const sim::ipc_ns::order_refused_message&) {},
         [](const sim::ipc_ns::order_replaced_message&) {},
-        [](const sim::ipc_ns::order_reduced_message&) {});
+        [](const sim::ipc_ns::order_reduced_message&) {},
+        [](const sim::ipc_ns::cancel_pending_message&) {},
+        [](const sim::ipc_ns::reduce_refused_message&) {});
     auto event_emit = [&](const char* b, std::size_t n) { events.on_message(std::string_view(b, n)); };
     matching::MatchingEngine engine(
         [&](const matching::Trade& t)  { sim::emit_trade(event_emit, t); },
@@ -111,7 +113,7 @@ BOOST_AUTO_TEST_CASE(gateway_admits_fills_and_cancels_an_order) {
     gateway.on_bytes(client, whole(order).data(), whole(order).size());
     BOOST_REQUIRE_EQUAL(sent.size(), 2u);
     BOOST_CHECK_EQUAL(gateway.open_orders(), 1u);
-    const auto* accepted = entry::order_accepted_message::parse(answer(1));
+    const auto* accepted = entry::rejected_order_message::parse(answer(1));
     BOOST_CHECK_EQUAL(accepted->fields.user_ref_num.get().value(), 7u);
 
     // The engine fills part of it against an order of its own
@@ -127,7 +129,7 @@ BOOST_AUTO_TEST_CASE(gateway_admits_fills_and_cancels_an_order) {
     request.fields.quantity.set(0);
     gateway.on_bytes(client, whole(request).data(), whole(request).size());
     BOOST_REQUIRE_EQUAL(sent.size(), 4u);
-    const auto* gone = entry::canceled_message::parse(answer(3));
+    const auto* gone = entry::aiq_canceled_message::parse(answer(3));
     BOOST_CHECK_EQUAL(gone->fields.user_ref_num.get().value(), 7u);
     BOOST_CHECK_EQUAL(gateway.open_orders(), 0u);
 }
@@ -155,7 +157,9 @@ BOOST_AUTO_TEST_CASE(VerifyEachTradersGatewayAnswersOnlyItsOwnOrders) {
         [](const sim::ipc_ns::order_eliminated_message&) {},
         [](const sim::ipc_ns::order_refused_message&) {},
         [](const sim::ipc_ns::order_replaced_message&) {},
-        [](const sim::ipc_ns::order_reduced_message&) {});
+        [](const sim::ipc_ns::order_reduced_message&) {},
+        [](const sim::ipc_ns::cancel_pending_message&) {},
+        [](const sim::ipc_ns::reduce_refused_message&) {});
 
     // TakerBasic's gateway, gateway 2 of 4: it numbers 2, 6, 10 ...
     std::vector<std::string> takerbasic_sent;
@@ -173,7 +177,9 @@ BOOST_AUTO_TEST_CASE(VerifyEachTradersGatewayAnswersOnlyItsOwnOrders) {
         [](const sim::ipc_ns::order_eliminated_message&) {},
         [](const sim::ipc_ns::order_refused_message&) {},
         [](const sim::ipc_ns::order_replaced_message&) {},
-        [](const sim::ipc_ns::order_reduced_message&) {});
+        [](const sim::ipc_ns::order_reduced_message&) {},
+        [](const sim::ipc_ns::cancel_pending_message&) {},
+        [](const sim::ipc_ns::reduce_refused_message&) {});
 
     // The engine's events, told to every gateway.
     auto event_emit = [&](const char* b, std::size_t n) {

@@ -377,11 +377,11 @@ private:
 
         Client(Gateway& owner, std::size_t at, Send writer) : gateway(owner), index(at), send(std::move(writer)), session("ODXOUCH001", send, *this) {}
 
-        std::optional<soupbin::status> login(auto username, auto password, auto, auto) {
+        std::optional<soupbin::status> login(auto username, auto password, auto requested, auto) {
             return gateway.login(username, password);
         }
         void message(std::string_view packet) { gateway.message(index, packet); }
-        void logout() {}
+        void logout() { lost = true; }   // the session is over: logged out, or its login refused
         void silent() { lost = true; }   // heard nothing for longer than the session allows
         bool lost = false;
     };

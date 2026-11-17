@@ -58,7 +58,11 @@ int main(int argc, char** argv) {
                 tops.flush();
             },
             [](const sim::ipc_ns::order_canceled_message&) {},
-            [](const sim::ipc_ns::order_refused_message&) {});
+            [](const sim::ipc_ns::order_accepted_message&) {},
+            [](const sim::ipc_ns::order_eliminated_message&) {},
+            [](const sim::ipc_ns::order_refused_message&) {},
+            [](const sim::ipc_ns::order_replaced_message&) {},
+            [](const sim::ipc_ns::cancel_refused_message&) {});
 
         std::printf("iex-tops: publishing to %s:%u\n", cfg.tops_feed.host.c_str(), (unsigned)cfg.tops_feed.port);
 
@@ -66,7 +70,8 @@ int main(int argc, char** argv) {
         // Nothing to do means nothing to do: back off rather than spin a core.
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
-            worked = to_tops.read([&](std::string_view message) { tops_events.on_message(message); ++handled; }) || worked;
+            worked = to_tops.read([&](std::string_view message) { if (const auto asked = sim::book_end_of(message)) tops_rec.mark(*asked); tops_events.on_message(message); ++handled; }) || worked;
+            tops.idle();
             if (!worked) std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
 

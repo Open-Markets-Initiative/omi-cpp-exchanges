@@ -23,7 +23,7 @@ struct AcceptorConfig {
 };
 
 // Where a session is: the leaf states of Fix's chart, as it lists them.
-enum class AcceptorState { NotLoggedOn, Authenticating, Talking, LoggingOut, Ended };
+enum class AcceptorState { NotLoggedOn, Authenticating, InStep, Behind, LoggingOut, Disconnected };
 
 // The acceptor side of the Fix session, as its chart has it. Transport is
 // any callable taking (const char*, std::size_t) that writes one whole frame.
@@ -42,11 +42,13 @@ public:
 
     AcceptorState state() const { return state_; }
     // In Connected, whichever of its states.
-    bool in_connected() const { return state_ == AcceptorState::NotLoggedOn || state_ == AcceptorState::Authenticating || state_ == AcceptorState::Talking || state_ == AcceptorState::LoggingOut; }
+    bool in_connected() const { return state_ == AcceptorState::NotLoggedOn || state_ == AcceptorState::Authenticating || state_ == AcceptorState::InStep || state_ == AcceptorState::Behind || state_ == AcceptorState::LoggingOut; }
     // In LoggedOn, whichever of its states.
-    bool in_logged_on() const { return state_ == AcceptorState::Talking || state_ == AcceptorState::LoggingOut; }
+    bool in_logged_on() const { return state_ == AcceptorState::InStep || state_ == AcceptorState::Behind || state_ == AcceptorState::LoggingOut; }
+    // In Talking, whichever of its states.
+    bool in_talking() const { return state_ == AcceptorState::InStep || state_ == AcceptorState::Behind; }
     // Over: the transport closes the connection.
-    bool ended() const { return state_ == AcceptorState::Ended; }
+    bool ended() const { return state_ == AcceptorState::Disconnected; }
     std::int64_t next_sequence() const { return next_sequence_; }
     std::int64_t expected_sequence() const { return expected_sequence_; }
     std::int64_t heartbeat_interval() const { return heartbeat_interval_; }
@@ -74,9 +76,10 @@ public:
         switch (state_) {
             case AcceptorState::NotLoggedOn: return arriving_not_logged_on(arrived);
             case AcceptorState::Authenticating: return true;
-            case AcceptorState::Talking: return arriving_talking(arrived);
+            case AcceptorState::InStep: return arriving_in_step(arrived);
+            case AcceptorState::Behind: return arriving_behind(arrived);
             case AcceptorState::LoggingOut: return arriving_logging_out(arrived);
-            case AcceptorState::Ended: return true;
+            case AcceptorState::Disconnected: return true;
         }
 
         return true;
@@ -196,11 +199,23 @@ public:
         }
     }
 
-    // Request.Message, in Talking. Returns the bytes written; none outside it or for a body longer than MaxBody.
+    // Request.Dropped, in Connected. Returns the bytes written; none outside it.
+    std::size_t dropped(const std::int64_t now_ns) {
+        if (in_connected()) {
+            now_ns_ = now_ns;
+            std::size_t written = 0;
+            written += enter_disconnected();
+            return written;
+        }
+
+        return 0;
+    }
+
+    // Request.Message, in Talking or Disconnected. Returns the bytes written; none outside them or for a body longer than MaxBody.
     // The body is the message's own fields, tag=value each closed by SOH; the
     // header and the frame are the session's.
     std::size_t message(std::string_view type, std::string_view body, const std::int64_t now_ns) {
-        if (state_ == AcceptorState::Talking && body.size() <= MaxBody) {
+        if (in_talking() && body.size() <= MaxBody) {
             now_ns_ = now_ns;
             std::size_t written = 0;
             // Send.Payload.Application
@@ -216,12 +231,20 @@ public:
             return written;
         }
 
+        if (state_ == AcceptorState::Disconnected && body.size() <= MaxBody) {
+            now_ns_ = now_ns;
+            std::size_t written = 0;
+            keep_sent(type, body);
+            next_sequence_ = next_sequence_ + 1;
+            return written;
+        }
+
         return 0;
     }
 
     // Request.Logout, in Talking. Returns the bytes written; none outside it.
     std::size_t logout(const std::int64_t now_ns) {
-        if (state_ == AcceptorState::Talking) {
+        if (in_talking()) {
             now_ns_ = now_ns;
             std::size_t written = 0;
             // Send.Session.Logout
@@ -233,6 +256,18 @@ public:
             // Timer.LogoutUnanswered
             logout_unanswered_due_ = due(heartbeat_interval_ * 1'000'000'000);
             written += enter_logging_out();
+            return written;
+        }
+
+        return 0;
+    }
+
+    // Request.Reconnect, in Disconnected. Returns the bytes written; none outside it.
+    std::size_t reconnect(const std::int64_t now_ns) {
+        if (state_ == AcceptorState::Disconnected) {
+            now_ns_ = now_ns;
+            std::size_t written = 0;
+            written += enter_connected();
             return written;
         }
 
@@ -282,7 +317,7 @@ private:
 
     // NotLoggedOn: what arrives.
     bool arriving_not_logged_on(const Arrived& arrived) {
-        // Receive.Login.Request [Field:Target != State:CompId] -> Ended
+        // Receive.Login.Request [Field:Target != State:CompId] -> Disconnected
         if (arrived.type == MsgType::Logon && field(arrived.text, Tag::TargetCompID) != config_.comp_id) {
             // Send.Session.Logout
             {
@@ -291,23 +326,24 @@ private:
                 finish(out);
             }
             next_sequence_ = next_sequence_ + 1;
-            enter_ended();
+            enter_disconnected();
             return true;
         }
 
         // Receive.Login.Request -> Authenticating
         if (arrived.type == MsgType::Logon) {
+            heartbeat_interval_ = field_int(arrived.text, Tag::HeartBtInt);
             enter_authenticating(arrived);
             return true;
         }
 
-        // Receive -> Ended
-        enter_ended();
+        // Receive -> Disconnected
+        enter_disconnected();
         return true;
     }
 
-    // Talking: what arrives.
-    bool arriving_talking(const Arrived& arrived) {
+    // InStep: what arrives.
+    bool arriving_in_step(const Arrived& arrived) {
         // Receive.Session.Reset [Field:GapFill == false]
         if (arrived.type == MsgType::SequenceReset && field_flag(arrived.text, Tag::GapFillFlag) == false) {
             expected_sequence_ = field_int(arrived.text, Tag::NewSeqNo);
@@ -341,7 +377,7 @@ private:
             return true;
         }
 
-        // Receive [Field:SequenceNumber < State:ExpectedSequence] -> Ended
+        // Receive [Field:SequenceNumber < State:ExpectedSequence] -> Disconnected
         if (field_int(arrived.text, Tag::MsgSeqNum) < expected_sequence_) {
             // Send.Session.Logout
             {
@@ -349,7 +385,7 @@ private:
                 finish(out);
             }
             next_sequence_ = next_sequence_ + 1;
-            enter_ended();
+            enter_disconnected();
             return true;
         }
 
@@ -412,7 +448,7 @@ private:
             return true;
         }
 
-        // Receive.Session.Logout -> Ended
+        // Receive.Session.Logout -> Disconnected
         if (arrived.type == MsgType::Logout) {
             // Send.Session.Logout
             {
@@ -421,7 +457,155 @@ private:
             }
             next_sequence_ = next_sequence_ + 1;
             handler_.logout();
-            enter_ended();
+            enter_disconnected();
+            return true;
+        }
+
+        // Receive.Login.Request
+        if (arrived.type == MsgType::Logon) {
+            expected_sequence_ = expected_sequence_ + 1;
+            // Timer.Silence
+            silence_due_ = due(heartbeat_interval_ * 1'000'000'000);
+            unanswered_due_ = 0;
+            // Send.Session.Reject
+            {
+                auto out = start(MsgType::Reject, next_sequence_);
+                out.put(Tag::RefSeqNum, field_int(arrived.text, Tag::MsgSeqNum));
+                finish(out);
+            }
+            next_sequence_ = next_sequence_ + 1;
+            return true;
+        }
+
+        // Receive.Payload.Application
+        if (!named(arrived.type)) {
+            expected_sequence_ = expected_sequence_ + 1;
+            // Timer.Silence
+            silence_due_ = due(heartbeat_interval_ * 1'000'000'000);
+            unanswered_due_ = 0;
+            handler_.message(arrived.type, arrived.text);
+            return true;
+        }
+
+        return true;
+    }
+
+    // Behind: what arrives.
+    bool arriving_behind(const Arrived& arrived) {
+        // Receive.Session.Reset -> InStep
+        if (arrived.type == MsgType::SequenceReset) {
+            expected_sequence_ = field_int(arrived.text, Tag::NewSeqNo);
+            // Timer.Silence
+            silence_due_ = due(heartbeat_interval_ * 1'000'000'000);
+            unanswered_due_ = 0;
+            enter_in_step();
+            return true;
+        }
+
+        // Receive [Field:SequenceNumber > State:ExpectedSequence]
+        if (field_int(arrived.text, Tag::MsgSeqNum) > expected_sequence_) {
+            // Timer.Silence
+            silence_due_ = due(heartbeat_interval_ * 1'000'000'000);
+            unanswered_due_ = 0;
+            return true;
+        }
+
+        // Receive [Field:SequenceNumber > State:ExpectedSequence]
+        if (field_int(arrived.text, Tag::MsgSeqNum) > expected_sequence_) {
+            // Send.Session.Resend
+            {
+                auto out = start(MsgType::ResendRequest, next_sequence_);
+                out.put(Tag::BeginSeqNo, expected_sequence_);
+                out.put(Tag::EndSeqNo, std::int64_t{0});
+                finish(out);
+            }
+            next_sequence_ = next_sequence_ + 1;
+            // Timer.Silence
+            silence_due_ = due(heartbeat_interval_ * 1'000'000'000);
+            unanswered_due_ = 0;
+            return true;
+        }
+
+        // Receive [Field:SequenceNumber < State:ExpectedSequence and Field:PossibleDuplicate == true]
+        if (field_int(arrived.text, Tag::MsgSeqNum) < expected_sequence_ && field_flag(arrived.text, Tag::PossDupFlag) == true) {
+            // Timer.Silence
+            silence_due_ = due(heartbeat_interval_ * 1'000'000'000);
+            unanswered_due_ = 0;
+            return true;
+        }
+
+        // Receive [Field:SequenceNumber < State:ExpectedSequence] -> Disconnected
+        if (field_int(arrived.text, Tag::MsgSeqNum) < expected_sequence_) {
+            // Send.Session.Logout
+            {
+                auto out = start(MsgType::Logout, next_sequence_);
+                finish(out);
+            }
+            next_sequence_ = next_sequence_ + 1;
+            enter_disconnected();
+            return true;
+        }
+
+        // Receive.Session.Heartbeat
+        if (arrived.type == MsgType::Heartbeat) {
+            expected_sequence_ = expected_sequence_ + 1;
+            // Timer.Silence
+            silence_due_ = due(heartbeat_interval_ * 1'000'000'000);
+            unanswered_due_ = 0;
+            return true;
+        }
+
+        // Receive.Session.TestRequest
+        if (arrived.type == MsgType::TestRequest) {
+            expected_sequence_ = expected_sequence_ + 1;
+            // Timer.Silence
+            silence_due_ = due(heartbeat_interval_ * 1'000'000'000);
+            unanswered_due_ = 0;
+            // Send.Session.Heartbeat
+            {
+                auto out = start(MsgType::Heartbeat, next_sequence_);
+                out.put(Tag::TestReqID, field(arrived.text, Tag::TestReqID));
+                finish(out);
+            }
+            next_sequence_ = next_sequence_ + 1;
+            // Timer.Heartbeat
+            beat_due_ = due(heartbeat_interval_ * 1'000'000'000);
+            return true;
+        }
+
+        // Receive.Session.Resend
+        if (arrived.type == MsgType::ResendRequest) {
+            expected_sequence_ = expected_sequence_ + 1;
+            // Timer.Silence
+            silence_due_ = due(heartbeat_interval_ * 1'000'000'000);
+            unanswered_due_ = 0;
+            // Replay Sent
+            replay_sent(field_int(arrived.text, Tag::BeginSeqNo), field_int(arrived.text, Tag::EndSeqNo));
+            // Timer.Heartbeat
+            beat_due_ = due(heartbeat_interval_ * 1'000'000'000);
+            return true;
+        }
+
+        // Receive.Session.Reject
+        if (arrived.type == MsgType::Reject) {
+            expected_sequence_ = expected_sequence_ + 1;
+            // Timer.Silence
+            silence_due_ = due(heartbeat_interval_ * 1'000'000'000);
+            unanswered_due_ = 0;
+            handler_.message(arrived.type, arrived.text);
+            return true;
+        }
+
+        // Receive.Session.Logout -> Disconnected
+        if (arrived.type == MsgType::Logout) {
+            // Send.Session.Logout
+            {
+                auto out = start(MsgType::Logout, next_sequence_);
+                finish(out);
+            }
+            next_sequence_ = next_sequence_ + 1;
+            handler_.logout();
+            enter_disconnected();
             return true;
         }
 
@@ -456,11 +640,11 @@ private:
 
     // LoggingOut: what arrives.
     bool arriving_logging_out(const Arrived& arrived) {
-        // Receive.Session.Logout -> Ended
+        // Receive.Session.Logout -> Disconnected
         if (arrived.type == MsgType::Logout) {
             logout_unanswered_due_ = 0;
             handler_.logout();
-            enter_ended();
+            enter_disconnected();
             return true;
         }
 
@@ -472,7 +656,8 @@ private:
         std::size_t written = 0;
 
         switch (state_) {
-            case AcceptorState::Talking:
+            case AcceptorState::InStep:
+            case AcceptorState::Behind:
             case AcceptorState::LoggingOut:
                 // Timer.Heartbeat
                 // Send.Session.Heartbeat
@@ -496,7 +681,8 @@ private:
         std::size_t written = 0;
 
         switch (state_) {
-            case AcceptorState::Talking:
+            case AcceptorState::InStep:
+            case AcceptorState::Behind:
                 // Timer.Silence
                 // Send.Session.TestRequest
                 {
@@ -522,15 +708,16 @@ private:
         std::size_t written = 0;
 
         switch (state_) {
-            case AcceptorState::Talking:
-                // Timer.Unanswered -> Ended
+            case AcceptorState::InStep:
+            case AcceptorState::Behind:
+                // Timer.Unanswered -> Disconnected
                 // Send.Session.Logout
                 {
                     auto out = start(MsgType::Logout, next_sequence_);
                     written += finish(out);
                 }
                 next_sequence_ = next_sequence_ + 1;
-                written += enter_ended();
+                written += enter_disconnected();
                 break;
             default:
                 break;
@@ -545,8 +732,8 @@ private:
 
         switch (state_) {
             case AcceptorState::LoggingOut:
-                // Timer.LogoutUnanswered -> Ended
-                written += enter_ended();
+                // Timer.LogoutUnanswered -> Disconnected
+                written += enter_disconnected();
                 break;
             default:
                 break;
@@ -555,10 +742,15 @@ private:
         return written;
     }
 
-    // Entering Ended.
-    std::size_t enter_ended() {
-        state_ = AcceptorState::Ended;
-        return 0;
+    // Entering Disconnected.
+    std::size_t enter_disconnected() {
+        std::size_t written = 0;
+        state_ = AcceptorState::Disconnected;
+        beat_due_ = 0;
+        silence_due_ = 0;
+        unanswered_due_ = 0;
+        logout_unanswered_due_ = 0;
+        return written;
     }
 
     // Entering Authenticating.
@@ -568,12 +760,37 @@ private:
         // Ask.Login
         std::string refusal;
         if (handler_.login(arrived.type, arrived.text, refusal)) {
-            // Handler.Login.Accepted -> LoggedOn
-            expected_sequence_ = expected_sequence_ + 1;
-            heartbeat_interval_ = field_int(arrived.text, Tag::HeartBtInt);
-            written += enter_logged_on();
+            if (field_int(arrived.text, Tag::MsgSeqNum) < expected_sequence_) {
+                // Handler.Login.Accepted [Field:SequenceNumber < State:ExpectedSequence] -> Disconnected
+                // Send.Session.Logout
+                {
+                    auto out = start(MsgType::Logout, next_sequence_);
+                    out.put(Tag::Text, std::string_view{"MsgSeqNum lower than expected"});
+                    written += finish(out);
+                }
+                next_sequence_ = next_sequence_ + 1;
+                written += enter_disconnected();
+            } else if (field_int(arrived.text, Tag::MsgSeqNum) > expected_sequence_) {
+                // Handler.Login.Accepted [Field:SequenceNumber > State:ExpectedSequence] -> Behind
+                // Send.Login.Accepted
+                {
+                    auto out = start(MsgType::Logon, next_sequence_);
+                    out.put(Tag::HeartBtInt, heartbeat_interval_);
+                    written += finish(out);
+                }
+                next_sequence_ = next_sequence_ + 1;
+                // Timer.Heartbeat
+                beat_due_ = due(heartbeat_interval_ * 1'000'000'000);
+                // Timer.Silence
+                silence_due_ = due(heartbeat_interval_ * 1'000'000'000);
+                written += enter_behind();
+            } else {
+                // Handler.Login.Accepted -> LoggedOn
+                expected_sequence_ = expected_sequence_ + 1;
+                written += enter_logged_on();
+            }
         } else {
-            // Handler.Login.Refused -> Ended
+            // Handler.Login.Refused -> Disconnected
             // Send.Session.Logout
             {
                 auto out = start(MsgType::Logout, next_sequence_);
@@ -583,8 +800,23 @@ private:
                 written += finish(out);
             }
             next_sequence_ = next_sequence_ + 1;
-            written += enter_ended();
+            written += enter_disconnected();
         }
+        return written;
+    }
+
+    // Entering Behind.
+    std::size_t enter_behind() {
+        std::size_t written = 0;
+        state_ = AcceptorState::Behind;
+        // Send.Session.Resend
+        {
+            auto out = start(MsgType::ResendRequest, next_sequence_);
+            out.put(Tag::BeginSeqNo, expected_sequence_);
+            out.put(Tag::EndSeqNo, std::int64_t{0});
+            written += finish(out);
+        }
+        next_sequence_ = next_sequence_ + 1;
         return written;
     }
 
@@ -608,13 +840,33 @@ private:
 
     // Entering Talking.
     std::size_t enter_talking() {
-        state_ = AcceptorState::Talking;
+        std::size_t written = 0;
+        written += enter_in_step();
+        return written;
+    }
+
+    // Entering InStep.
+    std::size_t enter_in_step() {
+        state_ = AcceptorState::InStep;
         return 0;
     }
 
     // Entering LoggingOut.
     std::size_t enter_logging_out() {
         state_ = AcceptorState::LoggingOut;
+        return 0;
+    }
+
+    // Entering Connected.
+    std::size_t enter_connected() {
+        std::size_t written = 0;
+        written += enter_not_logged_on();
+        return written;
+    }
+
+    // Entering NotLoggedOn.
+    std::size_t enter_not_logged_on() {
+        state_ = AcceptorState::NotLoggedOn;
         return 0;
     }
 

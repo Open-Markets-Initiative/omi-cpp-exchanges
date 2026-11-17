@@ -3,7 +3,7 @@
 #include <cstddef>
 #include "../cache/Required.hpp"
 
-namespace nasdaq::nsmequities::totalview::glimpse::v5_0 {
+namespace nasdaq::nsmequities::totalview::glimpse::v5_0_2026 {
 
 // unsequenced_message_type
 struct unsequenced_message_type {

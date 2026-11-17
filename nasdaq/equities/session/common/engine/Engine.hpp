@@ -7,6 +7,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -67,11 +68,23 @@ class Engine {
         Engine* self;
         void operator()(const matching::Order& order) const { sim::emit_refused(self->emit_, order, sim::Refusal::Phase); }
         void operator()(const matching::Order& order, sim::Refusal reason) const { sim::emit_refused(self->emit_, order, reason); }
+                  void pending(std::uint64_t id) const { sim::emit_cancel_pending(self->emit_, id); }
+                  void reduce(std::uint64_t id) const { sim::emit_reduce_refused(self->emit_, id); }
+        // why the phase refused it, as its chart says
+        void operator()(const matching::Order& order, matching::Reason reason) const {
+            switch (reason) {
+                case matching::Reason::Lifetime: sim::emit_refused(self->emit_, order, sim::Refusal::Lifetime); return;
+                case matching::Reason::Type: sim::emit_refused(self->emit_, order, sim::Refusal::Type); return;
+                case matching::Reason::Cross: sim::emit_refused(self->emit_, order, sim::Refusal::Cross); return;
+                case matching::Reason::Peg: sim::emit_refused(self->emit_, order, sim::Refusal::Peg); return;
+                case matching::Reason::Phase: sim::emit_refused(self->emit_, order, sim::Refusal::Phase); return;
+            }
+        }
     };
 
     struct OnAnnounced {
         Engine* self;
-        void operator()(matching::Announcement announcement) const { sim::emit_announced(self->emit_, announcement); }
+        void operator()(matching::Announcement announcement) const { sim::emit_announced(self->emit_, announcement, self->server_.phase_reason()); }
     };
 
     struct OnCrossed {
@@ -90,7 +103,7 @@ public:
           trades_(trades),
           book_(OnTrade{this}, OnRested{this}, OnCanceled{this}, OnEliminated{this}, OnAccepted{this}, OnReplaced{this}, OnReduced{this}),
           day_(book_, OnRefused{this}, OnAnnounced{this}, OnCrossed{this}, OnIndicated{this}),
-          server_(day_, OnRefused{ this }) { day_.reference(sim::instrument_reference); }
+          server_(day_, OnRefused{ this }) { day_.reference(sim::instrument_reference);  book_.ticked(matching::Ticks{ { { 0, 1 }, { 10000, 100 } } }); }
 
     // The callbacks hold the component itself, so it stays where it was built.
     Engine(const Engine&)            = delete;
@@ -103,7 +116,7 @@ public:
     // thread to back off.
     template <typename Inbound>
     bool step(Inbound& inbound) {
-        return inbound.read([this](std::string_view message) { server_.on_message(message); });
+        return inbound.read([this](std::string_view message) { server_.on_message(message); if (server_.book_asked()) told(server_.book_sequence()); });
     }
 
     // The book itself, for a test that puts an order in without going through a link.
@@ -111,6 +124,35 @@ public:
 
     // The trading day, for a test that walks it by hand.
     Day& day() { return day_; }
+    // The file the engine's book is also written to as it is said; none where the path is empty. A
+    // line is
+    //   sequence,book,where,side,price,quantity,order,shown,showing
+    // the place of the request answered in the sequencer's order, 0 where none numbered it; the
+    // book, the venue's instruments in the order it declares them, from 0; where the engine holds
+    // the order (MatchingEngine.hpp, each()); B or S; the price in the engine's own units, a market
+    // order's the engine's own sentinel; what is left of it; its number; 1 where the book shows it;
+    // and how much of it the book shows - all of it, a reserve order's floor, or nothing - which is
+    // what a book built from the venue's feed is held against.
+    // Each answer ends with a line "# sequence,orders".
+    void dump(const std::string& path) {
+        if (path.empty()) return;
+        dump_ = std::fopen(path.c_str(), "w");
+        if (dump_ == nullptr) { std::printf("BOOK dump: cannot write %s\n", path.c_str()); return; }
+        std::fprintf(dump_, "sequence,book,where,side,price,quantity,order,shown,showing\n");
+    }
+
+    // Its own book, said as of the message that asked: every order it holds, then the end of them.
+    void told(std::uint64_t sequence) {
+        std::uint64_t orders = 0;
+        book_.each([&](const matching::Order& order, char where) { said(order, where, sequence, 0); ++orders; });
+        sim::emit_book_end(emit_, orders, sequence);
+        if (dump_ == nullptr) return;
+        std::fprintf(dump_, "# %llu,%llu\n", static_cast<unsigned long long>(sequence), static_cast<unsigned long long>(orders));
+        std::fflush(dump_);
+    }
+
+    ~Engine() { if (dump_ != nullptr) std::fclose(dump_); }
+
 
 private:
     void matched(const matching::Trade& trade) {
@@ -126,6 +168,21 @@ private:
     Book                        book_;
     Day                         day_;
     sim::IpcEngineServer<Day, OnRefused>  server_;
+    // A template, so what it says of an order shown is said only where the venue's orders say so.
+    template <typename Held>
+    void said(const Held& order, char where, std::uint64_t sequence, std::size_t book) {
+        sim::emit_book_order(emit_, order, where, sequence);
+        if (dump_ == nullptr) return;
+        int shown = 1;
+        if constexpr (requires { order.shown; }) shown = order.shown ? 1 : 0;
+        unsigned long long showing = shown ? static_cast<unsigned long long>(order.qty) : 0;
+        if (shown) showing = static_cast<unsigned long long>(matching::showing(order));   // a reserve order shows its floor's worth
+        std::fprintf(dump_, "%llu,%zu,%c,%c,%lld,%llu,%llu,%d,%llu\n", static_cast<unsigned long long>(sequence), book, where,
+                     order.side == matching::Side::Buy ? 'B' : 'S', static_cast<long long>(order.price),
+                     static_cast<unsigned long long>(order.qty), static_cast<unsigned long long>(order.id), shown, showing);
+    }
+
+    std::FILE* dump_ = nullptr;   // the file its book is also written to, where its settings name one
 };
 
 }

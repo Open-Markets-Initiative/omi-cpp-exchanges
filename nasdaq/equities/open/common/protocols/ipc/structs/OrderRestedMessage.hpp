@@ -7,7 +7,9 @@
 #include "../types/Side.hpp"
 #include "../types/Price.hpp"
 #include "../types/Quantity.hpp"
+#include "../types/RefreshedFrom.hpp"
 #include "../types/Display.hpp"
+#include "../types/Attribution.hpp"
 
 namespace nasdaq::nsmequities::matchingengine::ipc::v2026 {
 
@@ -23,7 +25,9 @@ struct order_rested_message {
     ipc_matchingengine::side side;
     ipc_matchingengine::price price;
     ipc_matchingengine::quantity quantity;
+    ipc_matchingengine::refreshed_from refreshed_from;
     ipc_matchingengine::display display;
+    ipc_matchingengine::attribution attribution;
 
     // parse method
     static order_rested_message* parse(std::byte* buffer) {
@@ -43,8 +47,10 @@ static_assert(offsetof(order_rested_message, symbol) == 16, "unexpected offset o
 static_assert(offsetof(order_rested_message, side) == 24, "unexpected offset of order_rested_message::side");
 static_assert(offsetof(order_rested_message, price) == 25, "unexpected offset of order_rested_message::price");
 static_assert(offsetof(order_rested_message, quantity) == 33, "unexpected offset of order_rested_message::quantity");
-static_assert(offsetof(order_rested_message, display) == 37, "unexpected offset of order_rested_message::display");
-static_assert(sizeof(order_rested_message) == 38, "unexpected sizeof order_rested_message");
+static_assert(offsetof(order_rested_message, refreshed_from) == 37, "unexpected offset of order_rested_message::refreshed_from");
+static_assert(offsetof(order_rested_message, display) == 45, "unexpected offset of order_rested_message::display");
+static_assert(offsetof(order_rested_message, attribution) == 46, "unexpected offset of order_rested_message::attribution");
+static_assert(sizeof(order_rested_message) == 50, "unexpected sizeof order_rested_message");
 
 #pragma pack(pop)
 }

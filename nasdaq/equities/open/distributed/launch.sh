@@ -28,6 +28,10 @@ cd "$build" || exit 1
 # Nothing to create: a socket is made by the component that listens on it, and a writer whose
 # reader is not up yet keeps trying rather than failing.
 
+# One moment the venue's day began, for every component: what a simulated day counts its time from,
+# so the processes' clocks agree. One already set - a restart carrying the day on - is kept.
+export SIM_CLOCK_ANCHOR="${SIM_CLOCK_ANCHOR:-$(date +%s%N)}"
+
 pids=()
 names=()
 

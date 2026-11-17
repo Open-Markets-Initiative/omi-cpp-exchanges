@@ -1,7 +1,7 @@
 # Nse Futures and Options — the components, across machines
 
 One process per component again, but across machines: every link between them is Tcp carrying the
-same framed Nse.NseFo.MatchingEngine.Ipc.v1.0 messages the other two versions carry in a queue and in a ring. The
+same framed Nse.NseFo.MatchingEngine.Ipc.v2026 messages the other two versions carry in a queue and in a ring. The
 components are the same code from `../common/`, built against a different adapter — which is the
 reason there are three versions of a venue and one implementation of it.
 

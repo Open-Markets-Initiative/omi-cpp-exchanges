@@ -2,9 +2,14 @@
 
 #include <boost/program_options.hpp>
 #include <array>
+#include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
+
+#include "../run/Clock.hpp"
 
 namespace sim {
 
@@ -18,7 +23,9 @@ struct RuntimeConfig {
     unsigned short gatewayreplay_port;
     unsigned short gatewayrequests_port;
     Endpoint totalview_feed;
+    std::string glimpse_replay_host;   // the interface its clients dial
     unsigned short glimpse_replay_port;
+    std::string totalviewtcp_replay_host;   // the interface its clients dial
     unsigned short totalviewtcp_replay_port;
     // One endpoint per link: the reader listens there and the writer dials it.
     Endpoint to_sequencer_gatewaymakerbasic_link;
@@ -43,8 +50,16 @@ struct RuntimeConfig {
     Endpoint to_requests_link;
     Endpoint from_requests_link;
     // The seconds after a served venue starts that each change of its trading day is asked for.
-    std::array<int, 7> day_at;
+    std::array<int, 13> day_at;
     std::string recording_directory;
+    // The engine's own book: the file it is also written to, none where empty, and when the day asks for it.
+    std::string book_dump;
+    std::string book_every;
+    // How the venue keeps time: its mode, the time of day its day starts at, and the zone that is in.
+    std::string clock_mode;
+    std::string clock_start;
+    std::string clock_zone;
+    int clock_tick_milliseconds;   // how often the venue's time is sent its engine
 };
 
 // Parse [--config <file>] (default simulator.ini); missing file / keys keep the generated defaults.
@@ -62,7 +77,9 @@ inline RuntimeConfig load_config(int argc, char** argv) {
         ("gateway-requests.port", po::value<unsigned short>(&c.gatewayrequests_port)->default_value(15114))
         ("feed-totalview.group", po::value<std::string>(&c.totalview_feed.host)->default_value("233.54.12.112"))
         ("feed-totalview.port", po::value<unsigned short>(&c.totalview_feed.port)->default_value(26478))
+        ("replay-glimpse.host", po::value<std::string>(&c.glimpse_replay_host)->default_value("127.0.0.1"))
         ("replay-glimpse.port", po::value<unsigned short>(&c.glimpse_replay_port)->default_value(15102))
+        ("replay-totalviewtcp.host", po::value<std::string>(&c.totalviewtcp_replay_host)->default_value("127.0.0.1"))
         ("replay-totalviewtcp.port", po::value<unsigned short>(&c.totalviewtcp_replay_port)->default_value(15103))
         ("link-to_sequencer_gatewaymakerbasic.host", po::value<std::string>(&c.to_sequencer_gatewaymakerbasic_link.host)->default_value("sequencer"))
         ("link-to_sequencer_gatewaymakerbasic.port", po::value<unsigned short>(&c.to_sequencer_gatewaymakerbasic_link.port)->default_value(19000))
@@ -107,13 +124,25 @@ inline RuntimeConfig load_config(int argc, char** argv) {
         ("link-from_requests.host", po::value<std::string>(&c.from_requests_link.host)->default_value("gatewayrequests"))
         ("link-from_requests.port", po::value<unsigned short>(&c.from_requests_link.port)->default_value(19020))
         ("day.preopen", po::value<int>(&c.day_at[0])->default_value(0))
-        ("day.open", po::value<int>(&c.day_at[1])->default_value(30))
-        ("day.halt", po::value<int>(&c.day_at[2])->default_value(120))
-        ("day.resume", po::value<int>(&c.day_at[3])->default_value(150))
-        ("day.preclose", po::value<int>(&c.day_at[4])->default_value(240))
-        ("day.close", po::value<int>(&c.day_at[5])->default_value(270))
-        ("day.end", po::value<int>(&c.day_at[6])->default_value(300))
-        ("recording.directory", po::value<std::string>(&c.recording_directory)->default_value("recordings"));
+        ("day.openinglockin", po::value<int>(&c.day_at[1])->default_value(25))
+        ("day.openinglockout", po::value<int>(&c.day_at[2])->default_value(28))
+        ("day.openinglate", po::value<int>(&c.day_at[3])->default_value(29))
+        ("day.open", po::value<int>(&c.day_at[4])->default_value(30))
+        ("day.halt", po::value<int>(&c.day_at[5])->default_value(120))
+        ("day.quote", po::value<int>(&c.day_at[6])->default_value(140))
+        ("day.resume", po::value<int>(&c.day_at[7])->default_value(150))
+        ("day.preclose", po::value<int>(&c.day_at[8])->default_value(240))
+        ("day.closinglockout", po::value<int>(&c.day_at[9])->default_value(265))
+        ("day.closingfreeze", po::value<int>(&c.day_at[10])->default_value(268))
+        ("day.close", po::value<int>(&c.day_at[11])->default_value(270))
+        ("day.end", po::value<int>(&c.day_at[12])->default_value(300))
+        ("clock.tick-milliseconds", po::value<int>(&c.clock_tick_milliseconds)->default_value(1000))
+        ("recording.directory", po::value<std::string>(&c.recording_directory)->default_value("recordings"))
+        ("book.dump", po::value<std::string>(&c.book_dump)->default_value(""))
+        ("book.every", po::value<std::string>(&c.book_every)->default_value("none"))
+        ("clock.mode", po::value<std::string>(&c.clock_mode)->default_value("Elapsed"))
+        ("clock.start", po::value<std::string>(&c.clock_start)->default_value("00:00:00"))
+        ("clock.zone", po::value<std::string>(&c.clock_zone)->default_value("UTC"));
 
     std::string path = "simulator.ini";
     for (int i = 1; i + 1 < argc; ++i)
@@ -128,6 +157,14 @@ inline RuntimeConfig load_config(int argc, char** argv) {
     po::store(file ? po::parse_config_file(file, options, /*allow_unregistered*/true)
                   : po::parse_config_file(nothing, options, /*allow_unregistered*/true), vm);
     po::notify(vm);
+    // The venue's clock, as the settings say, set before anything is stamped.
+    try {
+        sim::clock::use(c.clock_mode, c.clock_start, c.clock_zone);
+    }
+    catch (const std::runtime_error& refused) {
+        std::fprintf(stderr, "%s: %s\n", argc > 0 ? argv[0] : "simulator", refused.what());
+        std::exit(1);
+    }
     return c;
 }
 

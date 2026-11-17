@@ -15,14 +15,16 @@ struct time_in_force {
     enum class enum_type : char {
         day = '0',
         ioc = '3',
+        gtx = '5',
         gtt = '6',
         after_hours = 'E'
     };
 
-    static constexpr std::array<std::pair<std::string_view, enum_type>, 4> from_string_map = {{
+    static constexpr std::array<std::pair<std::string_view, enum_type>, 5> from_string_map = {{
         {"After Hours", enum_type::after_hours},
         {"Day", enum_type::day},
         {"Gtt", enum_type::gtt},
+        {"Gtx", enum_type::gtx},
         {"Ioc", enum_type::ioc}
     }};
 
@@ -30,6 +32,7 @@ struct time_in_force {
         switch (value) {
             case enum_type::day: return "Day";
             case enum_type::ioc: return "Ioc";
+            case enum_type::gtx: return "Gtx";
             case enum_type::gtt: return "Gtt";
             case enum_type::after_hours: return "After Hours";
             default: return "unknown";

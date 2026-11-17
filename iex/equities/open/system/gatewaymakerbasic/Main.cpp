@@ -56,7 +56,11 @@ int main(int argc, char** argv) {
             [&](const sim::ipc_ns::trade_message& t) { gatewaymakerbasic.on_event(t); },
             [](const sim::ipc_ns::order_rested_message&) {},
             [&](const sim::ipc_ns::order_canceled_message& c) { gatewaymakerbasic.on_event(c); },
-            [](const sim::ipc_ns::order_refused_message&) {});
+            [&](const sim::ipc_ns::order_accepted_message& a) { gatewaymakerbasic.on_event(a); },
+            [&](const sim::ipc_ns::order_eliminated_message& e) { gatewaymakerbasic.on_event(e); },
+            [&](const sim::ipc_ns::order_refused_message& j) { gatewaymakerbasic.on_event(j); },
+            [&](const sim::ipc_ns::order_replaced_message& w) { gatewaymakerbasic.on_event(w); },
+            [&](const sim::ipc_ns::cancel_refused_message& k) { gatewaymakerbasic.on_event(k); });
 
         // A session per trader process, against the link that carries it. To the gateway a
         // trader on a link is what a client on a socket is: somewhere to write bytes.

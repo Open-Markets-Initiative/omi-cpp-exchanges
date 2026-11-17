@@ -11,7 +11,19 @@
 #include "../types/Quantity.hpp"
 #include "../types/TimeInForce.hpp"
 #include "../types/Display.hpp"
+#include "../types/Attribution.hpp"
 #include "../types/CrossType.hpp"
+#include "../types/Peg.hpp"
+#include "../types/MinQty.hpp"
+#include "../types/PegOffset.hpp"
+#include "../types/PostOnly.hpp"
+#include "../types/TradeNow.hpp"
+#include "../types/ShortSale.hpp"
+#include "../types/MaxFloor.hpp"
+#include "../types/SelfMatchGroup.hpp"
+#include "../types/SelfMatchLevel.hpp"
+#include "../types/SelfMatchStrategy.hpp"
+#include "../types/AiqStrategy.hpp"
 
 namespace nasdaq::nsmequities::matchingengine::ipc::v2026 {
 
@@ -31,7 +43,19 @@ struct replace_order_message {
     ipc_matchingengine::quantity quantity;
     ipc_matchingengine::time_in_force time_in_force;
     ipc_matchingengine::display display;
+    ipc_matchingengine::attribution attribution;
     ipc_matchingengine::cross_type cross_type;
+    ipc_matchingengine::peg peg;
+    ipc_matchingengine::min_qty min_qty;
+    ipc_matchingengine::peg_offset peg_offset;
+    ipc_matchingengine::post_only post_only;
+    ipc_matchingengine::trade_now trade_now;
+    ipc_matchingengine::short_sale short_sale;
+    ipc_matchingengine::max_floor max_floor;
+    ipc_matchingengine::self_match_group self_match_group;
+    ipc_matchingengine::self_match_level self_match_level;
+    ipc_matchingengine::self_match_strategy self_match_strategy;
+    ipc_matchingengine::aiq_strategy aiq_strategy;
 
     // parse method
     static replace_order_message* parse(std::byte* buffer) {
@@ -55,8 +79,20 @@ static_assert(offsetof(replace_order_message, price) == 41, "unexpected offset o
 static_assert(offsetof(replace_order_message, quantity) == 49, "unexpected offset of replace_order_message::quantity");
 static_assert(offsetof(replace_order_message, time_in_force) == 53, "unexpected offset of replace_order_message::time_in_force");
 static_assert(offsetof(replace_order_message, display) == 54, "unexpected offset of replace_order_message::display");
-static_assert(offsetof(replace_order_message, cross_type) == 55, "unexpected offset of replace_order_message::cross_type");
-static_assert(sizeof(replace_order_message) == 56, "unexpected sizeof replace_order_message");
+static_assert(offsetof(replace_order_message, attribution) == 55, "unexpected offset of replace_order_message::attribution");
+static_assert(offsetof(replace_order_message, cross_type) == 59, "unexpected offset of replace_order_message::cross_type");
+static_assert(offsetof(replace_order_message, peg) == 60, "unexpected offset of replace_order_message::peg");
+static_assert(offsetof(replace_order_message, min_qty) == 61, "unexpected offset of replace_order_message::min_qty");
+static_assert(offsetof(replace_order_message, peg_offset) == 65, "unexpected offset of replace_order_message::peg_offset");
+static_assert(offsetof(replace_order_message, post_only) == 69, "unexpected offset of replace_order_message::post_only");
+static_assert(offsetof(replace_order_message, trade_now) == 70, "unexpected offset of replace_order_message::trade_now");
+static_assert(offsetof(replace_order_message, short_sale) == 71, "unexpected offset of replace_order_message::short_sale");
+static_assert(offsetof(replace_order_message, max_floor) == 72, "unexpected offset of replace_order_message::max_floor");
+static_assert(offsetof(replace_order_message, self_match_group) == 76, "unexpected offset of replace_order_message::self_match_group");
+static_assert(offsetof(replace_order_message, self_match_level) == 84, "unexpected offset of replace_order_message::self_match_level");
+static_assert(offsetof(replace_order_message, self_match_strategy) == 85, "unexpected offset of replace_order_message::self_match_strategy");
+static_assert(offsetof(replace_order_message, aiq_strategy) == 86, "unexpected offset of replace_order_message::aiq_strategy");
+static_assert(sizeof(replace_order_message) == 87, "unexpected sizeof replace_order_message");
 
 #pragma pack(pop)
 }

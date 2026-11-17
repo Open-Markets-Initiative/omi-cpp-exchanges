@@ -10,9 +10,9 @@
 #include "../types/OperationalHaltAction.hpp"
 #include "../types/SequencedMessageType.hpp"
 
-namespace nasdaq::nsmequities::totalview::glimpse::v5_0 {
+namespace nasdaq::nsmequities::totalview::glimpse::v5_0_2026 {
 
-namespace glimpse_totalview = ::nasdaq::nsmequities::totalview::glimpse::v5_0;
+namespace glimpse_totalview = ::nasdaq::nsmequities::totalview::glimpse::v5_0_2026;
 
 #pragma pack(push, 1)
 

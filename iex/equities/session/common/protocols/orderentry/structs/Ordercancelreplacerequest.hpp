@@ -17,6 +17,7 @@
 #include "../types/Symbolsfx.hpp"
 #include "../types/Minqty.hpp"
 #include "../types/Extendedexecinst.hpp"
+#include "../types/Pegdifference.hpp"
 
 namespace iex::iexequities::orderentry::fix::v2_91 {
 
@@ -42,6 +43,7 @@ struct ordercancelreplacerequest {
     fix_orderentry::symbolsfx symbolsfx;
     fix_orderentry::minqty minqty;
     fix_orderentry::extendedexecinst extendedexecinst;
+    fix_orderentry::pegdifference pegdifference;
 
     // parse method
     static ordercancelreplacerequest* parse(std::byte* buffer) {
@@ -71,7 +73,8 @@ static_assert(offsetof(ordercancelreplacerequest, price) == 1301, "unexpected of
 static_assert(offsetof(ordercancelreplacerequest, symbolsfx) == 1309, "unexpected offset of ordercancelreplacerequest::symbolsfx");
 static_assert(offsetof(ordercancelreplacerequest, minqty) == 1565, "unexpected offset of ordercancelreplacerequest::minqty");
 static_assert(offsetof(ordercancelreplacerequest, extendedexecinst) == 1573, "unexpected offset of ordercancelreplacerequest::extendedexecinst");
-static_assert(sizeof(ordercancelreplacerequest) == 1574, "unexpected sizeof ordercancelreplacerequest");
+static_assert(offsetof(ordercancelreplacerequest, pegdifference) == 1574, "unexpected offset of ordercancelreplacerequest::pegdifference");
+static_assert(sizeof(ordercancelreplacerequest) == 1582, "unexpected sizeof ordercancelreplacerequest");
 
 #pragma pack(pop)
 }

@@ -3,7 +3,7 @@
 Generated exchange simulator for Investors Exchange Equities Session: an order-entry gateway, a price-time matching engine running the trading day,
 market data feed publishers, snapshot (replay) servers,
 and traders that exercise the exchange end to end. Every link between two components carries
-framed Iex.IexEquities.MatchingEngine.Ipc.v1.0 messages: the gateway owns the client sockets, the engine owns the
+framed Iex.IexEquities.MatchingEngine.Ipc.v2026 messages: the gateway owns the client sockets, the engine owns the
 book, and each feed owns its market data and the snapshots it serves.
 
 The components are generated once, into `common/`, and deployed three ways - `process/`, one binary with a thread per component, `system/`, a process per component on this host, `distributed/`, a process per component across machines. Each directory has a ReadMe of its own.
@@ -31,19 +31,19 @@ and a `verify.sh` that runs the venue and checks what its components carried.
 | Role | Model |
 | --- | --- |
 | Order Entry | Iex.IexEquities.OrderEntry.Fix.v2.91 |
-| Order Entry Session | Fix.Fix |
+| Order Entry Session | Iex.IexEquities.Fix |
 | Market Data (Tops) | Iex.IexEquities.Tops.IexTp.v1.66 |
 | Market Data (Deep) | Iex.IexEquities.Deep.IexTp.v1.08 |
 | Market Data (DeepPlus) | Iex.IexEquities.DeepPlus.IexTp.v1.05 |
 | Snapshot (Deep) | Iex.IexEquities.Deep.Snap.v1.6 |
 | Snapshot (Tops) | Iex.IexEquities.Tops.Snap.v1.6 |
 | Snapshot (DeepPlus) | Iex.IexEquities.DeepPlus.Snap.v1.06 |
-| Trading Day | Iex.IexEquities.Equities.Session.Trading |
-| Internal Messaging | Iex.IexEquities.MatchingEngine.Ipc.v1.0 |
+| Trading Day | Iex.IexEquities.Equities.Session.TradingSession |
+| Internal Messaging | Iex.IexEquities.MatchingEngine.Ipc.v2026 |
 
 ## Trading Day
 
-The engine runs `Iex.IexEquities.Equities.Session.Trading`: each phase of the day decides whether an order
+The engine runs `Iex.IexEquities.Equities.Session.TradingSession`: each phase of the day decides whether an order
 trades, waits for the next cross, or is refused. Each change of phase is announced on the
 internal messaging, and so is each cross completed, with the price it crossed at and the
 shares that traded there. The day the simulator is generated with:
@@ -51,10 +51,13 @@ shares that traded there. The day the simulator is generated with:
 | Change | Before startup run turn | Served (seconds after start) |
 | --- | --- | --- |
 | PreOpen | 0 | 0 |
+| OpeningLockIn | 3 | 27 |
+| OpeningLockOut | 4 | 29 |
 | Open | 4 | 30 |
 | Halt | 8 | 120 |
 | Resume | 10 | 150 |
 | PreClose | 14 | 240 |
+| ClosingLockOut | 18 | 269 |
 | Close | 18 | 270 |
 | End | 20 | 300 |
 

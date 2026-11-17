@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
         totalviewtcp.allow("DAVE01", "dave000001");
 
         // Its own socket: the clients that ask it for a replay dial this, not the gateway.
-        net::TcpServer totalviewtcp_server(cfg.totalviewtcp_replay_port == 0 ? "0.0.0.0" : "127.0.0.1", cfg.totalviewtcp_replay_port);
+        net::TcpServer totalviewtcp_server(cfg.totalviewtcp_replay_host, cfg.totalviewtcp_replay_port);   // where its settings say: every interface in a container
         std::map<int, std::size_t> totalviewtcp_sessions;
 
         std::printf("nasdaq-totalviewtcp: serving stream of TotalView on port %u\n", (unsigned)cfg.totalviewtcp_replay_port);
@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
             worked = totalviewtcp_server.poll([&](int fd, std::string_view bytes) {
                 auto session = totalviewtcp_sessions.find(fd);
                 if (session == totalviewtcp_sessions.end())
-                    session = totalviewtcp_sessions.emplace(fd, totalviewtcp.connect([fd](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); })).first;
+                    session = totalviewtcp_sessions.emplace(fd, totalviewtcp.connect([&server = totalviewtcp_server, fd](const char* b, std::size_t n) { server.send(fd, b, n); })).first;
                 totalviewtcp.on_bytes(session->second, bytes.data(), bytes.size());
             }, [&](int fd) {
                 if (const auto gone = totalviewtcp_sessions.find(fd); gone != totalviewtcp_sessions.end()) {

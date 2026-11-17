@@ -23,6 +23,7 @@ struct OrderCancelReplaceRequest {
     char symbol_sfx[256];
     double min_qty;
     char extended_exec_inst;
+    double peg_difference;
 };
 #pragma pack(pop)
 

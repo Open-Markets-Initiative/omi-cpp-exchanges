@@ -34,12 +34,12 @@ and a `verify.sh` that runs the venue and checks what its components carried.
 | Order Entry Session | Fix.Fix |
 | Market Data (Itch) | Odx.OdxSecurityToken.Pts.Itch.v1.2 |
 | Stream of Itch (ItchTcp) | Odx.OdxSecurityToken.Pts.Itch.v1.2 |
-| Trading Day | Odx.OdxSecurityToken.SecurityToken.Session.Trading |
+| Trading Day | Odx.OdxSecurityToken.SecurityToken.Session.TradingSession |
 | Internal Messaging | Odx.OdxSecurityToken.MatchingEngine.Ipc.v2026 |
 
 ## Trading Day
 
-The engine runs `Odx.OdxSecurityToken.SecurityToken.Session.Trading`: each phase of the day decides whether an order
+The engine runs `Odx.OdxSecurityToken.SecurityToken.Session.TradingSession`: each phase of the day decides whether an order
 trades, waits for the next cross, or is refused. Each change of phase is announced on the
 internal messaging, and so is each cross completed, with the price it crossed at and the
 shares that traded there. The day the simulator is generated with:

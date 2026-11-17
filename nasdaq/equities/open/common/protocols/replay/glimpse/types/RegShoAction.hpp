@@ -7,7 +7,7 @@
 #include <string_view>
 #include "../cache/Required.hpp"
 
-namespace nasdaq::nsmequities::totalview::glimpse::v5_0 {
+namespace nasdaq::nsmequities::totalview::glimpse::v5_0_2026 {
 
 // reg_sho_action
 struct reg_sho_action {

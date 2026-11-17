@@ -3,7 +3,7 @@
 #include <cstddef>
 #include "../cache/Required.hpp"
 
-namespace nasdaq::nsmequities::totalview::glimpse::v5_0 {
+namespace nasdaq::nsmequities::totalview::glimpse::v5_0_2026 {
 
 // short_sale_threshold_indicator
 struct short_sale_threshold_indicator {

@@ -14,19 +14,25 @@ struct refusal_reason {
 
     enum class enum_type : char {
         closed = 'E',
+        invalid_peg_type = 'P',
+        market_not_allowed = 'T',
         other = 'O',
         invalid_cross = 'C'
     };
 
-    static constexpr std::array<std::pair<std::string_view, enum_type>, 3> from_string_map = {{
+    static constexpr std::array<std::pair<std::string_view, enum_type>, 5> from_string_map = {{
         {"Closed", enum_type::closed},
         {"Invalid Cross", enum_type::invalid_cross},
+        {"Invalid Peg Type", enum_type::invalid_peg_type},
+        {"Market Not Allowed", enum_type::market_not_allowed},
         {"Other", enum_type::other}
     }};
 
     static constexpr std::string_view to_string(enum_type value) {
         switch (value) {
             case enum_type::closed: return "Closed";
+            case enum_type::invalid_peg_type: return "Invalid Peg Type";
+            case enum_type::market_not_allowed: return "Market Not Allowed";
             case enum_type::other: return "Other";
             case enum_type::invalid_cross: return "Invalid Cross";
             default: return "unknown";

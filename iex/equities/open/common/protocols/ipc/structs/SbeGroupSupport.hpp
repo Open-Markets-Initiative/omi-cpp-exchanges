@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <string_view>
 
-namespace iex::iexequities::matchingengine::ipc::v1_0 {
+namespace iex::iexequities::matchingengine::ipc::v2026 {
 
 // A group's dimension: how long each entry's block is, and how many entries follow
 template <typename Header>

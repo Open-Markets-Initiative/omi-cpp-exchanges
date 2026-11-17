@@ -358,7 +358,10 @@ int main(int argc, char** argv) {
     sim::Component sequencer_thread("sequencer", [&] { return sequencer_component.step(to_sequencer_gatewaymakerbasic, to_sequencer_gatewaytakerbasic, to_sequencer_gatewayreplay, from_day); });
     sim::Component day_thread("day", [&] { return day_component.step(); });
     sim::Component itch_thread("itch", [&] {
-        return to_itch.read([&](std::string_view message) { itch_events.on_message(message); });
+        const bool worked = to_itch.read([&](std::string_view message) { itch_events.on_message(message); });
+        // A feed that has published nothing for a second says its session is alive, or over.
+        itch.idle();
+        return worked;
     });
     sim::Component glimpse_thread("glimpse", [&] {
         bool worked = to_glimpse.read([&](std::string_view message) { glimpse.on_message(message.data(), message.size()); });

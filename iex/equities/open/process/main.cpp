@@ -109,7 +109,11 @@ int main(int argc, char** argv) {
             deep.flush();
         },
         [](const sim::ipc_ns::order_canceled_message&) {},
-        [](const sim::ipc_ns::order_refused_message&) {});
+        [](const sim::ipc_ns::order_accepted_message&) {},
+        [](const sim::ipc_ns::order_eliminated_message&) {},
+        [](const sim::ipc_ns::order_refused_message&) {},
+        [](const sim::ipc_ns::order_replaced_message&) {},
+        [](const sim::ipc_ns::cancel_refused_message&) {});
     sim::IpcEventServer tops_events(
         [](const sim::ipc_ns::trade_message&) {},
         [&](const sim::ipc_ns::order_rested_message& o) {
@@ -125,7 +129,11 @@ int main(int argc, char** argv) {
             tops.flush();
         },
         [](const sim::ipc_ns::order_canceled_message&) {},
-        [](const sim::ipc_ns::order_refused_message&) {});
+        [](const sim::ipc_ns::order_accepted_message&) {},
+        [](const sim::ipc_ns::order_eliminated_message&) {},
+        [](const sim::ipc_ns::order_refused_message&) {},
+        [](const sim::ipc_ns::order_replaced_message&) {},
+        [](const sim::ipc_ns::cancel_refused_message&) {});
     sim::IpcEventServer deepplus_events(
         [&](const sim::ipc_ns::trade_message& t) {
             // trade_message -> the feeds its transforms declare (IexEquities.Ipc.Transforms.xml).
@@ -140,7 +148,11 @@ int main(int argc, char** argv) {
             deepplus.flush();
         },
         [](const sim::ipc_ns::order_canceled_message&) {},
-        [](const sim::ipc_ns::order_refused_message&) {});
+        [](const sim::ipc_ns::order_accepted_message&) {},
+        [](const sim::ipc_ns::order_eliminated_message&) {},
+        [](const sim::ipc_ns::order_refused_message&) {},
+        [](const sim::ipc_ns::order_replaced_message&) {},
+        [](const sim::ipc_ns::cancel_refused_message&) {});
 
     // MakerBasic's gateway: each client's session reaches the engine as framed Ipc messages.
     auto gatewaymakerbasic_emit = [&](const char* b, std::size_t n) {
@@ -154,7 +166,11 @@ int main(int argc, char** argv) {
         [&](const sim::ipc_ns::trade_message& t) { gatewaymakerbasic.on_event(t); },
         [](const sim::ipc_ns::order_rested_message&) {},
         [&](const sim::ipc_ns::order_canceled_message& c) { gatewaymakerbasic.on_event(c); },
-        [](const sim::ipc_ns::order_refused_message&) {});
+        [&](const sim::ipc_ns::order_accepted_message& a) { gatewaymakerbasic.on_event(a); },
+        [&](const sim::ipc_ns::order_eliminated_message& e) { gatewaymakerbasic.on_event(e); },
+        [&](const sim::ipc_ns::order_refused_message& j) { gatewaymakerbasic.on_event(j); },
+        [&](const sim::ipc_ns::order_replaced_message& w) { gatewaymakerbasic.on_event(w); },
+        [&](const sim::ipc_ns::cancel_refused_message& k) { gatewaymakerbasic.on_event(k); });
 
     // TakerBasic's gateway: each client's session reaches the engine as framed Ipc messages.
     auto gatewaytakerbasic_emit = [&](const char* b, std::size_t n) {
@@ -168,7 +184,11 @@ int main(int argc, char** argv) {
         [&](const sim::ipc_ns::trade_message& t) { gatewaytakerbasic.on_event(t); },
         [](const sim::ipc_ns::order_rested_message&) {},
         [&](const sim::ipc_ns::order_canceled_message& c) { gatewaytakerbasic.on_event(c); },
-        [](const sim::ipc_ns::order_refused_message&) {});
+        [&](const sim::ipc_ns::order_accepted_message& a) { gatewaytakerbasic.on_event(a); },
+        [&](const sim::ipc_ns::order_eliminated_message& e) { gatewaytakerbasic.on_event(e); },
+        [&](const sim::ipc_ns::order_refused_message& j) { gatewaytakerbasic.on_event(j); },
+        [&](const sim::ipc_ns::order_replaced_message& w) { gatewaytakerbasic.on_event(w); },
+        [&](const sim::ipc_ns::cancel_refused_message& k) { gatewaytakerbasic.on_event(k); });
 
     // The engine's events, framed onto every consumer's queue.
     auto event_emit = [&](const char* b, std::size_t n) {
@@ -182,6 +202,7 @@ int main(int argc, char** argv) {
     // The engine component, built the same way the per-component binaries build it:
     // what it matches is its own, and where its events go is whatever emit it was handed.
     sim::components::Engine<decltype(event_emit)> engine_component(event_emit, trades);
+    engine_component.dump(cfg.book_dump);
     // Each engine's sequencer: what is bound for the engine, from every producer, put in one
     // order, each message stamped with its place in it and the time, and handed to the engine.
     auto sequencer_emit = [&](const char* b, std::size_t n) { sim::write_blocking(sequenced, b, n); };
@@ -235,7 +256,7 @@ int main(int argc, char** argv) {
     sim::Component engine_thread("engine", [&] { return engine_component.step(sequenced); });
     sim::Component sequencer_thread("sequencer", [&] { return sequencer_component.step(to_sequencer_gatewaymakerbasic, to_sequencer_gatewaytakerbasic); });
     sim::Component deep_thread("deep", [&] {
-        bool worked = to_deep.read([&](std::string_view message) { deep_events.on_message(message); });
+        bool worked = to_deep.read([&](std::string_view message) { if (const auto asked = sim::book_end_of(message)) deep_rec.mark(*asked); deep_events.on_message(message); });
         // Snapshot requests are served by the feed that retains the segments.
         if (deep_snap_srv) worked = deep_snap_srv->poll([&](int fd, std::string_view request) {
             deep_snap.on_message(request, [&](const char* b, std::size_t n) { deep_snap_srv->send(fd, b, n); });
@@ -243,7 +264,7 @@ int main(int argc, char** argv) {
         return worked;
     });
     sim::Component tops_thread("tops", [&] {
-        bool worked = to_tops.read([&](std::string_view message) { tops_events.on_message(message); });
+        bool worked = to_tops.read([&](std::string_view message) { if (const auto asked = sim::book_end_of(message)) tops_rec.mark(*asked); tops_events.on_message(message); });
         // Snapshot requests are served by the feed that retains the segments.
         if (tops_snap_srv) worked = tops_snap_srv->poll([&](int fd, std::string_view request) {
             tops_snap.on_message(request, [&](const char* b, std::size_t n) { tops_snap_srv->send(fd, b, n); });
@@ -251,7 +272,7 @@ int main(int argc, char** argv) {
         return worked;
     });
     sim::Component deepplus_thread("deepplus", [&] {
-        bool worked = to_deepplus.read([&](std::string_view message) { deepplus_events.on_message(message); });
+        bool worked = to_deepplus.read([&](std::string_view message) { if (const auto asked = sim::book_end_of(message)) deepplus_rec.mark(*asked); deepplus_events.on_message(message); });
         // Snapshot requests are served by the feed that retains the segments.
         if (deepplus_snap_srv) worked = deepplus_snap_srv->poll([&](int fd, std::string_view request) {
             deepplus_snap.on_message(request, [&](const char* b, std::size_t n) { deepplus_snap_srv->send(fd, b, n); });
@@ -417,14 +438,16 @@ int main(int argc, char** argv) {
     deepplus_thread.stop();
     to_deepplus.close();
 
-    std::printf("iex-simulator: trader %s (%s) entered %llu, canceled %llu, ExecutionReport=%llu\n",
+    std::printf("iex-simulator: trader %s (%s) entered %llu, canceled %llu, ExecutionReport=%llu, OrderCancelReject=%llu\n",
                 makerbasic.name().c_str(), makerbasic.logged_in() ? makerbasic.session_name().c_str() : "not logged in",
                 (unsigned long long)makerbasic.entered(), (unsigned long long)makerbasic.canceled(),
-            (unsigned long long)makerbasic.answers().ExecutionReport);
-    std::printf("iex-simulator: trader %s (%s) entered %llu, canceled %llu, ExecutionReport=%llu\n",
+            (unsigned long long)makerbasic.answers().ExecutionReport,
+            (unsigned long long)makerbasic.answers().OrderCancelReject);
+    std::printf("iex-simulator: trader %s (%s) entered %llu, canceled %llu, ExecutionReport=%llu, OrderCancelReject=%llu\n",
                 takerbasic.name().c_str(), takerbasic.logged_in() ? takerbasic.session_name().c_str() : "not logged in",
                 (unsigned long long)takerbasic.entered(), (unsigned long long)takerbasic.canceled(),
-            (unsigned long long)takerbasic.answers().ExecutionReport);
+            (unsigned long long)takerbasic.answers().ExecutionReport,
+            (unsigned long long)takerbasic.answers().OrderCancelReject);
     std::printf("iex-simulator: %llu trades matched, ipc carried %llu order + %llu event messages\n",
                 (unsigned long long)trades.load(), (unsigned long long)ipc_msgs.load(), (unsigned long long)ipc_events.load());
     return 0;

@@ -99,6 +99,14 @@ public:
     }
 
     // Remove a resting order by id, telling the owner what left the book. Returns true if it was found.
+    // Every order the engine holds, one at a time, and where it holds it: 'B' on the book, bids from
+    // the best down and then asks from the best up, each price in time order.
+    template <typename Visit>
+    void each(Visit visit) const {
+        for (const auto& [level, orders] : bids_) for (const Order& o : orders) visit(o, 'B');
+        for (const auto& [level, orders] : asks_) for (const Order& o : orders) visit(o, 'B');
+    }
+
     bool on_cancel(std::uint64_t id) {
         Order removed{};
         if (!erase(bids_, id, removed) && !erase(asks_, id, removed)) return false;

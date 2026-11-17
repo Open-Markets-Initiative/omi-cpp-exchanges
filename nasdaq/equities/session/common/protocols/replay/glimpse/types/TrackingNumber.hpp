@@ -4,7 +4,7 @@
 #include <cstdint>
 #include "../cache/Required.hpp"
 
-namespace nasdaq::nsmequities::totalview::glimpse::v5_0 {
+namespace nasdaq::nsmequities::totalview::glimpse::v5_0_2026 {
 
 // tracking_number
 struct tracking_number {

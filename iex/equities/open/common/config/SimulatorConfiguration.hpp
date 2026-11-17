@@ -39,6 +39,9 @@ struct RuntimeConfig {
     Endpoint to_takerbasic_link;
     Endpoint from_takerbasic_link;
     std::string recording_directory;
+    // The engine's own book: the file it is also written to, none where empty, and when the day asks for it.
+    std::string book_dump;
+    std::string book_every;
     // How the venue keeps time: its mode, the time of day its day starts at, and the zone that is in.
     std::string clock_mode;
     std::string clock_start;
@@ -90,6 +93,8 @@ inline RuntimeConfig load_config(int argc, char** argv) {
         ("link-from_takerbasic.host", po::value<std::string>(&c.from_takerbasic_link.host)->default_value("gatewaytakerbasic"))
         ("link-from_takerbasic.port", po::value<unsigned short>(&c.from_takerbasic_link.port)->default_value(19011))
         ("recording.directory", po::value<std::string>(&c.recording_directory)->default_value("recordings"))
+        ("book.dump", po::value<std::string>(&c.book_dump)->default_value(""))
+        ("book.every", po::value<std::string>(&c.book_every)->default_value("none"))
         ("clock.mode", po::value<std::string>(&c.clock_mode)->default_value("Elapsed"))
         ("clock.start", po::value<std::string>(&c.clock_start)->default_value("00:00:00"))
         ("clock.zone", po::value<std::string>(&c.clock_zone)->default_value("UTC"));

@@ -4,9 +4,9 @@
 #include "../types/Timestamp.hpp"
 #include "../types/OrderId.hpp"
 
-namespace nse::nsefo::matchingengine::ipc::v1_0 {
+namespace nse::nsefo::matchingengine::ipc::v2026 {
 
-namespace ipc_matchingengine = ::nse::nsefo::matchingengine::ipc::v1_0;
+namespace ipc_matchingengine = ::nse::nsefo::matchingengine::ipc::v2026;
 
 #pragma pack(push, 1)
 

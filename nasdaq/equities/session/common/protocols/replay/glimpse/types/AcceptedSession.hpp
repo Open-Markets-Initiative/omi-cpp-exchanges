@@ -6,7 +6,7 @@
 #include <algorithm>
 #include "../cache/Required.hpp"
 
-namespace nasdaq::nsmequities::totalview::glimpse::v5_0 {
+namespace nasdaq::nsmequities::totalview::glimpse::v5_0_2026 {
 
 // accepted_session
 struct accepted_session {

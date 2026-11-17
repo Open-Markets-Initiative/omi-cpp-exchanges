@@ -11,14 +11,24 @@
 #include <chrono>
 #include "../protocols/orderentry/messages/EnterOrderMessage.hpp"
 #include "../protocols/orderentry/messages/CancelOrderMessage.hpp"
+#include "../protocols/orderentry/messages/MassCancelResponseMessage.hpp"
+#include "../protocols/orderentry/messages/DisableOrderEntryResponseMessage.hpp"
+#include "../protocols/orderentry/messages/EnableOrderEntryResponseMessage.hpp"
+#include "../protocols/orderentry/messages/RejectedOrderMessage.hpp"
+#include "../protocols/orderentry/messages/AccountQueryResponseMessage.hpp"
+#include "../protocols/orderentry/messages/SystemEventMessage.hpp"
 #include "../protocols/orderentry/messages/OrderAcceptedMessage.hpp"
 #include "../protocols/orderentry/messages/ReplacedMessage.hpp"
 #include "../protocols/orderentry/messages/OrderModifiedMessage.hpp"
 #include "../protocols/orderentry/messages/OrderExecutedMessage.hpp"
+#include "../protocols/orderentry/messages/OrderRestatedMessage.hpp"
+#include "../protocols/orderentry/messages/CancelPendingMessage.hpp"
+#include "../protocols/orderentry/messages/CancelRejectMessage.hpp"
+#include "../protocols/orderentry/messages/AiqCanceledMessage.hpp"
 #include "../protocols/orderentry/messages/CanceledMessage.hpp"
-#include "../protocols/orderentry/messages/RejectedOrderMessage.hpp"
 #include "../protocols/orderentry/messages/ReplaceOrderMessage.hpp"
 #include "../protocols/orderentry/messages/ModifyOrderMessage.hpp"
+#include "../protocols/orderentry/messages/MassCancelRequestMessage.hpp"
 #include "../protocols/orderentry/messages/UnsequencedDataPacket.hpp"
 #include "../protocols/orderentry/messages/SequencedDataPacket.hpp"
 #include "../protocols/orderentry/SoupBinClient.hpp"
@@ -42,12 +52,21 @@ constexpr std::size_t fixed_size() {
 
 // What the venue answered, counted by the message each response transform builds (NsmEquities.Ipc.Transforms.xml).
 struct Answers {
+    std::uint64_t mass_cancel_response_message = 0;
+    std::uint64_t disable_order_entry_response_message = 0;
+    std::uint64_t enable_order_entry_response_message = 0;
+    std::uint64_t rejected_order_message = 0;
+    std::uint64_t account_query_response_message = 0;
+    std::uint64_t system_event_message = 0;
     std::uint64_t order_accepted_message = 0;
     std::uint64_t replaced_message = 0;
     std::uint64_t order_modified_message = 0;
     std::uint64_t order_executed_message = 0;
+    std::uint64_t order_restated_message = 0;
+    std::uint64_t cancel_pending_message = 0;
+    std::uint64_t cancel_reject_message = 0;
+    std::uint64_t aiq_canceled_message = 0;
     std::uint64_t canceled_message = 0;
-    std::uint64_t rejected_order_message = 0;
 };
 
 // A strategy's intent, in the venue's own order-entry messages, on a client session.
@@ -135,6 +154,21 @@ public:
                 out.fields.orig_user_ref_num.set(static_cast<value_of<decltype(out.fields.orig_user_ref_num)>>(entered->second));
                 const std::uint64_t reference = ++next_;
                 replayed_[captured] = reference;
+                out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(reference));
+                send(out);
+                return reference;
+            }
+            case static_cast<decltype(selector)>('C'): {
+                if (length < fixed_size<protocol::mass_cancel_request_message>() - sizeof(protocol::client_packet_header)) return 0;
+                protocol::mass_cancel_request_message out{};
+                // the captured message, then the reference this trader knows its own order by
+                std::memcpy(reinterpret_cast<char*>(&out) + sizeof(protocol::client_packet_header), message,
+                            std::min(length, sizeof out - sizeof(protocol::client_packet_header)));
+                // the capture's own reference, so a request acting on an earlier order still names it
+                const std::uint64_t captured = static_cast<std::uint64_t>(out.fields.user_ref_num.get().value());
+                const auto entered = replayed_.find(captured);
+                if (entered == replayed_.end()) return 0;   // an order this trader never entered
+                const std::uint64_t reference = entered->second;
                 out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(reference));
                 send(out);
                 return reference;
@@ -228,12 +262,21 @@ public:
         if (packet.size() <= sizeof(protocol::server_packet_header)) return;
         auto selector = protocol::sequenced_data_packet::parse(reinterpret_cast<const std::byte*>(packet.data()))->fields.sequenced_message_type.get().value();
         switch (selector) {
+            case static_cast<decltype(selector)>('X'): ++answers_.mass_cancel_response_message; return;
+            case static_cast<decltype(selector)>('G'): ++answers_.disable_order_entry_response_message; return;
+            case static_cast<decltype(selector)>('K'): ++answers_.enable_order_entry_response_message; return;
+            case static_cast<decltype(selector)>('J'): ++answers_.rejected_order_message; return;
+            case static_cast<decltype(selector)>('Q'): ++answers_.account_query_response_message; return;
+            case static_cast<decltype(selector)>('S'): ++answers_.system_event_message; return;
             case static_cast<decltype(selector)>('A'): ++answers_.order_accepted_message; return;
             case static_cast<decltype(selector)>('U'): ++answers_.replaced_message; return;
             case static_cast<decltype(selector)>('M'): ++answers_.order_modified_message; return;
             case static_cast<decltype(selector)>('E'): ++answers_.order_executed_message; return;
+            case static_cast<decltype(selector)>('R'): ++answers_.order_restated_message; return;
+            case static_cast<decltype(selector)>('P'): ++answers_.cancel_pending_message; return;
+            case static_cast<decltype(selector)>('I'): ++answers_.cancel_reject_message; return;
+            case static_cast<decltype(selector)>('D'): ++answers_.aiq_canceled_message; return;
             case static_cast<decltype(selector)>('C'): ++answers_.canceled_message; return;
-            case static_cast<decltype(selector)>('J'): ++answers_.rejected_order_message; return;
             default: return;   // a message this trader's venue does not answer orders with
         }
     }

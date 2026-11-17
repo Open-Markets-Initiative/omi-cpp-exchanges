@@ -17,6 +17,25 @@ jobs:
       - name: Install Dependencies
         run: sudo apt-get install -y cmake g++ libboost-all-dev g++-14 tzdata
 
+      - name: Configure Investors Exchange Equities Basic Simulator
+        run: cmake -S iex/equities/basic -B build/iex/equities/basic -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build Investors Exchange Equities Basic Simulator
+        run: cmake --build build/iex/equities/basic --parallel $(nproc)
+
+      - name: Test Investors Exchange Equities Basic Simulator
+        run: ./build/iex/equities/basic/simulator_tests
+
+      - name: Run Investors Exchange Equities Basic Simulator
+        working-directory: iex/equities/basic
+        run: ../../../build/iex/equities/basic/iex_simulator
+
+      - name: Test Investors Exchange Equities Basic Connections
+        working-directory: iex/equities/basic
+        env:
+          IEX_SIMULATOR: ../../../build/iex/equities/basic/iex_simulator
+        run: python3 common/tests/Connections.py
+
       - name: Configure Investors Exchange Equities Open Simulator
         run: cmake -S iex/equities/open -B build/iex/equities/open -DCMAKE_BUILD_TYPE=Release
 
@@ -91,6 +110,61 @@ jobs:
       - name: Verify Nse Futures and Options Components (distributed)
         working-directory: nse/fo/distributed
         run: bash verify.sh ../../../build/nse/fo 8
+
+      - name: Configure Nasdaq Stock Market Basic Simulator
+        run: cmake -S nasdaq/equities/basic -B build/nasdaq/equities/basic -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-14
+
+      - name: Build Nasdaq Stock Market Basic Simulator
+        run: cmake --build build/nasdaq/equities/basic --parallel $(nproc)
+
+      - name: Test Nasdaq Stock Market Basic Simulator
+        run: ./build/nasdaq/equities/basic/simulator_tests
+
+      - name: Run Nasdaq Stock Market Basic Simulator
+        working-directory: nasdaq/equities/basic
+        run: ../../../build/nasdaq/equities/basic/nasdaq_simulator
+
+      - name: Configure Nasdaq Stock Market Open Simulator
+        run: cmake -S nasdaq/equities/open -B build/nasdaq/equities/open -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-14
+
+      - name: Build Nasdaq Stock Market Open Simulator
+        run: cmake --build build/nasdaq/equities/open --parallel $(nproc)
+
+      - name: Test Nasdaq Stock Market Open Simulator
+        run: ./build/nasdaq/equities/open/simulator_tests
+
+      - name: Run Nasdaq Stock Market Open Simulator
+        working-directory: nasdaq/equities/open
+        run: ../../../build/nasdaq/equities/open/nasdaq_simulator
+
+      - name: Verify Nasdaq Stock Market Open Components (system)
+        working-directory: nasdaq/equities/open/system
+        run: bash verify.sh ../../../../build/nasdaq/equities/open 8
+
+      - name: Verify Nasdaq Stock Market Open Components (distributed)
+        working-directory: nasdaq/equities/open/distributed
+        run: bash verify.sh ../../../../build/nasdaq/equities/open 8
+
+      - name: Configure Nasdaq Stock Market Session Simulator
+        run: cmake -S nasdaq/equities/session -B build/nasdaq/equities/session -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-14
+
+      - name: Build Nasdaq Stock Market Session Simulator
+        run: cmake --build build/nasdaq/equities/session --parallel $(nproc)
+
+      - name: Test Nasdaq Stock Market Session Simulator
+        run: ./build/nasdaq/equities/session/simulator_tests
+
+      - name: Run Nasdaq Stock Market Session Simulator
+        working-directory: nasdaq/equities/session
+        run: ../../../build/nasdaq/equities/session/nasdaq_simulator
+
+      - name: Verify Nasdaq Stock Market Session Components (system)
+        working-directory: nasdaq/equities/session/system
+        run: bash verify.sh ../../../../build/nasdaq/equities/session 8
+
+      - name: Verify Nasdaq Stock Market Session Components (distributed)
+        working-directory: nasdaq/equities/session/distributed
+        run: bash verify.sh ../../../../build/nasdaq/equities/session 8
 
       - name: Configure Odx Equities Open Simulator
         run: cmake -S odx/equities/open -B build/odx/equities/open -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-14

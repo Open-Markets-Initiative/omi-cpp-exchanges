@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <string_view>
 
-namespace nasdaq::nsmequities::totalview::glimpse::v5_0 {
+namespace nasdaq::nsmequities::totalview::glimpse::v5_0_2026 {
 
 // A group's dimension: how long each entry's block is, and how many entries follow
 template <typename Header>

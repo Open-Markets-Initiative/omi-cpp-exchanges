@@ -91,9 +91,9 @@ inline RuntimeConfig load_config(int argc, char** argv) {
         ("day.close", po::value<int>(&c.day_at[6])->default_value(60))
         ("day.end", po::value<int>(&c.day_at[7])->default_value(65))
         ("recording.directory", po::value<std::string>(&c.recording_directory)->default_value("recordings"))
-        ("clock.mode", po::value<std::string>(&c.clock_mode)->default_value("Elapsed"))
-        ("clock.start", po::value<std::string>(&c.clock_start)->default_value("00:00:00"))
-        ("clock.zone", po::value<std::string>(&c.clock_zone)->default_value("UTC"));
+        ("clock.mode", po::value<std::string>(&c.clock_mode)->default_value("SimulatedDay"))
+        ("clock.start", po::value<std::string>(&c.clock_start)->default_value("09:30"))
+        ("clock.zone", po::value<std::string>(&c.clock_zone)->default_value("Asia/Tokyo"));
 
     std::string path = "simulator.ini";
     for (int i = 1; i + 1 < argc; ++i)

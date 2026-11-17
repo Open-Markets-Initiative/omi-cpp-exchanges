@@ -3,7 +3,7 @@
 #include <cstddef>
 #include "../cache/Required.hpp"
 
-namespace iex::iexequities::matchingengine::ipc::v1_0 {
+namespace iex::iexequities::matchingengine::ipc::v2026 {
 
 // message_type
 struct message_type {

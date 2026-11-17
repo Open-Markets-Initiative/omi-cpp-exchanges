@@ -6,6 +6,7 @@
 #include "../structs/StExMarketStatus.hpp"
 #include "../structs/StPlMarketStatus.hpp"
 #include "../types/UpdatePortfolio.hpp"
+#include "../types/Reserved1.hpp"
 #include "../types/MarketIndex.hpp"
 #include "../types/DefaultSettlementPeriodNormal.hpp"
 #include "../types/DefaultSettlementPeriodSpot.hpp"
@@ -37,6 +38,7 @@ struct system_information_out_message {
         nnf_orderentry::st_ex_market_status st_ex_market_status;
         nnf_orderentry::st_pl_market_status st_pl_market_status;
         nnf_orderentry::update_portfolio update_portfolio;
+        nnf_orderentry::reserved_1 reserved_1;
         nnf_orderentry::market_index market_index;
         nnf_orderentry::default_settlement_period_normal default_settlement_period_normal;
         nnf_orderentry::default_settlement_period_spot default_settlement_period_spot;
@@ -76,24 +78,25 @@ static_assert(offsetof(system_information_out_message::fields_type, st_market_st
 static_assert(offsetof(system_information_out_message::fields_type, st_ex_market_status) == 8, "unexpected offset of system_information_out_message::fields_type::st_ex_market_status");
 static_assert(offsetof(system_information_out_message::fields_type, st_pl_market_status) == 16, "unexpected offset of system_information_out_message::fields_type::st_pl_market_status");
 static_assert(offsetof(system_information_out_message::fields_type, update_portfolio) == 24, "unexpected offset of system_information_out_message::fields_type::update_portfolio");
-static_assert(offsetof(system_information_out_message::fields_type, market_index) == 25, "unexpected offset of system_information_out_message::fields_type::market_index");
-static_assert(offsetof(system_information_out_message::fields_type, default_settlement_period_normal) == 29, "unexpected offset of system_information_out_message::fields_type::default_settlement_period_normal");
-static_assert(offsetof(system_information_out_message::fields_type, default_settlement_period_spot) == 31, "unexpected offset of system_information_out_message::fields_type::default_settlement_period_spot");
-static_assert(offsetof(system_information_out_message::fields_type, default_settlement_period_auction) == 33, "unexpected offset of system_information_out_message::fields_type::default_settlement_period_auction");
-static_assert(offsetof(system_information_out_message::fields_type, competitor_period) == 35, "unexpected offset of system_information_out_message::fields_type::competitor_period");
-static_assert(offsetof(system_information_out_message::fields_type, solicitor_period) == 37, "unexpected offset of system_information_out_message::fields_type::solicitor_period");
-static_assert(offsetof(system_information_out_message::fields_type, warning_percent) == 39, "unexpected offset of system_information_out_message::fields_type::warning_percent");
-static_assert(offsetof(system_information_out_message::fields_type, volume_freeze_percent) == 41, "unexpected offset of system_information_out_message::fields_type::volume_freeze_percent");
-static_assert(offsetof(system_information_out_message::fields_type, snap_quote_time) == 43, "unexpected offset of system_information_out_message::fields_type::snap_quote_time");
-static_assert(offsetof(system_information_out_message::fields_type, reserved_2) == 45, "unexpected offset of system_information_out_message::fields_type::reserved_2");
-static_assert(offsetof(system_information_out_message::fields_type, board_lot_quantity) == 47, "unexpected offset of system_information_out_message::fields_type::board_lot_quantity");
-static_assert(offsetof(system_information_out_message::fields_type, tick_size) == 51, "unexpected offset of system_information_out_message::fields_type::tick_size");
-static_assert(offsetof(system_information_out_message::fields_type, maximum_gtc_days) == 55, "unexpected offset of system_information_out_message::fields_type::maximum_gtc_days");
-static_assert(offsetof(system_information_out_message::fields_type, st_stock_eligible_indicators) == 57, "unexpected offset of system_information_out_message::fields_type::st_stock_eligible_indicators");
-static_assert(offsetof(system_information_out_message::fields_type, disclosed_quantity_percent_allowed) == 59, "unexpected offset of system_information_out_message::fields_type::disclosed_quantity_percent_allowed");
-static_assert(offsetof(system_information_out_message::fields_type, risk_free_interest_rate) == 61, "unexpected offset of system_information_out_message::fields_type::risk_free_interest_rate");
-static_assert(sizeof(system_information_out_message::fields_type) == 65, "unexpected sizeof system_information_out_message::fields_type");
-static_assert(sizeof(system_information_out_message) == sizeof(nnf_orderentry::message_header) + 65, "unexpected sizeof system_information_out_message");
+static_assert(offsetof(system_information_out_message::fields_type, reserved_1) == 25, "unexpected offset of system_information_out_message::fields_type::reserved_1");
+static_assert(offsetof(system_information_out_message::fields_type, market_index) == 26, "unexpected offset of system_information_out_message::fields_type::market_index");
+static_assert(offsetof(system_information_out_message::fields_type, default_settlement_period_normal) == 30, "unexpected offset of system_information_out_message::fields_type::default_settlement_period_normal");
+static_assert(offsetof(system_information_out_message::fields_type, default_settlement_period_spot) == 32, "unexpected offset of system_information_out_message::fields_type::default_settlement_period_spot");
+static_assert(offsetof(system_information_out_message::fields_type, default_settlement_period_auction) == 34, "unexpected offset of system_information_out_message::fields_type::default_settlement_period_auction");
+static_assert(offsetof(system_information_out_message::fields_type, competitor_period) == 36, "unexpected offset of system_information_out_message::fields_type::competitor_period");
+static_assert(offsetof(system_information_out_message::fields_type, solicitor_period) == 38, "unexpected offset of system_information_out_message::fields_type::solicitor_period");
+static_assert(offsetof(system_information_out_message::fields_type, warning_percent) == 40, "unexpected offset of system_information_out_message::fields_type::warning_percent");
+static_assert(offsetof(system_information_out_message::fields_type, volume_freeze_percent) == 42, "unexpected offset of system_information_out_message::fields_type::volume_freeze_percent");
+static_assert(offsetof(system_information_out_message::fields_type, snap_quote_time) == 44, "unexpected offset of system_information_out_message::fields_type::snap_quote_time");
+static_assert(offsetof(system_information_out_message::fields_type, reserved_2) == 46, "unexpected offset of system_information_out_message::fields_type::reserved_2");
+static_assert(offsetof(system_information_out_message::fields_type, board_lot_quantity) == 48, "unexpected offset of system_information_out_message::fields_type::board_lot_quantity");
+static_assert(offsetof(system_information_out_message::fields_type, tick_size) == 52, "unexpected offset of system_information_out_message::fields_type::tick_size");
+static_assert(offsetof(system_information_out_message::fields_type, maximum_gtc_days) == 56, "unexpected offset of system_information_out_message::fields_type::maximum_gtc_days");
+static_assert(offsetof(system_information_out_message::fields_type, st_stock_eligible_indicators) == 58, "unexpected offset of system_information_out_message::fields_type::st_stock_eligible_indicators");
+static_assert(offsetof(system_information_out_message::fields_type, disclosed_quantity_percent_allowed) == 60, "unexpected offset of system_information_out_message::fields_type::disclosed_quantity_percent_allowed");
+static_assert(offsetof(system_information_out_message::fields_type, risk_free_interest_rate) == 62, "unexpected offset of system_information_out_message::fields_type::risk_free_interest_rate");
+static_assert(sizeof(system_information_out_message::fields_type) == 66, "unexpected sizeof system_information_out_message::fields_type");
+static_assert(sizeof(system_information_out_message) == sizeof(nnf_orderentry::message_header) + 66, "unexpected sizeof system_information_out_message");
 
 #pragma pack(pop)
 }

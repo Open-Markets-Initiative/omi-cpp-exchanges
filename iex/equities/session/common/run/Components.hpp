@@ -33,6 +33,11 @@ inline constexpr std::size_t ipc_slot_bytes = 3 + std::max({
     sizeof(ipc_ns::cross_completed_message),
     sizeof(ipc_ns::imbalance_request_message),
     sizeof(ipc_ns::imbalance_indicated_message),
+    sizeof(ipc_ns::replace_order_message),
+    sizeof(ipc_ns::order_replaced_message),
+    sizeof(ipc_ns::book_request_message),
+    sizeof(ipc_ns::book_order_message),
+    sizeof(ipc_ns::book_end_message),
 });
 
 // What a bystander needs of a link: whether everything written has been read. Components never

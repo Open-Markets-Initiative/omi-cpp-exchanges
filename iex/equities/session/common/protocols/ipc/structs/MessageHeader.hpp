@@ -4,9 +4,9 @@
 #include "../types/MessageLength.hpp"
 #include "../types/MessageType.hpp"
 
-namespace iex::iexequities::matchingengine::ipc::v1_0 {
+namespace iex::iexequities::matchingengine::ipc::v2026 {
 
-namespace ipc_matchingengine = ::iex::iexequities::matchingengine::ipc::v1_0;
+namespace ipc_matchingengine = ::iex::iexequities::matchingengine::ipc::v2026;
 
 #pragma pack(push, 1)
 

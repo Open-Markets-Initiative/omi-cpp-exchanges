@@ -81,7 +81,8 @@ int main(int argc, char** argv) {
             auto mtbt_order_cancellation = sim::to_mtbt_order_cancellation(c);
             mtbt.publish_message(reinterpret_cast<const char*>(&mtbt_order_cancellation), sizeof mtbt_order_cancellation);
             mtbt.flush();
-        });
+        },
+        [](const sim::ipc_ns::order_refused_message&) {});
 
     // Order entry: each client's session reaches the engine as framed Ipc messages.
     auto gateway_emit = [&](const char* b, std::size_t n) {
@@ -96,7 +97,8 @@ int main(int argc, char** argv) {
     sim::IpcEventServer client_events(
         [&](const sim::ipc_ns::trade_message& t) { gateway.on_event(t); },
         [](const sim::ipc_ns::order_rested_message&) {},
-        [&](const sim::ipc_ns::order_canceled_message& c) { gateway.on_event(c); });
+        [&](const sim::ipc_ns::order_canceled_message& c) { gateway.on_event(c); },
+        [](const sim::ipc_ns::order_refused_message&) {});
 
     // The engine's events, framed onto every consumer's queue.
     auto event_emit = [&](const char* b, std::size_t n) {

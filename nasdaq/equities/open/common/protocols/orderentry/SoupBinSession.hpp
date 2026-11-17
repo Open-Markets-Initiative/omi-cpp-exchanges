@@ -50,7 +50,7 @@ struct Code {
 using status = std::remove_cvref_t<decltype(std::declval<const protocol::login_rejected_packet&>().fields.reject_reason_code.get().value())>;
 
 // The states this connection rests in, as the chart names them.
-enum class State { NotLoggedIn, Authenticating, LoggedIn };
+enum class State { NotLoggedIn, Authenticating, LoggedIn, Ended };
 
 // The time a session's timers wait by, in nanoseconds: a steady clock, since a timer waits
 // an interval and no interval should move when the wall clock does.
@@ -65,8 +65,8 @@ struct SessionClock {
 // Clock:   callable() telling the time in nanoseconds, which its timers wait by
 // Handler: answers what the session cannot decide itself, and receives what it does not interpret:
 // login(username, password, session_id, requested_sequence_number)
-// message(packet)
 // logout()
+// message(packet)
 // silent()
 template <typename Send, typename Handler, typename Clock = SessionClock>
 class Session {
@@ -99,6 +99,8 @@ public:
         now_ns_ = clock_();
         frame(Code::session_end, nullptr, 0);
         beat_due_ = 0;
+        silence_due_ = 0;
+        state_ = State::Ended;
     }
 
     // Bytes read from the other end: each whole packet is handled as it completes.
@@ -168,6 +170,8 @@ private:
                         break;
                 }
                 break;
+            case State::Ended:
+                break;   // nothing the chart answers here
         }
     }
 
@@ -195,6 +199,7 @@ private:
             protocol::login_rejected_packet reply{};
             reply.fields.reject_reason_code.set(*refused);
             send_(reinterpret_cast<const char*>(&reply), sizeof reply);
+            handler_.logout();
             state_ = State::NotLoggedIn;
             return;
         }

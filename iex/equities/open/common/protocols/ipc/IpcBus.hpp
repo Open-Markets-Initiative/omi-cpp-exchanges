@@ -14,18 +14,27 @@
 #include "structs/TradeMessage.hpp"
 #include "structs/OrderRestedMessage.hpp"
 #include "structs/OrderCanceledMessage.hpp"
+#include "structs/OrderAcceptedMessage.hpp"
+#include "structs/OrderEliminatedMessage.hpp"
+#include "structs/ReplaceOrderMessage.hpp"
+#include "structs/OrderReplacedMessage.hpp"
+#include "structs/BookRequestMessage.hpp"
+#include "structs/BookOrderMessage.hpp"
+#include "structs/BookEndMessage.hpp"
+#include "structs/CancelRefusedMessage.hpp"
 #include "structs/OrderRefusedMessage.hpp"
 #include "structs/PhaseAnnouncedMessage.hpp"
 #include "structs/PhaseRequestMessage.hpp"
 #include "structs/CrossCompletedMessage.hpp"
 #include "structs/ImbalanceRequestMessage.hpp"
 #include "structs/ImbalanceIndicatedMessage.hpp"
+#include "structs/ClockMessage.hpp"
 #include "MatchingEngine.hpp"
 #include "TradingPhases.hpp"
 
 namespace sim {
 
-namespace ipc_ns = iex::iexequities::matchingengine::ipc::v1_0;
+namespace ipc_ns = iex::iexequities::matchingengine::ipc::v2026;
 
 // The auction a trade ended, as the internal messaging model codes it.
 inline char auctioned(matching::Cross cross) {
@@ -36,6 +45,98 @@ inline char auctioned(matching::Cross cross) {
     return '?';
 }
 
+// Whether an order is a market order (true) or a limit (false), by the code of its type, as the venue codes it; none for a code that means nothing to the engine yet.
+template <typename Code>
+constexpr std::optional<bool> market_of(Code code) {
+    switch (static_cast<long long>(code)) {
+        case '1': return true;
+        case '2': return false;
+        case 'P': return false;
+        default: return std::nullopt;
+    }
+}
+
+// How long an order lives, by the code of its time in force, as the venue codes it; none for a code that means nothing to the engine yet.
+template <typename Code>
+constexpr std::optional<matching::Lifetime> lifetime_of(Code code) {
+    switch (static_cast<long long>(code)) {
+        case '0': return matching::Lifetime::Session;
+        case '3': return matching::Lifetime::Immediate;
+        case '4': return matching::Lifetime::Whole;
+        case '5': return matching::Lifetime::Extended;
+        case '6': return matching::Lifetime::Timed;
+        case 'M': return matching::Lifetime::Hours;
+        case '2': return matching::Lifetime::Opening;
+        case '7': return matching::Lifetime::Closing;
+        default: return std::nullopt;
+    }
+}
+
+// What a pegged order follows, none for one that is not pegged, by the code of its peg, as the venue codes it; none for a code that means nothing to the engine yet.
+template <typename Code>
+constexpr std::optional<matching::Peg> peg_of(Code code) {
+    switch (static_cast<long long>(code)) {
+        case 'N': return matching::Peg::None;
+        case 'M': return matching::Peg::Midpoint;
+        case 'o': return matching::Peg::Near;
+        case 'P': return matching::Peg::Far;
+        default: return std::nullopt;
+    }
+}
+
+// How an order is handled beside its type, by the code of its instruction, as the venue codes it; none for a code that means nothing to the engine yet.
+template <typename Code>
+constexpr std::optional<matching::Instruction> instruction_of(Code code) {
+    switch (static_cast<long long>(code)) {
+        case 'i': return matching::Instruction::Unrouted;
+        case 'u': return matching::Instruction::Routed;
+        case 'f': return matching::Instruction::Sweep;
+        case 'y': return matching::Instruction::TradeAt;
+        case 'j': return matching::Instruction::Discretionary;
+        default: return std::nullopt;
+    }
+}
+
+// What is done of two orders of one owner that would trade, by the code of an order's strategy, as the venue codes it; none for a code that means nothing to the engine yet.
+template <typename Code>
+constexpr std::optional<matching::Prevention> prevention_of(Code code) {
+    switch (static_cast<long long>(code)) {
+        case 'N': return matching::Prevention::Newest;
+        case 'O': return matching::Prevention::Oldest;
+        case 'B': return matching::Prevention::Both;
+        case 'S': return matching::Prevention::Smaller;
+        default: return std::nullopt;
+    }
+}
+
+// The one cross an order trades in, none for one that trades continuously, by the code of its cross type, as the venue codes it; none for a code that means nothing to the engine yet.
+template <typename Code>
+constexpr std::optional<matching::Cross> cross_of(Code code) {
+    switch (static_cast<long long>(code)) {
+        case 'N': return matching::Cross::None;
+        case 'O': return matching::Cross::Opening;
+        case 'C': return matching::Cross::Closing;
+        case 'H': return matching::Cross::Intraday;
+        default: return std::nullopt;
+    }
+}
+
+
+// Why the engine refused an order: its type, or how long it lives, is none the engine has.
+enum class Refusal { Type, Lifetime, Phase, Cross, Quantity };
+
+// What a server built straight over a book - a test's - does with an order it refuses, with
+// nobody to tell: says so, as the engine does of an order for an instrument it does not trade.
+struct UnheardRefusal {
+    template <typename... Instrument>
+    void operator()(const matching::Order& order, Refusal, Instrument...) const {
+        std::printf("REFUSED order %llu: nobody listens for refusals here\n", (unsigned long long)order.id);
+    }
+                 template <typename... Instrument>
+                 void cancel(std::uint64_t id, Instrument...) const {
+                     std::printf("REFUSED cancel of %llu: nobody listens for refusals here\n", (unsigned long long)id);
+                 }
+};
 // Ipc message type codes (ascii) — mirror the Ipc specification.
 struct IpcType {
     static constexpr char Heartbeat          = 'H';
@@ -50,6 +151,15 @@ struct IpcType {
     static constexpr char CrossCompleted     = 'U';
     static constexpr char ImbalanceRequest   = 'Q';
     static constexpr char ImbalanceIndicated = 'I';
+    static constexpr char OrderEliminated    = 'E';
+    static constexpr char OrderAccepted      = 'A';
+    static constexpr char ReplaceOrder       = 'M';
+    static constexpr char OrderReplaced      = 'W';
+    static constexpr char CancelRefused      = 'K';
+    static constexpr char Clock              = 'L';
+    static constexpr char BookRequest        = 'O';
+    static constexpr char BookOrder          = 'F';
+    static constexpr char BookEnd            = 'V';
 };
 
 // The instrument the engine trades — stamped on the symbol field of every Ipc message.
@@ -66,6 +176,9 @@ inline bool stamp_sequence(char* frame, std::size_t length, std::uint64_t sequen
         case IpcType::CancelOrder: { if (length < 3 + sizeof(ipc_ns::cancel_order_message)) return false; auto* m = ipc_ns::cancel_order_message::parse(data); m->sequence.set(sequence); m->timestamp.set(time); return true; }
         case IpcType::PhaseRequest: { if (length < 3 + sizeof(ipc_ns::phase_request_message)) return false; auto* m = ipc_ns::phase_request_message::parse(data); m->sequence.set(sequence); m->timestamp.set(time); return true; }
         case IpcType::ImbalanceRequest: { if (length < 3 + sizeof(ipc_ns::imbalance_request_message)) return false; auto* m = ipc_ns::imbalance_request_message::parse(data); m->sequence.set(sequence); m->timestamp.set(time); return true; }
+        case IpcType::ReplaceOrder: { if (length < 3 + sizeof(ipc_ns::replace_order_message)) return false; auto* m = ipc_ns::replace_order_message::parse(data); m->sequence.set(sequence); m->timestamp.set(time); return true; }
+        case IpcType::Clock: { if (length < 3 + sizeof(ipc_ns::clock_message)) return false; auto* m = ipc_ns::clock_message::parse(data); m->sequence.set(sequence); m->timestamp.set(time); return true; }
+        case IpcType::BookRequest: { if (length < 3 + sizeof(ipc_ns::book_request_message)) return false; auto* m = ipc_ns::book_request_message::parse(data); m->sequence.set(sequence); m->timestamp.set(time); return true; }
         default: return false;
     }
 }
@@ -80,6 +193,26 @@ inline std::uint64_t sequence_of(std::string_view bytes) {
         case IpcType::CancelOrder: return bytes.size() < 3 + sizeof(ipc_ns::cancel_order_message) ? 0 : ipc_ns::cancel_order_message::parse(const_cast<std::byte*>(data))->sequence.get().value();
         case IpcType::PhaseRequest: return bytes.size() < 3 + sizeof(ipc_ns::phase_request_message) ? 0 : ipc_ns::phase_request_message::parse(const_cast<std::byte*>(data))->sequence.get().value();
         case IpcType::ImbalanceRequest: return bytes.size() < 3 + sizeof(ipc_ns::imbalance_request_message) ? 0 : ipc_ns::imbalance_request_message::parse(const_cast<std::byte*>(data))->sequence.get().value();
+        case IpcType::ReplaceOrder: return bytes.size() < 3 + sizeof(ipc_ns::replace_order_message) ? 0 : ipc_ns::replace_order_message::parse(const_cast<std::byte*>(data))->sequence.get().value();
+        case IpcType::Clock: return bytes.size() < 3 + sizeof(ipc_ns::clock_message) ? 0 : ipc_ns::clock_message::parse(const_cast<std::byte*>(data))->sequence.get().value();
+        case IpcType::BookRequest: return bytes.size() < 3 + sizeof(ipc_ns::book_request_message) ? 0 : ipc_ns::book_request_message::parse(const_cast<std::byte*>(data))->sequence.get().value();
+        default: return 0;
+    }
+}
+
+// The time a message bound for an engine was put in order at, in nanoseconds; 0 for one no
+// sequencer stamped. The time its day's timers are set from.
+inline std::int64_t time_of(std::string_view bytes) {
+    if (bytes.size() < 3) return 0;
+    const std::byte* data = reinterpret_cast<const std::byte*>(bytes.data()) + 3;
+    switch (bytes[2]) {
+        case IpcType::NewOrder: return bytes.size() < 3 + sizeof(ipc_ns::new_order_message) ? 0 : static_cast<std::int64_t>(ipc_ns::new_order_message::parse(const_cast<std::byte*>(data))->timestamp.get().value());
+        case IpcType::CancelOrder: return bytes.size() < 3 + sizeof(ipc_ns::cancel_order_message) ? 0 : static_cast<std::int64_t>(ipc_ns::cancel_order_message::parse(const_cast<std::byte*>(data))->timestamp.get().value());
+        case IpcType::PhaseRequest: return bytes.size() < 3 + sizeof(ipc_ns::phase_request_message) ? 0 : static_cast<std::int64_t>(ipc_ns::phase_request_message::parse(const_cast<std::byte*>(data))->timestamp.get().value());
+        case IpcType::ImbalanceRequest: return bytes.size() < 3 + sizeof(ipc_ns::imbalance_request_message) ? 0 : static_cast<std::int64_t>(ipc_ns::imbalance_request_message::parse(const_cast<std::byte*>(data))->timestamp.get().value());
+        case IpcType::ReplaceOrder: return bytes.size() < 3 + sizeof(ipc_ns::replace_order_message) ? 0 : static_cast<std::int64_t>(ipc_ns::replace_order_message::parse(const_cast<std::byte*>(data))->timestamp.get().value());
+        case IpcType::Clock: return bytes.size() < 3 + sizeof(ipc_ns::clock_message) ? 0 : static_cast<std::int64_t>(ipc_ns::clock_message::parse(const_cast<std::byte*>(data))->timestamp.get().value());
+        case IpcType::BookRequest: return bytes.size() < 3 + sizeof(ipc_ns::book_request_message) ? 0 : static_cast<std::int64_t>(ipc_ns::book_request_message::parse(const_cast<std::byte*>(data))->timestamp.get().value());
         default: return 0;
     }
 }
@@ -120,8 +253,15 @@ public:
         m.symbol.set(instrument_symbol);
         m.order_id.set(order.id);
         m.side.set(static_cast<std::remove_cvref_t<decltype(m.side.get().value())>>(order.side == matching::Side::Buy ? 'B' : 'S'));
-        m.price.set(order.price);
+        m.price.set(order.peg == matching::Peg::None ? order.price : order.limit == matching::market(order.side) ? 0 : order.limit);
         m.quantity.set(static_cast<std::uint32_t>(order.qty));
+        m.order_type.set(static_cast<std::remove_cvref_t<decltype(m.order_type.get().value())>>(order.peg != matching::Peg::None ? 'P' : order.price == matching::market(order.side) ? '1' : '2'));
+        m.time_in_force.set(static_cast<std::remove_cvref_t<decltype(m.time_in_force.get().value())>>(order.lifetime == matching::Lifetime::Session ? '0' : order.lifetime == matching::Lifetime::Immediate ? '3' : order.lifetime == matching::Lifetime::Whole ? '4' : order.lifetime == matching::Lifetime::Extended ? '5' : order.lifetime == matching::Lifetime::Timed ? '6' : order.lifetime == matching::Lifetime::Hours ? 'M' : order.lifetime == matching::Lifetime::Opening ? '2' : '7'));
+        m.display.set(static_cast<std::remove_cvref_t<decltype(m.display.get().value())>>(order.shown ? 'Y' : 'N'));
+        m.cross_type.set(static_cast<std::remove_cvref_t<decltype(m.cross_type.get().value())>>('N'));
+        m.peg.set(static_cast<std::remove_cvref_t<decltype(m.peg.get().value())>>(order.peg == matching::Peg::Far ? 'P' : order.peg == matching::Peg::Near ? 'o' : order.peg == matching::Peg::Midpoint ? 'M' : 'N'));
+        m.expire_time.set(static_cast<std::remove_cvref_t<decltype(m.expire_time.get().value())>>(order.expires));
+        m.instruction.set(static_cast<std::remove_cvref_t<decltype(m.instruction.get().value())>>(order.instruction == matching::Instruction::Discretionary ? 'j' : order.instruction == matching::Instruction::TradeAt ? 'y' : order.instruction == matching::Instruction::Sweep ? 'f' : order.instruction == matching::Instruction::Routed ? 'u' : 'i'));
         detail_ipc::emit_framed(emit_, IpcType::NewOrder, m);
     }
 
@@ -137,10 +277,10 @@ private:
 };
 
 // Engine-side endpoint: decodes Ipc messages and drives the real matching engine.
-template <typename Engine>
+template <typename Engine, typename OnRefused = UnheardRefusal>
 class IpcEngineServer {
 public:
-    explicit IpcEngineServer(Engine& engine) : engine_(engine) {}
+    explicit IpcEngineServer(Engine& engine, OnRefused on_refused = {}) : engine_(engine), on_refused_(on_refused) {}
 
     // Handle one framed Ipc message; returns false on an unknown/short frame.
     bool on_message(std::string_view bytes) {
@@ -154,22 +294,97 @@ public:
             sequenced_ = sequence;
         }
 
+        // The time it was put in order at, handed to the days first: a timer the message sets is
+        // due from it. One no sequencer stamped leaves the time as it was.
+        if constexpr (requires { engine_.at(std::int64_t{}); }) {
+            if (const std::int64_t now = time_of(bytes); now != 0) {
+                engine_.at(now);
+            }
+        }
+
         switch (bytes[2]) {
             case IpcType::NewOrder: {
                 if (bytes.size() < 3 + sizeof(ipc_ns::new_order_message)) return false;
                 const auto* m = ipc_ns::new_order_message::parse(const_cast<std::byte*>(data));
+                const matching::Side side = static_cast<char>(m->side.get().value()) == 'B' ? matching::Side::Buy : matching::Side::Sell;
+                const std::optional<bool> market = market_of(m->order_type.get().value());
+                const std::optional<matching::Lifetime> lifetime = lifetime_of(m->time_in_force.get().value());
+                const std::optional<matching::Cross> only = cross_of(m->cross_type.get().value());
+                const std::optional<matching::Peg> peg = peg_of(m->peg.get().value());
+                const bool pegged = static_cast<char>(m->order_type.get().value()) == 'P';
+                const std::optional<matching::Instruction> instruction = instruction_of(m->instruction.get().value());
+                if (m->quantity.get().value() == 0 || !market || !peg || (*peg != matching::Peg::None) != pegged || !instruction || !lifetime || (!only || *only == matching::Cross::Opening || *only == matching::Cross::Intraday || *only == matching::Cross::Closing)) {
+                    matching::Order refused{};
+                    refused.id    = m->order_id.get().value();
+                    refused.side  = side;
+                    refused.price = m->price.get().value();
+                    refused.qty   = m->quantity.get().value();
+                    on_refused_(refused, m->quantity.get().value() == 0 ? Refusal::Quantity : !market ? Refusal::Type : !peg || (*peg != matching::Peg::None) != pegged ? Refusal::Type : !instruction ? Refusal::Type : !lifetime ? Refusal::Lifetime : Refusal::Cross);
+                    return true;
+                }
                 engine_.on_new_order(matching::Order{
                     m->order_id.get().value(),
-                    static_cast<char>(m->side.get().value()) == 'B' ? matching::Side::Buy : matching::Side::Sell,
-                    m->price.get().value(),
+                    side,
+                    *market || (pegged && m->price.get().value() == 0) ? matching::market(side) : m->price.get().value(),
                     m->quantity.get().value(),
+                    *lifetime,
+                    static_cast<char>(m->display.get().value()) != 'N',
+                    *peg,
+                    *market || (pegged && m->price.get().value() == 0) ? matching::market(side) : m->price.get().value(),
+                    static_cast<std::int64_t>(m->peg_difference.get().value()),
+                    static_cast<std::int64_t>(m->expire_time.get().value()),
+                    *instruction,
+                    static_cast<std::uint64_t>(m->min_qty.get().value()),
+                    static_cast<std::uint64_t>(m->self_match_group.get().value()),
+                    prevention_of(m->self_match_modifier.get().value()).value_or(matching::Prevention::None),
                 });
                 return true;
             }
             case IpcType::CancelOrder: {
                 if (bytes.size() < 3 + sizeof(ipc_ns::cancel_order_message)) return false;
                 const auto* m = ipc_ns::cancel_order_message::parse(const_cast<std::byte*>(data));
-                engine_.on_cancel(m->order_id.get().value());
+                // One its phase refuses, or no longer in the book, is told as refused, so its client is answered.
+                if (!engine_.on_cancel(m->order_id.get().value())) on_refused_.cancel(m->order_id.get().value());
+                return true;
+            }
+            case IpcType::ReplaceOrder: {
+                if (bytes.size() < 3 + sizeof(ipc_ns::replace_order_message)) return false;
+                const auto* m = ipc_ns::replace_order_message::parse(const_cast<std::byte*>(data));
+                const matching::Side side = static_cast<char>(m->side.get().value()) == 'B' ? matching::Side::Buy : matching::Side::Sell;
+                const std::optional<bool> market = market_of(m->order_type.get().value());
+                const std::optional<matching::Lifetime> lifetime = lifetime_of(m->time_in_force.get().value());
+                const std::optional<matching::Cross> only = cross_of(m->cross_type.get().value());
+                const std::optional<matching::Peg> peg = peg_of(m->peg.get().value());
+                const bool pegged = static_cast<char>(m->order_type.get().value()) == 'P';
+                const std::optional<matching::Instruction> instruction = instruction_of(m->instruction.get().value());
+                if (m->quantity.get().value() == 0 || !market || !peg || (*peg != matching::Peg::None) != pegged || !instruction || !lifetime || (!only || *only == matching::Cross::Opening || *only == matching::Cross::Intraday || *only == matching::Cross::Closing)) {
+                    matching::Order refused{};
+                    refused.id    = m->replacement_id.get().value();
+                    refused.side  = side;
+                    refused.price = m->price.get().value();
+                    refused.qty   = m->quantity.get().value();
+                    on_refused_(refused, m->quantity.get().value() == 0 ? Refusal::Quantity : !market ? Refusal::Type : !peg || (*peg != matching::Peg::None) != pegged ? Refusal::Type : !instruction ? Refusal::Type : !lifetime ? Refusal::Lifetime : Refusal::Cross);
+                    return true;
+                }
+                const matching::Order order = matching::Order{
+                    m->replacement_id.get().value(),
+                    side,
+                    *market || (pegged && m->price.get().value() == 0) ? matching::market(side) : m->price.get().value(),
+                    m->quantity.get().value(),
+                    *lifetime,
+                    static_cast<char>(m->display.get().value()) != 'N',
+                    *peg,
+                    *market || (pegged && m->price.get().value() == 0) ? matching::market(side) : m->price.get().value(),
+                    static_cast<std::int64_t>(m->peg_difference.get().value()),
+                    0,
+                    *instruction,
+                    static_cast<std::uint64_t>(m->min_qty.get().value()),
+                    static_cast<std::uint64_t>(m->self_match_group.get().value()),
+                    prevention_of(m->self_match_modifier.get().value()).value_or(matching::Prevention::None),
+                };
+                // To the day, which replaces; an engine without one - a test's bare book - replaces nothing.
+                if constexpr (requires { engine_.on_replace(order, m->order_id.get().value()); })
+                    engine_.on_replace(order, m->order_id.get().value());
                 return true;
             }
             case IpcType::ImbalanceRequest: {
@@ -181,13 +396,35 @@ public:
                     return false;
                 }
             }
+            case IpcType::Clock: {
+                if constexpr (requires { engine_.clock(std::int64_t{}); }) {
+                    if (bytes.size() < 3 + sizeof(ipc_ns::clock_message)) return false;
+                    const auto* m = ipc_ns::clock_message::parse(const_cast<std::byte*>(data));
+                    engine_.clock(static_cast<std::int64_t>(m->timestamp.get().value()));
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+            case IpcType::BookRequest: {
+                if (bytes.size() < 3 + sizeof(ipc_ns::book_request_message)) return false;
+                book_asked_ = true;
+                return true;
+            }
             default:
                 return false;
         }
     }
 
+    // Did the message just read ask for the engine's book? Asked once, answered once.
+    bool book_asked() { const bool asked = book_asked_; book_asked_ = false; return asked; }
+
+    // The place of the message just read in the order its sequencer put everything in; 0 where none numbered it.
+    std::uint64_t book_sequence() const { return sequenced_; }
 private:
     Engine& engine_;
+    bool book_asked_ = false;   // the message just read asked for the engine's book
+    OnRefused on_refused_;
     std::uint64_t sequenced_ = 0;   // the last place in its sequencer's order it read
 };
 
@@ -199,7 +436,7 @@ struct IgnoreEvent {
 
 // Event-side endpoint: decodes engine events off the bus and hands them to the
 // consumers (feed publishers / gateway exec reports) as matching types.
-template <typename OnTrade, typename OnRest, typename OnCanceled = IgnoreEvent, typename OnRefused = IgnoreEvent>
+template <typename OnTrade, typename OnRest, typename OnCanceled = IgnoreEvent, typename OnAccepted = IgnoreEvent, typename OnEliminated = IgnoreEvent, typename OnRefused = IgnoreEvent, typename OnReplaced = IgnoreEvent, typename OnCancelRefused = IgnoreEvent>
 class IpcEventServer {
 public:
     IpcEventServer(OnTrade on_trade, OnRest on_rest)
@@ -208,8 +445,8 @@ public:
     IpcEventServer(OnTrade on_trade, OnRest on_rest, OnCanceled on_canceled)
         : on_trade_(on_trade), on_rest_(on_rest), on_canceled_(on_canceled) {}
 
-    IpcEventServer(OnTrade on_trade, OnRest on_rest, OnCanceled on_canceled, OnRefused on_refused)
-        : on_trade_(on_trade), on_rest_(on_rest), on_canceled_(on_canceled), on_refused_(on_refused) {}
+    IpcEventServer(OnTrade on_trade, OnRest on_rest, OnCanceled on_canceled, OnAccepted on_accepted, OnEliminated on_eliminated, OnRefused on_refused, OnReplaced on_replaced, OnCancelRefused on_cancel_refused)
+        : on_trade_(on_trade), on_rest_(on_rest), on_canceled_(on_canceled), on_accepted_(on_accepted), on_eliminated_(on_eliminated), on_refused_(on_refused), on_replaced_(on_replaced), on_cancel_refused_(on_cancel_refused) {}
     bool on_message(std::string_view bytes) {
         if (bytes.size() < 3) return false;
         const std::byte* data = reinterpret_cast<const std::byte*>(bytes.data()) + 3;
@@ -230,9 +467,29 @@ public:
                 on_canceled_(*ipc_ns::order_canceled_message::parse(const_cast<std::byte*>(data)));
                 return true;
             }
+            case IpcType::OrderAccepted: {
+                if (bytes.size() < 3 + sizeof(ipc_ns::order_accepted_message)) return false;
+                on_accepted_(*ipc_ns::order_accepted_message::parse(const_cast<std::byte*>(data)));
+                return true;
+            }
+            case IpcType::OrderEliminated: {
+                if (bytes.size() < 3 + sizeof(ipc_ns::order_eliminated_message)) return false;
+                on_eliminated_(*ipc_ns::order_eliminated_message::parse(const_cast<std::byte*>(data)));
+                return true;
+            }
             case IpcType::OrderRefused: {
                 if (bytes.size() < 3 + sizeof(ipc_ns::order_refused_message)) return false;
                 on_refused_(*ipc_ns::order_refused_message::parse(const_cast<std::byte*>(data)));
+                return true;
+            }
+            case IpcType::OrderReplaced: {
+                if (bytes.size() < 3 + sizeof(ipc_ns::order_replaced_message)) return false;
+                on_replaced_(*ipc_ns::order_replaced_message::parse(const_cast<std::byte*>(data)));
+                return true;
+            }
+            case IpcType::CancelRefused: {
+                if (bytes.size() < 3 + sizeof(ipc_ns::cancel_refused_message)) return false;
+                on_cancel_refused_(*ipc_ns::cancel_refused_message::parse(const_cast<std::byte*>(data)));
                 return true;
             }
             default:
@@ -244,7 +501,11 @@ private:
     OnTrade    on_trade_;
     OnRest     on_rest_;
     OnCanceled on_canceled_;
+    OnAccepted  on_accepted_;
+    OnEliminated on_eliminated_;
     OnRefused   on_refused_;
+    OnReplaced  on_replaced_;
+    OnCancelRefused on_cancel_refused_;
 };
 
 // Event-side encoders: matching-engine events as Ipc messages (consumed by feed
@@ -260,6 +521,8 @@ inline void emit_trade(Emit& emit, const matching::Trade& trade) {
     m.price.set(trade.price);
     m.quantity.set(static_cast<std::uint32_t>(trade.qty));
     m.auction.set(static_cast<std::remove_cvref_t<decltype(m.auction.get().value())>>(auctioned(trade.cross)));
+    m.resting_display.set(static_cast<std::remove_cvref_t<decltype(m.resting_display.get().value())>>(trade.resting_shown ? 'Y' : 'N'));
+    m.aggressor_display.set(static_cast<std::remove_cvref_t<decltype(m.aggressor_display.get().value())>>(trade.aggressor_shown ? 'Y' : 'N'));
     detail_ipc::emit_framed(emit, IpcType::Trade, m);
 }
 
@@ -272,6 +535,7 @@ inline void emit_rested(Emit& emit, const matching::Order& order) {
     m.side.set(static_cast<std::remove_cvref_t<decltype(m.side.get().value())>>(order.side == matching::Side::Buy ? 'B' : 'S'));
     m.price.set(order.price);
     m.quantity.set(static_cast<std::uint32_t>(order.qty));
+    m.display.set(static_cast<std::remove_cvref_t<decltype(m.display.get().value())>>(order.shown ? 'Y' : 'N'));
     detail_ipc::emit_framed(emit, IpcType::OrderRested, m);
 }
 
@@ -280,14 +544,121 @@ inline void emit_canceled(Emit& emit, const matching::Order& order) {
     ipc_ns::order_canceled_message m{};
     m.timestamp.set(send_time_nanos());
     m.order_id.set(order.id);
+    m.display.set(static_cast<std::remove_cvref_t<decltype(m.display.get().value())>>(order.shown ? 'Y' : 'N'));
+    m.prevented.set(static_cast<std::remove_cvref_t<decltype(m.prevented.get().value())>>(order.prevented.qty > 0 ? 'Y' : 'N'));
+    if (order.prevented.qty > 0) m.prevented_liquidity.set(static_cast<std::remove_cvref_t<decltype(m.prevented_liquidity.get().value())>>(order.prevented.resting ? 'A' : 'R'));
+    m.prevented_display.set(static_cast<std::remove_cvref_t<decltype(m.prevented_display.get().value())>>(order.prevented.shown ? 'Y' : 'N'));
+    m.prevented_quantity.set(static_cast<std::remove_cvref_t<decltype(m.prevented_quantity.get().value())>>(order.prevented.qty));
+    m.prevented_price.set(static_cast<std::remove_cvref_t<decltype(m.prevented_price.get().value())>>(order.prevented.price));
+    m.prevented_against.set(static_cast<std::remove_cvref_t<decltype(m.prevented_against.get().value())>>(order.prevented.against));
     detail_ipc::emit_framed(emit, IpcType::OrderCanceled, m);
 }
-// The trading day's events: an order the phase it arrived in does not accept, and what the
-// venue announces as its phases change, each as the internal messaging model codes it.
+
 template <typename Emit>
-inline void emit_refused(Emit& emit, const matching::Order& order) {
+inline void emit_accepted(Emit& emit, const matching::Order& order) {
+    ipc_ns::order_accepted_message m{};
+    m.timestamp.set(send_time_nanos());
+    m.order_id.set(order.id);
+    detail_ipc::emit_framed(emit, IpcType::OrderAccepted, m);
+}
+
+
+template <typename Emit>
+inline void emit_eliminated(Emit& emit, const matching::Order& order) {
+    ipc_ns::order_eliminated_message m{};
+    m.timestamp.set(send_time_nanos());
+    m.order_id.set(order.id);
+    m.side.set(static_cast<std::remove_cvref_t<decltype(m.side.get().value())>>(order.side == matching::Side::Buy ? 'B' : 'S'));
+    m.price.set(order.peg == matching::Peg::None ? order.price : order.limit == matching::market(order.side) ? 0 : order.limit);
+    m.quantity.set(static_cast<std::uint32_t>(order.qty));
+    m.display.set(static_cast<std::remove_cvref_t<decltype(m.display.get().value())>>(order.shown ? 'Y' : 'N'));
+    m.time_in_force.set(static_cast<std::remove_cvref_t<decltype(m.time_in_force.get().value())>>(order.lifetime == matching::Lifetime::Session ? '0' : order.lifetime == matching::Lifetime::Immediate ? '3' : order.lifetime == matching::Lifetime::Whole ? '4' : order.lifetime == matching::Lifetime::Extended ? '5' : order.lifetime == matching::Lifetime::Timed ? '6' : order.lifetime == matching::Lifetime::Hours ? 'M' : order.lifetime == matching::Lifetime::Opening ? '2' : '7'));
+    detail_ipc::emit_framed(emit, IpcType::OrderEliminated, m);
+}
+
+
+template <typename Emit>
+inline void emit_replaced(Emit& emit, std::uint64_t replaced, const matching::Order& order) {
+    ipc_ns::order_replaced_message m{};
+    m.timestamp.set(send_time_nanos());
+    m.order_id.set(replaced);
+    m.replacement_id.set(order.id);
+    m.symbol.set(instrument_symbol);
+    m.side.set(static_cast<std::remove_cvref_t<decltype(m.side.get().value())>>(order.side == matching::Side::Buy ? 'B' : 'S'));
+    m.price.set(order.peg == matching::Peg::None ? order.price : order.limit == matching::market(order.side) ? 0 : order.limit);
+    m.quantity.set(static_cast<std::uint32_t>(order.qty));
+    m.display.set(static_cast<std::remove_cvref_t<decltype(m.display.get().value())>>(order.shown ? 'Y' : 'N'));
+    detail_ipc::emit_framed(emit, IpcType::OrderReplaced, m);
+}
+
+
+// The question of the engine's own book: every order it holds, as of this message's place in the
+// order its sequencer puts everything in.
+template <typename Emit>
+inline void emit_book_request(Emit& emit) {
+    ipc_ns::book_request_message m{};
+    m.timestamp.set(send_time_nanos());
+    detail_ipc::emit_framed(emit, IpcType::BookRequest, m);
+}
+
+// One order of the engine's book, where the engine holds it, and the request it answers.
+template <typename Emit>
+inline void emit_book_order(Emit& emit, const matching::Order& order, char where, std::uint64_t sequence) {
+    ipc_ns::book_order_message m{};
+    m.timestamp.set(send_time_nanos());
+    m.order_id.set(order.id);
+    m.symbol.set(instrument_symbol);
+    m.side.set(static_cast<std::remove_cvref_t<decltype(m.side.get().value())>>(order.side == matching::Side::Buy ? 'B' : 'S'));
+    m.price.set(order.peg == matching::Peg::None ? order.price : order.limit == matching::market(order.side) ? 0 : order.limit);
+    m.quantity.set(static_cast<std::uint32_t>(order.qty));
+    m.display.set(static_cast<std::remove_cvref_t<decltype(m.display.get().value())>>(order.shown ? 'Y' : 'N'));
+    m.book_sequence.set(static_cast<std::remove_cvref_t<decltype(m.book_sequence.get().value())>>(sequence));
+    m.book_place.set(static_cast<std::remove_cvref_t<decltype(m.book_place.get().value())>>(where));
+    detail_ipc::emit_framed(emit, IpcType::BookOrder, m);
+}
+
+// The end of the engine's book: how many orders it just said, and the request they answer.
+template <typename Emit>
+inline void emit_book_end(Emit& emit, std::uint64_t orders, std::uint64_t sequence) {
+    ipc_ns::book_end_message m{};
+    m.timestamp.set(send_time_nanos());
+    m.book_sequence.set(static_cast<std::remove_cvref_t<decltype(m.book_sequence.get().value())>>(sequence));
+    m.book_orders.set(static_cast<std::remove_cvref_t<decltype(m.book_orders.get().value())>>(orders));
+    detail_ipc::emit_framed(emit, IpcType::BookEnd, m);
+}
+
+// The request a Book End answers, where a frame is one: none of any other.
+inline std::optional<std::uint64_t> book_end_of(std::string_view bytes) {
+    if (bytes.size() < 3 + sizeof(ipc_ns::book_end_message) || bytes[2] != IpcType::BookEnd) return std::nullopt;
+    const auto* m = ipc_ns::book_end_message::parse(const_cast<std::byte*>(reinterpret_cast<const std::byte*>(bytes.data()) + 3));
+    return static_cast<std::uint64_t>(m->book_sequence.get().value());
+}
+// The trading day's events: an order the engine did not take - the phase it arrived in does not,
+// or its type or time in force is none the engine has - and why, and what the venue announces as
+// its phases change, each as the internal messaging model codes it.
+template <typename Emit>
+inline void emit_refused(Emit& emit, const matching::Order& order, Refusal reason) {
     ipc_ns::order_refused_message m{};
     m.timestamp.set(send_time_nanos());
     m.order_id.set(order.id);
+    m.refusal_reason.set(static_cast<std::remove_cvref_t<decltype(m.refusal_reason.get().value())>>(reason == Refusal::Type ? 'T' : reason == Refusal::Lifetime ? 'L' : reason == Refusal::Phase ? 'P' : reason == Refusal::Cross ? 'C' : 'Q'));
     detail_ipc::emit_framed(emit, IpcType::OrderRefused, m);
+}
+
+// The venue's time, sent to the engine each second its day runs, where the day sets timers: the
+// engine keeps no clock of its own, and its timers come due by the time this is put in order at.
+template <typename Emit>
+inline void emit_clock(Emit& emit) {
+    ipc_ns::clock_message m{};
+    m.timestamp.set(send_time_nanos());
+    detail_ipc::emit_framed(emit, IpcType::Clock, m);
+}
+
+// A cancel the engine did not take - its phase refuses it, or the order is no longer in the book.
+template <typename Emit>
+inline void emit_cancel_refused(Emit& emit, std::uint64_t order) {
+    ipc_ns::cancel_refused_message m{};
+    m.timestamp.set(send_time_nanos());
+    m.order_id.set(order);
+    detail_ipc::emit_framed(emit, IpcType::CancelRefused, m);
 }}

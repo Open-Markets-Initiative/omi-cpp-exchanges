@@ -21,9 +21,13 @@ carries it.
 
 | Simulator | Directory | Matching | Deployments |
 | --- | --- | --- | --- |
+| Investors Exchange Equities Basic | [iex/equities/basic](iex/equities/basic) | Always open | process |
 | Investors Exchange Equities Open | [iex/equities/open](iex/equities/open) | Always open | process, system, distributed |
 | Investors Exchange Equities Session | [iex/equities/session](iex/equities/session) | Trading day | process, system, distributed |
-| Nse Futures and Options | [nse/fo](nse/fo) | Continuous | process, system, distributed |
+| Nse Futures and Options | [nse/fo](nse/fo) | Always open | process, system, distributed |
+| Nasdaq Stock Market Basic | [nasdaq/equities/basic](nasdaq/equities/basic) | Always open | process |
+| Nasdaq Stock Market Open | [nasdaq/equities/open](nasdaq/equities/open) | Always open | process, system, distributed |
+| Nasdaq Stock Market Session | [nasdaq/equities/session](nasdaq/equities/session) | Trading day | process, system, distributed |
 | Odx Equities Open | [odx/equities/open](odx/equities/open) | Trading day | process, system, distributed |
 | Odx Equities Session | [odx/equities/session](odx/equities/session) | Trading day | process, system, distributed |
 | Odx Security Token Open | [odx/securitytoken/open](odx/securitytoken/open) | Trading day | process, system, distributed |
@@ -31,35 +35,50 @@ carries it.
 
 ## Protocols
 
-### Investors Exchange Equities Open
+### Investors Exchange Equities Basic
 
 | Role | Model |
 | --- | --- |
 | Order Entry | Iex.IexEquities.OrderEntry.Fix.v2.91 |
-| Order Entry Session | Fix.Fix |
+| Order Entry Session | Iex.IexEquities.Fix |
 | Market Data (Tops) | Iex.IexEquities.Tops.IexTp.v1.66 |
 | Market Data (Deep) | Iex.IexEquities.Deep.IexTp.v1.08 |
 | Market Data (DeepPlus) | Iex.IexEquities.DeepPlus.IexTp.v1.05 |
 | Snapshot (Deep) | Iex.IexEquities.Deep.Snap.v1.6 |
 | Snapshot (Tops) | Iex.IexEquities.Tops.Snap.v1.6 |
 | Snapshot (DeepPlus) | Iex.IexEquities.DeepPlus.Snap.v1.06 |
-| Always Open | Iex.IexEquities.Equities.Open.Trading |
-| Internal Messaging | Iex.IexEquities.MatchingEngine.Ipc.v1.0 |
+| Always Open | Iex.IexEquities.Equities.Basic.TradingSession |
+| Internal Messaging | Iex.IexEquities.BasicMatchingEngine.Ipc.v2026 |
+
+### Investors Exchange Equities Open
+
+| Role | Model |
+| --- | --- |
+| Order Entry | Iex.IexEquities.OrderEntry.Fix.v2.91 |
+| Order Entry Session | Iex.IexEquities.Fix |
+| Market Data (Tops) | Iex.IexEquities.Tops.IexTp.v1.66 |
+| Market Data (Deep) | Iex.IexEquities.Deep.IexTp.v1.08 |
+| Market Data (DeepPlus) | Iex.IexEquities.DeepPlus.IexTp.v1.05 |
+| Snapshot (Deep) | Iex.IexEquities.Deep.Snap.v1.6 |
+| Snapshot (Tops) | Iex.IexEquities.Tops.Snap.v1.6 |
+| Snapshot (DeepPlus) | Iex.IexEquities.DeepPlus.Snap.v1.06 |
+| Always Open | Iex.IexEquities.Equities.Open.TradingSession |
+| Internal Messaging | Iex.IexEquities.MatchingEngine.Ipc.v2026 |
 
 ### Investors Exchange Equities Session
 
 | Role | Model |
 | --- | --- |
 | Order Entry | Iex.IexEquities.OrderEntry.Fix.v2.91 |
-| Order Entry Session | Fix.Fix |
+| Order Entry Session | Iex.IexEquities.Fix |
 | Market Data (Tops) | Iex.IexEquities.Tops.IexTp.v1.66 |
 | Market Data (Deep) | Iex.IexEquities.Deep.IexTp.v1.08 |
 | Market Data (DeepPlus) | Iex.IexEquities.DeepPlus.IexTp.v1.05 |
 | Snapshot (Deep) | Iex.IexEquities.Deep.Snap.v1.6 |
 | Snapshot (Tops) | Iex.IexEquities.Tops.Snap.v1.6 |
 | Snapshot (DeepPlus) | Iex.IexEquities.DeepPlus.Snap.v1.06 |
-| Trading Day | Iex.IexEquities.Equities.Session.Trading |
-| Internal Messaging | Iex.IexEquities.MatchingEngine.Ipc.v1.0 |
+| Trading Day | Iex.IexEquities.Equities.Session.TradingSession |
+| Internal Messaging | Iex.IexEquities.MatchingEngine.Ipc.v2026 |
 
 ### Nse Futures and Options
 
@@ -68,7 +87,44 @@ carries it.
 | Order Entry | Nse.NseFo.OrderEntry.Nnf.v9.50 |
 | Order Entry Session | Nse.Nnf |
 | Market Data (Mtbt) | Nse.NseFo.Mtbt.Tbt.v7.1 |
-| Internal Messaging | Nse.NseFo.MatchingEngine.Ipc.v1.0 |
+| Always Open | Nse.NseFo.FuturesAndOptions.Open.TradingSession |
+| Internal Messaging | Nse.NseFo.MatchingEngine.Ipc.v2026 |
+
+### Nasdaq Stock Market Basic
+
+| Role | Model |
+| --- | --- |
+| Order Entry | Nasdaq.NsmEquities.Orders.Ouch.v5.0 |
+| Order Entry Session | Nasdaq.SoupBinTcp |
+| Market Data (TotalView) | Nasdaq.NsmEquities.TotalView.Itch.v5.0.2026 |
+| Snapshot of TotalView (Glimpse) | Nasdaq.NsmEquities.TotalView.Glimpse.v5.0.2026 |
+| Stream of TotalView (TotalViewTcp) | Nasdaq.NsmEquities.TotalView.Itch.v5.0.2026 |
+| Always Open | Nasdaq.NsmEquities.Equities.Basic.TradingSession |
+| Internal Messaging | Nasdaq.NsmEquities.BasicMatchingEngine.Ipc.v2026 |
+
+### Nasdaq Stock Market Open
+
+| Role | Model |
+| --- | --- |
+| Order Entry | Nasdaq.NsmEquities.Orders.Ouch.v5.0 |
+| Order Entry Session | Nasdaq.SoupBinTcp |
+| Market Data (TotalView) | Nasdaq.NsmEquities.TotalView.Itch.v5.0.2026 |
+| Snapshot of TotalView (Glimpse) | Nasdaq.NsmEquities.TotalView.Glimpse.v5.0.2026 |
+| Stream of TotalView (TotalViewTcp) | Nasdaq.NsmEquities.TotalView.Itch.v5.0.2026 |
+| Always Open | Nasdaq.NsmEquities.Equities.Open.TradingSession |
+| Internal Messaging | Nasdaq.NsmEquities.MatchingEngine.Ipc.v2026 |
+
+### Nasdaq Stock Market Session
+
+| Role | Model |
+| --- | --- |
+| Order Entry | Nasdaq.NsmEquities.Orders.Ouch.v5.0 |
+| Order Entry Session | Nasdaq.SoupBinTcp |
+| Market Data (TotalView) | Nasdaq.NsmEquities.TotalView.Itch.v5.0.2026 |
+| Snapshot of TotalView (Glimpse) | Nasdaq.NsmEquities.TotalView.Glimpse.v5.0.2026 |
+| Stream of TotalView (TotalViewTcp) | Nasdaq.NsmEquities.TotalView.Itch.v5.0.2026 |
+| Trading Day | Nasdaq.NsmEquities.Equities.Session.TradingSession |
+| Internal Messaging | Nasdaq.NsmEquities.MatchingEngine.Ipc.v2026 |
 
 ### Odx Equities Open
 
@@ -79,7 +135,7 @@ carries it.
 | Market Data (Itch) | Odx.OdxEquities.Pts.Itch.v2.2 |
 | Snapshot of Itch (Glimpse) | Odx.OdxEquities.Pts.Glimpse.v2.0 |
 | Stream of Itch (ItchTcp) | Odx.OdxEquities.TcpPts.Itch.v2.2 |
-| Trading Day | Odx.OdxEquities.Equities.Open.Trading |
+| Trading Day | Odx.OdxEquities.Equities.Open.TradingSession |
 | Internal Messaging | Odx.OdxEquities.MatchingEngine.Ipc.v2026 |
 
 ### Odx Equities Session
@@ -91,7 +147,7 @@ carries it.
 | Market Data (Itch) | Odx.OdxEquities.Pts.Itch.v2.2 |
 | Snapshot of Itch (Glimpse) | Odx.OdxEquities.Pts.Glimpse.v2.0 |
 | Stream of Itch (ItchTcp) | Odx.OdxEquities.TcpPts.Itch.v2.2 |
-| Trading Day | Odx.OdxEquities.Equities.Session.Trading |
+| Trading Day | Odx.OdxEquities.Equities.Session.TradingSession |
 | Internal Messaging | Odx.OdxEquities.MatchingEngine.Ipc.v2026 |
 
 ### Odx Security Token Open
@@ -102,7 +158,7 @@ carries it.
 | Order Entry Session | Fix.Fix |
 | Market Data (Itch) | Odx.OdxSecurityToken.Pts.Itch.v1.2 |
 | Stream of Itch (ItchTcp) | Odx.OdxSecurityToken.Pts.Itch.v1.2 |
-| Trading Day | Odx.OdxSecurityToken.SecurityToken.Open.Trading |
+| Trading Day | Odx.OdxSecurityToken.SecurityToken.Open.TradingSession |
 | Internal Messaging | Odx.OdxSecurityToken.MatchingEngine.Ipc.v2026 |
 
 ### Odx Security Token Session
@@ -113,7 +169,7 @@ carries it.
 | Order Entry Session | Fix.Fix |
 | Market Data (Itch) | Odx.OdxSecurityToken.Pts.Itch.v1.2 |
 | Stream of Itch (ItchTcp) | Odx.OdxSecurityToken.Pts.Itch.v1.2 |
-| Trading Day | Odx.OdxSecurityToken.SecurityToken.Session.Trading |
+| Trading Day | Odx.OdxSecurityToken.SecurityToken.Session.TradingSession |
 | Internal Messaging | Odx.OdxSecurityToken.MatchingEngine.Ipc.v2026 |
 
 ## Build
@@ -121,12 +177,20 @@ carries it.
 Requirements: C++20, CMake 3.28+, Boost
 
 ```bash
+cmake -S iex/equities/basic -B build/iex/equities/basic -DCMAKE_BUILD_TYPE=Release
+cmake --build build/iex/equities/basic --parallel
 cmake -S iex/equities/open -B build/iex/equities/open -DCMAKE_BUILD_TYPE=Release
 cmake --build build/iex/equities/open --parallel
 cmake -S iex/equities/session -B build/iex/equities/session -DCMAKE_BUILD_TYPE=Release
 cmake --build build/iex/equities/session --parallel
 cmake -S nse/fo -B build/nse/fo -DCMAKE_BUILD_TYPE=Release
 cmake --build build/nse/fo --parallel
+cmake -S nasdaq/equities/basic -B build/nasdaq/equities/basic -DCMAKE_BUILD_TYPE=Release
+cmake --build build/nasdaq/equities/basic --parallel
+cmake -S nasdaq/equities/open -B build/nasdaq/equities/open -DCMAKE_BUILD_TYPE=Release
+cmake --build build/nasdaq/equities/open --parallel
+cmake -S nasdaq/equities/session -B build/nasdaq/equities/session -DCMAKE_BUILD_TYPE=Release
+cmake --build build/nasdaq/equities/session --parallel
 cmake -S odx/equities/open -B build/odx/equities/open -DCMAKE_BUILD_TYPE=Release
 cmake --build build/odx/equities/open --parallel
 cmake -S odx/equities/session -B build/odx/equities/session -DCMAKE_BUILD_TYPE=Release
@@ -140,12 +204,20 @@ cmake --build build/odx/securitytoken/session --parallel
 ## Run
 
 ```bash
+./build/iex/equities/basic/iex_simulator    # endpoints from iex/equities/basic/simulator.ini (--config <file> to override)
+./build/iex/equities/basic/simulator_tests    # Boost.Test suite
 ./build/iex/equities/open/iex_simulator    # endpoints from iex/equities/open/simulator.ini (--config <file> to override)
 ./build/iex/equities/open/simulator_tests    # Boost.Test suite
 ./build/iex/equities/session/iex_simulator    # endpoints from iex/equities/session/simulator.ini (--config <file> to override)
 ./build/iex/equities/session/simulator_tests    # Boost.Test suite
 ./build/nse/fo/nse_simulator    # endpoints from nse/fo/simulator.ini (--config <file> to override)
 ./build/nse/fo/simulator_tests    # Boost.Test suite
+./build/nasdaq/equities/basic/nasdaq_simulator    # endpoints from nasdaq/equities/basic/simulator.ini (--config <file> to override)
+./build/nasdaq/equities/basic/simulator_tests    # Boost.Test suite
+./build/nasdaq/equities/open/nasdaq_simulator    # endpoints from nasdaq/equities/open/simulator.ini (--config <file> to override)
+./build/nasdaq/equities/open/simulator_tests    # Boost.Test suite
+./build/nasdaq/equities/session/nasdaq_simulator    # endpoints from nasdaq/equities/session/simulator.ini (--config <file> to override)
+./build/nasdaq/equities/session/simulator_tests    # Boost.Test suite
 ./build/odx/equities/open/odx_simulator    # endpoints from odx/equities/open/simulator.ini (--config <file> to override)
 ./build/odx/equities/open/simulator_tests    # Boost.Test suite
 ./build/odx/equities/session/odx_simulator    # endpoints from odx/equities/session/simulator.ini (--config <file> to override)
@@ -176,13 +248,5 @@ The latency lab is a repository of its own, `omi-latency-lab`, generated from th
 declarations: it reads a capture of a venue running in containers through the venue's own
 address table and framing, and reports the matching engine, the fan out, the feed and each
 trader's own turn as percentiles, as plots and on a page. The exchanges carry nothing of it.
-
-## Left out
-
-An exchange whose declarations the generators cannot write is left out rather than half
-written:
-
-- **Nasdaq Stock Market Open**: Nasdaq.NsmEquities.MatchingEngine.Ipc.v2026: no value of its Refusal Reason is marked Refusal = Lifetime, so an order refused so could not say why
-- **Nasdaq Stock Market Session**: Nasdaq.NsmEquities.MatchingEngine.Ipc.v2026: no value of its Refusal Reason is marked Refusal = Lifetime, so an order refused so could not say why
 
 Any questions, comments or requests: Open-Markets-Initiative@outlook.com

@@ -119,6 +119,12 @@ int main(int argc, char** argv) {
                 sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_add_order), sizeof totalview_add_order);
                 sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_add_order), sizeof totalview_add_order);
             }
+            if (static_cast<char>(o.display.get().value()) == 'A') {
+                auto totalview_add_order_attributed = sim::to_totalview_add_order_attributed(o);
+                totalview.publish_message(reinterpret_cast<const char*>(&totalview_add_order_attributed), sizeof totalview_add_order_attributed);
+                sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_add_order_attributed), sizeof totalview_add_order_attributed);
+                sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_add_order_attributed), sizeof totalview_add_order_attributed);
+            }
             totalview.flush();
         },
         [&](const sim::ipc_ns::order_canceled_message& c) {
@@ -145,11 +151,17 @@ int main(int argc, char** argv) {
         [](const sim::ipc_ns::order_refused_message&) {},
         [&](const sim::ipc_ns::order_replaced_message& w) {
             // order_replaced_message -> the feeds its transforms declare (NsmEquities.Ipc.Transforms.xml).
-            if (static_cast<char>(w.display.get().value()) == 'Y') {
+            if (static_cast<char>(w.display.get().value()) == 'Y' && w.quantity.get().value() != 0) {
                 auto totalview_order_replace = sim::to_totalview_order_replace(w);
                 totalview.publish_message(reinterpret_cast<const char*>(&totalview_order_replace), sizeof totalview_order_replace);
                 sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_replace), sizeof totalview_order_replace);
                 sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_replace), sizeof totalview_order_replace);
+            }
+            if (w.quantity.get().value() == 0 && static_cast<char>(w.display.get().value()) != 'N') {
+                auto totalview_order_replaced_away = sim::to_totalview_order_replaced_away(w);
+                totalview.publish_message(reinterpret_cast<const char*>(&totalview_order_replaced_away), sizeof totalview_order_replaced_away);
+                sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_replaced_away), sizeof totalview_order_replaced_away);
+                sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_replaced_away), sizeof totalview_order_replaced_away);
             }
             totalview.flush();
         },
@@ -162,7 +174,9 @@ int main(int argc, char** argv) {
                 sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_cancel), sizeof totalview_order_cancel);
             }
             totalview.flush();
-        });
+        },
+        [](const sim::ipc_ns::cancel_pending_message&) {},
+        [](const sim::ipc_ns::reduce_refused_message&) {});
 
     // MakerBasic's gateway: each client's session reaches the engine as framed Ipc messages.
     auto gatewaymakerbasic_emit = [&](const char* b, std::size_t n) {
@@ -178,13 +192,15 @@ int main(int argc, char** argv) {
     // The engine events the gateway answers, on the gateway's own thread.
     sim::IpcEventServer gatewaymakerbasic_events(
         [&](const sim::ipc_ns::trade_message& t) { gatewaymakerbasic.on_event(t); },
-        [](const sim::ipc_ns::order_rested_message&) {},
+        [&](const sim::ipc_ns::order_rested_message& o) { gatewaymakerbasic.on_event(o); },
         [&](const sim::ipc_ns::order_canceled_message& c) { gatewaymakerbasic.on_event(c); },
         [&](const sim::ipc_ns::order_accepted_message& a) { gatewaymakerbasic.on_event(a); },
         [&](const sim::ipc_ns::order_eliminated_message& e) { gatewaymakerbasic.on_event(e); },
         [&](const sim::ipc_ns::order_refused_message& j) { gatewaymakerbasic.on_event(j); },
         [&](const sim::ipc_ns::order_replaced_message& w) { gatewaymakerbasic.on_event(w); },
-        [&](const sim::ipc_ns::order_reduced_message& y) { gatewaymakerbasic.on_event(y); });
+        [&](const sim::ipc_ns::order_reduced_message& y) { gatewaymakerbasic.on_event(y); },
+        [&](const sim::ipc_ns::cancel_pending_message& g) { gatewaymakerbasic.on_event(g); },
+        [&](const sim::ipc_ns::reduce_refused_message& z) { gatewaymakerbasic.on_event(z); });
 
     // TakerBasic's gateway: each client's session reaches the engine as framed Ipc messages.
     auto gatewaytakerbasic_emit = [&](const char* b, std::size_t n) {
@@ -200,13 +216,15 @@ int main(int argc, char** argv) {
     // The engine events the gateway answers, on the gateway's own thread.
     sim::IpcEventServer gatewaytakerbasic_events(
         [&](const sim::ipc_ns::trade_message& t) { gatewaytakerbasic.on_event(t); },
-        [](const sim::ipc_ns::order_rested_message&) {},
+        [&](const sim::ipc_ns::order_rested_message& o) { gatewaytakerbasic.on_event(o); },
         [&](const sim::ipc_ns::order_canceled_message& c) { gatewaytakerbasic.on_event(c); },
         [&](const sim::ipc_ns::order_accepted_message& a) { gatewaytakerbasic.on_event(a); },
         [&](const sim::ipc_ns::order_eliminated_message& e) { gatewaytakerbasic.on_event(e); },
         [&](const sim::ipc_ns::order_refused_message& j) { gatewaytakerbasic.on_event(j); },
         [&](const sim::ipc_ns::order_replaced_message& w) { gatewaytakerbasic.on_event(w); },
-        [&](const sim::ipc_ns::order_reduced_message& y) { gatewaytakerbasic.on_event(y); });
+        [&](const sim::ipc_ns::order_reduced_message& y) { gatewaytakerbasic.on_event(y); },
+        [&](const sim::ipc_ns::cancel_pending_message& g) { gatewaytakerbasic.on_event(g); },
+        [&](const sim::ipc_ns::reduce_refused_message& z) { gatewaytakerbasic.on_event(z); });
 
     // Replay's gateway: each client's session reaches the engine as framed Ipc messages.
     auto gatewayreplay_emit = [&](const char* b, std::size_t n) {
@@ -222,13 +240,15 @@ int main(int argc, char** argv) {
     // The engine events the gateway answers, on the gateway's own thread.
     sim::IpcEventServer gatewayreplay_events(
         [&](const sim::ipc_ns::trade_message& t) { gatewayreplay.on_event(t); },
-        [](const sim::ipc_ns::order_rested_message&) {},
+        [&](const sim::ipc_ns::order_rested_message& o) { gatewayreplay.on_event(o); },
         [&](const sim::ipc_ns::order_canceled_message& c) { gatewayreplay.on_event(c); },
         [&](const sim::ipc_ns::order_accepted_message& a) { gatewayreplay.on_event(a); },
         [&](const sim::ipc_ns::order_eliminated_message& e) { gatewayreplay.on_event(e); },
         [&](const sim::ipc_ns::order_refused_message& j) { gatewayreplay.on_event(j); },
         [&](const sim::ipc_ns::order_replaced_message& w) { gatewayreplay.on_event(w); },
-        [&](const sim::ipc_ns::order_reduced_message& y) { gatewayreplay.on_event(y); });
+        [&](const sim::ipc_ns::order_reduced_message& y) { gatewayreplay.on_event(y); },
+        [&](const sim::ipc_ns::cancel_pending_message& g) { gatewayreplay.on_event(g); },
+        [&](const sim::ipc_ns::reduce_refused_message& z) { gatewayreplay.on_event(z); });
 
     // Requests's gateway: each client's session reaches the engine as framed Ipc messages.
     auto gatewayrequests_emit = [&](const char* b, std::size_t n) {
@@ -244,13 +264,15 @@ int main(int argc, char** argv) {
     // The engine events the gateway answers, on the gateway's own thread.
     sim::IpcEventServer gatewayrequests_events(
         [&](const sim::ipc_ns::trade_message& t) { gatewayrequests.on_event(t); },
-        [](const sim::ipc_ns::order_rested_message&) {},
+        [&](const sim::ipc_ns::order_rested_message& o) { gatewayrequests.on_event(o); },
         [&](const sim::ipc_ns::order_canceled_message& c) { gatewayrequests.on_event(c); },
         [&](const sim::ipc_ns::order_accepted_message& a) { gatewayrequests.on_event(a); },
         [&](const sim::ipc_ns::order_eliminated_message& e) { gatewayrequests.on_event(e); },
         [&](const sim::ipc_ns::order_refused_message& j) { gatewayrequests.on_event(j); },
         [&](const sim::ipc_ns::order_replaced_message& w) { gatewayrequests.on_event(w); },
-        [&](const sim::ipc_ns::order_reduced_message& y) { gatewayrequests.on_event(y); });
+        [&](const sim::ipc_ns::order_reduced_message& y) { gatewayrequests.on_event(y); },
+        [&](const sim::ipc_ns::cancel_pending_message& g) { gatewayrequests.on_event(g); },
+        [&](const sim::ipc_ns::reduce_refused_message& z) { gatewayrequests.on_event(z); });
 
     // The engine's events, framed onto every consumer's queue.
     auto event_emit = [&](const char* b, std::size_t n) {
@@ -264,6 +286,7 @@ int main(int argc, char** argv) {
     // The engine component, built the same way the per-component binaries build it:
     // what it matches is its own, and where its events go is whatever emit it was handed.
     sim::components::Engine<decltype(event_emit)> engine_component(event_emit, trades);
+    engine_component.dump(cfg.book_dump);
     // Each engine's sequencer: what is bound for the engine, from every producer, put in one
     // order, each message stamped with its place in it and the time, and handed to the engine.
     auto sequencer_emit = [&](const char* b, std::size_t n) { sim::write_blocking(sequenced, b, n); };
@@ -348,8 +371,8 @@ int main(int argc, char** argv) {
         gatewaytakerbasic_order_entry = std::make_unique<net::TcpServer>(cfg.order_entry.host, cfg.gatewaytakerbasic_port);
         gatewayreplay_order_entry = std::make_unique<net::TcpServer>(cfg.order_entry.host, cfg.gatewayreplay_port);
         gatewayrequests_order_entry = std::make_unique<net::TcpServer>(cfg.order_entry.host, cfg.gatewayrequests_port);
-        glimpse_server = std::make_unique<net::TcpServer>(cfg.glimpse_replay_port == 0 ? "0.0.0.0" : "127.0.0.1", cfg.glimpse_replay_port);
-        totalviewtcp_server = std::make_unique<net::TcpServer>(cfg.totalviewtcp_replay_port == 0 ? "0.0.0.0" : "127.0.0.1", cfg.totalviewtcp_replay_port);
+        glimpse_server = std::make_unique<net::TcpServer>(cfg.glimpse_replay_host, cfg.glimpse_replay_port);
+        totalviewtcp_server = std::make_unique<net::TcpServer>(cfg.totalviewtcp_replay_host, cfg.totalviewtcp_replay_port);
     }
 
     // One thread per component. Each owns its own state: the gateway its client sockets,
@@ -357,14 +380,17 @@ int main(int argc, char** argv) {
     sim::Component engine_thread("engine", [&] { return engine_component.step(sequenced); });
     sim::Component sequencer_thread("sequencer", [&] { return sequencer_component.step(to_sequencer_gatewaymakerbasic, to_sequencer_gatewaytakerbasic, to_sequencer_gatewayreplay, to_sequencer_gatewayrequests); });
     sim::Component totalview_thread("totalview", [&] {
-        return to_totalview.read([&](std::string_view message) { totalview_events.on_message(message); });
+        const bool worked = to_totalview.read([&](std::string_view message) { if (const auto asked = sim::book_end_of(message)) totalview_rec.mark(*asked); totalview_events.on_message(message); });
+        // A feed that has published nothing for a second says its session is alive, or over.
+        totalview.idle();
+        return worked;
     });
     sim::Component glimpse_thread("glimpse", [&] {
         bool worked = to_glimpse.read([&](std::string_view message) { glimpse.on_message(message.data(), message.size()); });
         if (glimpse_server) worked = glimpse_server->poll([&](int fd, std::string_view bytes) {
             auto session = glimpse_sessions.find(fd);
             if (session == glimpse_sessions.end())
-                session = glimpse_sessions.emplace(fd, glimpse.connect([fd](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); })).first;
+                session = glimpse_sessions.emplace(fd, glimpse.connect([server = glimpse_server.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })).first;
             glimpse.on_bytes(session->second, bytes.data(), bytes.size());
         }, [&](int fd) {
             if (const auto gone = glimpse_sessions.find(fd); gone != glimpse_sessions.end()) {
@@ -387,7 +413,7 @@ int main(int argc, char** argv) {
         if (totalviewtcp_server) worked = totalviewtcp_server->poll([&](int fd, std::string_view bytes) {
             auto session = totalviewtcp_sessions.find(fd);
             if (session == totalviewtcp_sessions.end())
-                session = totalviewtcp_sessions.emplace(fd, totalviewtcp.connect([fd](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); })).first;
+                session = totalviewtcp_sessions.emplace(fd, totalviewtcp.connect([server = totalviewtcp_server.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })).first;
             totalviewtcp.on_bytes(session->second, bytes.data(), bytes.size());
         }, [&](int fd) {
             if (const auto gone = totalviewtcp_sessions.find(fd); gone != totalviewtcp_sessions.end()) {
@@ -411,7 +437,7 @@ int main(int argc, char** argv) {
         if (gatewaymakerbasic_order_entry) worked = gatewaymakerbasic_order_entry->poll([&](int fd, std::string_view bytes) {
             auto session = gatewaymakerbasic_sessions.find(fd);
             if (session == gatewaymakerbasic_sessions.end())
-                session = gatewaymakerbasic_sessions.emplace(fd, gatewaymakerbasic.connect([fd](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); })).first;
+                session = gatewaymakerbasic_sessions.emplace(fd, gatewaymakerbasic.connect([server = gatewaymakerbasic_order_entry.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })).first;
             gatewaymakerbasic.on_bytes(session->second, bytes.data(), bytes.size());
         }, [&](int fd) {
             if (const auto gone = gatewaymakerbasic_sessions.find(fd); gone != gatewaymakerbasic_sessions.end()) {
@@ -440,7 +466,7 @@ int main(int argc, char** argv) {
         if (gatewaytakerbasic_order_entry) worked = gatewaytakerbasic_order_entry->poll([&](int fd, std::string_view bytes) {
             auto session = gatewaytakerbasic_sessions.find(fd);
             if (session == gatewaytakerbasic_sessions.end())
-                session = gatewaytakerbasic_sessions.emplace(fd, gatewaytakerbasic.connect([fd](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); })).first;
+                session = gatewaytakerbasic_sessions.emplace(fd, gatewaytakerbasic.connect([server = gatewaytakerbasic_order_entry.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })).first;
             gatewaytakerbasic.on_bytes(session->second, bytes.data(), bytes.size());
         }, [&](int fd) {
             if (const auto gone = gatewaytakerbasic_sessions.find(fd); gone != gatewaytakerbasic_sessions.end()) {
@@ -469,7 +495,7 @@ int main(int argc, char** argv) {
         if (gatewayreplay_order_entry) worked = gatewayreplay_order_entry->poll([&](int fd, std::string_view bytes) {
             auto session = gatewayreplay_sessions.find(fd);
             if (session == gatewayreplay_sessions.end())
-                session = gatewayreplay_sessions.emplace(fd, gatewayreplay.connect([fd](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); })).first;
+                session = gatewayreplay_sessions.emplace(fd, gatewayreplay.connect([server = gatewayreplay_order_entry.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })).first;
             gatewayreplay.on_bytes(session->second, bytes.data(), bytes.size());
         }, [&](int fd) {
             if (const auto gone = gatewayreplay_sessions.find(fd); gone != gatewayreplay_sessions.end()) {
@@ -498,7 +524,7 @@ int main(int argc, char** argv) {
         if (gatewayrequests_order_entry) worked = gatewayrequests_order_entry->poll([&](int fd, std::string_view bytes) {
             auto session = gatewayrequests_sessions.find(fd);
             if (session == gatewayrequests_sessions.end())
-                session = gatewayrequests_sessions.emplace(fd, gatewayrequests.connect([fd](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); })).first;
+                session = gatewayrequests_sessions.emplace(fd, gatewayrequests.connect([server = gatewayrequests_order_entry.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })).first;
             gatewayrequests.on_bytes(session->second, bytes.data(), bytes.size());
         }, [&](int fd) {
             if (const auto gone = gatewayrequests_sessions.find(fd); gone != gatewayrequests_sessions.end()) {
@@ -729,53 +755,85 @@ int main(int argc, char** argv) {
                     (unsigned long long)watched.messages, watched.over ? " then ended the session" : "", (unsigned long long)watched.resume);
     }
 
-    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, order_accepted=%llu, replaced=%llu, order_modified=%llu, order_executed=%llu, canceled=%llu, rejected_order=%llu\n",
+    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, mass_cancel_response=%llu, disable_order_entry_response=%llu, enable_order_entry_response=%llu, rejected_order=%llu, account_query_response=%llu, order_accepted=%llu, replaced=%llu, order_modified=%llu, order_executed=%llu, order_restated=%llu, cancel_pending=%llu, cancel_reject=%llu, aiq_canceled=%llu, canceled=%llu\n",
                 makerbasic.name().c_str(), makerbasic.logged_in() ? makerbasic.session_name().c_str() : "not logged in",
                 (unsigned long long)makerbasic.entered(), (unsigned long long)makerbasic.canceled(),
+            (unsigned long long)makerbasic.answers().mass_cancel_response_message,
+            (unsigned long long)makerbasic.answers().disable_order_entry_response_message,
+            (unsigned long long)makerbasic.answers().enable_order_entry_response_message,
+            (unsigned long long)makerbasic.answers().rejected_order_message,
+            (unsigned long long)makerbasic.answers().account_query_response_message,
             (unsigned long long)makerbasic.answers().order_accepted_message,
             (unsigned long long)makerbasic.answers().replaced_message,
             (unsigned long long)makerbasic.answers().order_modified_message,
             (unsigned long long)makerbasic.answers().order_executed_message,
-            (unsigned long long)makerbasic.answers().canceled_message,
-            (unsigned long long)makerbasic.answers().rejected_order_message);
+            (unsigned long long)makerbasic.answers().order_restated_message,
+            (unsigned long long)makerbasic.answers().cancel_pending_message,
+            (unsigned long long)makerbasic.answers().cancel_reject_message,
+            (unsigned long long)makerbasic.answers().aiq_canceled_message,
+            (unsigned long long)makerbasic.answers().canceled_message);
     if (makerbasic.silences() > 0)
         std::printf("nasdaq-simulator: trader %s: the venue went silent on it %llu time(s); %s\n", makerbasic.name().c_str(),
                     (unsigned long long)makerbasic.silences(), makerbasic.logged_in() ? "logged in again" : "not logged in again");
-    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, order_accepted=%llu, replaced=%llu, order_modified=%llu, order_executed=%llu, canceled=%llu, rejected_order=%llu\n",
+    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, mass_cancel_response=%llu, disable_order_entry_response=%llu, enable_order_entry_response=%llu, rejected_order=%llu, account_query_response=%llu, order_accepted=%llu, replaced=%llu, order_modified=%llu, order_executed=%llu, order_restated=%llu, cancel_pending=%llu, cancel_reject=%llu, aiq_canceled=%llu, canceled=%llu\n",
                 takerbasic.name().c_str(), takerbasic.logged_in() ? takerbasic.session_name().c_str() : "not logged in",
                 (unsigned long long)takerbasic.entered(), (unsigned long long)takerbasic.canceled(),
+            (unsigned long long)takerbasic.answers().mass_cancel_response_message,
+            (unsigned long long)takerbasic.answers().disable_order_entry_response_message,
+            (unsigned long long)takerbasic.answers().enable_order_entry_response_message,
+            (unsigned long long)takerbasic.answers().rejected_order_message,
+            (unsigned long long)takerbasic.answers().account_query_response_message,
             (unsigned long long)takerbasic.answers().order_accepted_message,
             (unsigned long long)takerbasic.answers().replaced_message,
             (unsigned long long)takerbasic.answers().order_modified_message,
             (unsigned long long)takerbasic.answers().order_executed_message,
-            (unsigned long long)takerbasic.answers().canceled_message,
-            (unsigned long long)takerbasic.answers().rejected_order_message);
+            (unsigned long long)takerbasic.answers().order_restated_message,
+            (unsigned long long)takerbasic.answers().cancel_pending_message,
+            (unsigned long long)takerbasic.answers().cancel_reject_message,
+            (unsigned long long)takerbasic.answers().aiq_canceled_message,
+            (unsigned long long)takerbasic.answers().canceled_message);
     if (takerbasic.silences() > 0)
         std::printf("nasdaq-simulator: trader %s: the venue went silent on it %llu time(s); %s\n", takerbasic.name().c_str(),
                     (unsigned long long)takerbasic.silences(), takerbasic.logged_in() ? "logged in again" : "not logged in again");
     std::printf("nasdaq-simulator: trader %s replayed %zu quotes from captures/TotalView.pcap\n", replay.name().c_str(), replay_strategy.available());
-    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, order_accepted=%llu, replaced=%llu, order_modified=%llu, order_executed=%llu, canceled=%llu, rejected_order=%llu\n",
+    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, mass_cancel_response=%llu, disable_order_entry_response=%llu, enable_order_entry_response=%llu, rejected_order=%llu, account_query_response=%llu, order_accepted=%llu, replaced=%llu, order_modified=%llu, order_executed=%llu, order_restated=%llu, cancel_pending=%llu, cancel_reject=%llu, aiq_canceled=%llu, canceled=%llu\n",
                 replay.name().c_str(), replay.logged_in() ? replay.session_name().c_str() : "not logged in",
                 (unsigned long long)replay.entered(), (unsigned long long)replay.canceled(),
+            (unsigned long long)replay.answers().mass_cancel_response_message,
+            (unsigned long long)replay.answers().disable_order_entry_response_message,
+            (unsigned long long)replay.answers().enable_order_entry_response_message,
+            (unsigned long long)replay.answers().rejected_order_message,
+            (unsigned long long)replay.answers().account_query_response_message,
             (unsigned long long)replay.answers().order_accepted_message,
             (unsigned long long)replay.answers().replaced_message,
             (unsigned long long)replay.answers().order_modified_message,
             (unsigned long long)replay.answers().order_executed_message,
-            (unsigned long long)replay.answers().canceled_message,
-            (unsigned long long)replay.answers().rejected_order_message);
+            (unsigned long long)replay.answers().order_restated_message,
+            (unsigned long long)replay.answers().cancel_pending_message,
+            (unsigned long long)replay.answers().cancel_reject_message,
+            (unsigned long long)replay.answers().aiq_canceled_message,
+            (unsigned long long)replay.answers().canceled_message);
     if (replay.silences() > 0)
         std::printf("nasdaq-simulator: trader %s: the venue went silent on it %llu time(s); %s\n", replay.name().c_str(),
                     (unsigned long long)replay.silences(), replay.logged_in() ? "logged in again" : "not logged in again");
     std::printf("nasdaq-simulator: trader %s replayed %zu quotes from captures/Ouch.pcap\n", requests.name().c_str(), requests_strategy.available());
-    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, order_accepted=%llu, replaced=%llu, order_modified=%llu, order_executed=%llu, canceled=%llu, rejected_order=%llu\n",
+    std::printf("nasdaq-simulator: trader %s (%s) entered %llu, canceled %llu, mass_cancel_response=%llu, disable_order_entry_response=%llu, enable_order_entry_response=%llu, rejected_order=%llu, account_query_response=%llu, order_accepted=%llu, replaced=%llu, order_modified=%llu, order_executed=%llu, order_restated=%llu, cancel_pending=%llu, cancel_reject=%llu, aiq_canceled=%llu, canceled=%llu\n",
                 requests.name().c_str(), requests.logged_in() ? requests.session_name().c_str() : "not logged in",
                 (unsigned long long)requests.entered(), (unsigned long long)requests.canceled(),
+            (unsigned long long)requests.answers().mass_cancel_response_message,
+            (unsigned long long)requests.answers().disable_order_entry_response_message,
+            (unsigned long long)requests.answers().enable_order_entry_response_message,
+            (unsigned long long)requests.answers().rejected_order_message,
+            (unsigned long long)requests.answers().account_query_response_message,
             (unsigned long long)requests.answers().order_accepted_message,
             (unsigned long long)requests.answers().replaced_message,
             (unsigned long long)requests.answers().order_modified_message,
             (unsigned long long)requests.answers().order_executed_message,
-            (unsigned long long)requests.answers().canceled_message,
-            (unsigned long long)requests.answers().rejected_order_message);
+            (unsigned long long)requests.answers().order_restated_message,
+            (unsigned long long)requests.answers().cancel_pending_message,
+            (unsigned long long)requests.answers().cancel_reject_message,
+            (unsigned long long)requests.answers().aiq_canceled_message,
+            (unsigned long long)requests.answers().canceled_message);
     if (requests.silences() > 0)
         std::printf("nasdaq-simulator: trader %s: the venue went silent on it %llu time(s); %s\n", requests.name().c_str(),
                     (unsigned long long)requests.silences(), requests.logged_in() ? "logged in again" : "not logged in again");

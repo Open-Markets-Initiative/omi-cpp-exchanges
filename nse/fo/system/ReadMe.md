@@ -1,7 +1,7 @@
 # Nse Futures and Options — the components
 
 One process per component, and every link between them a ring in shared memory carrying framed
-Nse.NseFo.MatchingEngine.Ipc.v1.0 messages. The components are the same ones the single binary under `../process/`
+Nse.NseFo.MatchingEngine.Ipc.v2026 messages. The components are the same ones the single binary under `../process/`
 runs as threads — they come from `../common/` — so the only difference between the two versions is
 what a component writes to.
 

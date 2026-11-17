@@ -8,13 +8,13 @@
 #include <string_view>
 #include <type_traits>
 #include "SoupBinSession.hpp"
-#include "../../marketdata/totalview/messages/ClientHeartbeatPacket.hpp"
 #include "../../marketdata/totalview/messages/LogoutRequestPacket.hpp"
 #include "../../marketdata/totalview/messages/LoginRequestPacket.hpp"
 #include "../../marketdata/totalview/messages/LoginAcceptedPacket.hpp"
 #include "../../marketdata/totalview/messages/LoginRejectedPacket.hpp"
 #include "../../marketdata/totalview/messages/SequencedDataPacket.hpp"
 #include "../../marketdata/totalview/messages/EndOfSessionPacket.hpp"
+#include "../../marketdata/totalview/messages/ClientHeartbeatPacket.hpp"
 
 namespace sim::replay::totalviewtcp::soupbin {
 
@@ -49,22 +49,6 @@ public:
     bool ended() const { return state_ == ClientState::Ended; }
     std::uint64_t next_sequence() const { return next_sequence_; }
 
-    void unsequenced(const char* message, std::size_t length) {
-        now_ns_ = clock_();
-        const bool outer = busy_;
-        busy_ = true;
-        frame(static_cast<code>('U'), message, length);
-        beat_due_ = due(heartbeat_interval_ * 1'000'000'000);
-        if (!outer) drain();
-    }
-    void heartbeat() {
-        now_ns_ = clock_();
-        const bool outer = busy_;
-        busy_ = true;
-        frame(static_cast<code>('R'), nullptr, 0);
-        beat_due_ = due(heartbeat_interval_ * 1'000'000'000);
-        if (!outer) drain();
-    }
     void logout() {
         now_ns_ = clock_();
         const bool outer = busy_;
@@ -104,6 +88,24 @@ public:
             send_(reinterpret_cast<const char*>(&out), sizeof out);
         }
         state_ = ClientState::LoggingIn;
+        if (!outer) drain();
+    }
+    void unsequenced(const char* message, std::size_t length) {
+        if (state_ != ClientState::LoggedIn) return;
+        now_ns_ = clock_();
+        const bool outer = busy_;
+        busy_ = true;
+        frame(static_cast<code>('U'), message, length);
+        beat_due_ = due(heartbeat_interval_ * 1'000'000'000);
+        if (!outer) drain();
+    }
+    void heartbeat() {
+        if (state_ != ClientState::LoggedIn) return;
+        now_ns_ = clock_();
+        const bool outer = busy_;
+        busy_ = true;
+        frame(static_cast<code>('R'), nullptr, 0);
+        beat_due_ = due(heartbeat_interval_ * 1'000'000'000);
         if (!outer) drain();
     }
 

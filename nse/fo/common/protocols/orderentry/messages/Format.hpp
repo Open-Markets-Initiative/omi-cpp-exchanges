@@ -11,9 +11,7 @@
 #include "OrderEntryRequestMessage.hpp"
 #include "OrderModificationRequestMessage.hpp"
 #include "OrderCancellationRequestMessage.hpp"
-#include "OrderConfirmationMessage.hpp"
-#include "OrderModificationConfirmationMessage.hpp"
-#include "OrderEntryMessage.hpp"
+#include "KillSwitchRequestMessage.hpp"
 #include "PriceModificationMessage.hpp"
 #include "TradeInquiryMessage.hpp"
 #include "SpreadOrderEntryMessage.hpp"
@@ -35,6 +33,9 @@
 #include "UpdateLocalDatabaseTrailerMessage.hpp"
 #include "UpdateLocalDatabaseDataMessage.hpp"
 #include "MessageRecordMessage.hpp"
+#include "OrderConfirmationMessage.hpp"
+#include "OrderModificationConfirmationMessage.hpp"
+#include "OrderResponseMessage.hpp"
 #include "TradeConfirmationMessage.hpp"
 #include "UserOrderLimitUpdateMessage.hpp"
 #include "DealerLimitUpdateMessage.hpp"
@@ -69,13 +70,13 @@ namespace nnf_orderentry = ::nse::nsefo::orderentry::nnf::v9_50;
 
 inline std::ostream& operator<<(std::ostream& os, const message_header& value) {
     os << "transaction_code=\"" << nnf_orderentry::transaction_code::to_string(value.transaction_code.get().value()) << '"'
-       << ",log_time=" << value.log_time.get().value()
+       << ",log_time=" << (value.log_time.get().has_value() ? std::to_string(value.log_time.get().value()) : std::string_view("null"))
        << ",alpha_char=\"" << value.alpha_char.get_trimmed().value() << '"'
        << ",trader_id=" << value.trader_id.get().value()
        << ",error_code=\"" << nnf_orderentry::error_code::to_string(value.error_code.get().value()) << '"'
        << ",header_timestamp=" << value.header_timestamp.get().value()
-       << ",time_stamp_1=\"" << value.time_stamp_1.get_trimmed().value() << '"'
-       << ",time_stamp_2=\"" << value.time_stamp_2.get_trimmed().value() << '"'
+       << ",time_stamp_1=\"" << (value.time_stamp_1.get_trimmed().has_value() ? value.time_stamp_1.get_trimmed().value() : std::string_view("null")) << '"'
+       << ",time_stamp_2=\"" << (value.time_stamp_2.get_trimmed().has_value() ? value.time_stamp_2.get_trimmed().value() : std::string_view("null")) << '"'
        << ",message_length=" << value.message_length.get().value()
        ;
     return os;
@@ -115,7 +116,6 @@ inline std::ostream& operator<<(std::ostream& os, const system_information_in_me
 inline std::ostream& operator<<(std::ostream& os, const gateway_router_request_message& msg) {
     os << "box_id=" << msg.fields.box_id.get().value()
        << ",broker_id=\"" << msg.fields.broker_id.get_trimmed().value() << '"'
-       << ",filler=\"" << msg.fields.filler.get().value() << '"'
        ;
     return os;
 }
@@ -189,9 +189,6 @@ inline std::ostream& operator<<(std::ostream& os, const order_entry_request_mess
        << ",order_entry_body.pro_client_indicator=" << msg.fields.order_entry_body.pro_client_indicator.get().value()
        << ",order_entry_body.settlement_period=" << msg.fields.order_entry_body.settlement_period.get().value()
        << ",order_entry_body.additional_order_flags=" << static_cast<unsigned>(msg.fields.order_entry_body.additional_order_flags.get().value())
-       << ",order_entry_body.filler_116=\"" << msg.fields.order_entry_body.filler_116.get_trimmed().value() << '"'
-       << ",order_entry_body.filler_17=\"" << msg.fields.order_entry_body.filler_17.get().value() << '"'
-       << ",order_entry_body.filler_18=\"" << msg.fields.order_entry_body.filler_18.get().value() << '"'
        << ",order_entry_body.nnf_field=" << msg.fields.order_entry_body.nnf_field.get().value()
        << ",order_entry_body.mkt_replay=" << msg.fields.order_entry_body.mkt_replay.get().value()
        << ",order_entry_body.pan=\"" << msg.fields.order_entry_body.pan.get_trimmed().value() << '"'
@@ -242,9 +239,6 @@ inline std::ostream& operator<<(std::ostream& os, const order_modification_reque
        << ",order_entry_body.pro_client_indicator=" << msg.fields.order_entry_body.pro_client_indicator.get().value()
        << ",order_entry_body.settlement_period=" << msg.fields.order_entry_body.settlement_period.get().value()
        << ",order_entry_body.additional_order_flags=" << static_cast<unsigned>(msg.fields.order_entry_body.additional_order_flags.get().value())
-       << ",order_entry_body.filler_116=\"" << msg.fields.order_entry_body.filler_116.get_trimmed().value() << '"'
-       << ",order_entry_body.filler_17=\"" << msg.fields.order_entry_body.filler_17.get().value() << '"'
-       << ",order_entry_body.filler_18=\"" << msg.fields.order_entry_body.filler_18.get().value() << '"'
        << ",order_entry_body.nnf_field=" << msg.fields.order_entry_body.nnf_field.get().value()
        << ",order_entry_body.mkt_replay=" << msg.fields.order_entry_body.mkt_replay.get().value()
        << ",order_entry_body.pan=\"" << msg.fields.order_entry_body.pan.get_trimmed().value() << '"'
@@ -295,9 +289,6 @@ inline std::ostream& operator<<(std::ostream& os, const order_cancellation_reque
        << ",order_entry_body.pro_client_indicator=" << msg.fields.order_entry_body.pro_client_indicator.get().value()
        << ",order_entry_body.settlement_period=" << msg.fields.order_entry_body.settlement_period.get().value()
        << ",order_entry_body.additional_order_flags=" << static_cast<unsigned>(msg.fields.order_entry_body.additional_order_flags.get().value())
-       << ",order_entry_body.filler_116=\"" << msg.fields.order_entry_body.filler_116.get_trimmed().value() << '"'
-       << ",order_entry_body.filler_17=\"" << msg.fields.order_entry_body.filler_17.get().value() << '"'
-       << ",order_entry_body.filler_18=\"" << msg.fields.order_entry_body.filler_18.get().value() << '"'
        << ",order_entry_body.nnf_field=" << msg.fields.order_entry_body.nnf_field.get().value()
        << ",order_entry_body.mkt_replay=" << msg.fields.order_entry_body.mkt_replay.get().value()
        << ",order_entry_body.pan=\"" << msg.fields.order_entry_body.pan.get_trimmed().value() << '"'
@@ -307,7 +298,7 @@ inline std::ostream& operator<<(std::ostream& os, const order_cancellation_reque
     return os;
 }
 
-inline std::ostream& operator<<(std::ostream& os, const order_confirmation_message& msg) {
+inline std::ostream& operator<<(std::ostream& os, const kill_switch_request_message& msg) {
     os << "order_entry_body.participant_type=\"" << nnf_orderentry::participant_type::to_string(msg.fields.order_entry_body.participant_type.get().value()) << '"'
        << ",order_entry_body.competitor_period=" << msg.fields.order_entry_body.competitor_period.get().value()
        << ",order_entry_body.solicitor_period=" << msg.fields.order_entry_body.solicitor_period.get().value()
@@ -348,115 +339,6 @@ inline std::ostream& operator<<(std::ostream& os, const order_confirmation_messa
        << ",order_entry_body.pro_client_indicator=" << msg.fields.order_entry_body.pro_client_indicator.get().value()
        << ",order_entry_body.settlement_period=" << msg.fields.order_entry_body.settlement_period.get().value()
        << ",order_entry_body.additional_order_flags=" << static_cast<unsigned>(msg.fields.order_entry_body.additional_order_flags.get().value())
-       << ",order_entry_body.filler_116=\"" << msg.fields.order_entry_body.filler_116.get_trimmed().value() << '"'
-       << ",order_entry_body.filler_17=\"" << msg.fields.order_entry_body.filler_17.get().value() << '"'
-       << ",order_entry_body.filler_18=\"" << msg.fields.order_entry_body.filler_18.get().value() << '"'
-       << ",order_entry_body.nnf_field=" << msg.fields.order_entry_body.nnf_field.get().value()
-       << ",order_entry_body.mkt_replay=" << msg.fields.order_entry_body.mkt_replay.get().value()
-       << ",order_entry_body.pan=\"" << msg.fields.order_entry_body.pan.get_trimmed().value() << '"'
-       << ",order_entry_body.algo_id=" << msg.fields.order_entry_body.algo_id.get().value()
-       << ",order_entry_body.last_activity_reference=" << msg.fields.order_entry_body.last_activity_reference.get().value()
-       ;
-    return os;
-}
-
-inline std::ostream& operator<<(std::ostream& os, const order_modification_confirmation_message& msg) {
-    os << "order_entry_body.participant_type=\"" << nnf_orderentry::participant_type::to_string(msg.fields.order_entry_body.participant_type.get().value()) << '"'
-       << ",order_entry_body.competitor_period=" << msg.fields.order_entry_body.competitor_period.get().value()
-       << ",order_entry_body.solicitor_period=" << msg.fields.order_entry_body.solicitor_period.get().value()
-       << ",order_entry_body.modified_cancelled_by=\"" << nnf_orderentry::modified_cancelled_by::to_string(msg.fields.order_entry_body.modified_cancelled_by.get().value()) << '"'
-       << ",order_entry_body.reason_code=\"" << nnf_orderentry::reason_code::to_string(msg.fields.order_entry_body.reason_code.get().value()) << '"'
-       << ",order_entry_body.token_no=" << msg.fields.order_entry_body.token_no.get().value()
-       << ",order_entry_body.contract_desc.instrument_name=\"" << msg.fields.order_entry_body.contract_desc.instrument_name.get_trimmed().value() << '"'
-       << ",order_entry_body.contract_desc.symbol=\"" << msg.fields.order_entry_body.contract_desc.symbol.get_trimmed().value() << '"'
-       << ",order_entry_body.contract_desc.expiry_date=" << msg.fields.order_entry_body.contract_desc.expiry_date.get().value()
-       << ",order_entry_body.contract_desc.strike_price=" << msg.fields.order_entry_body.contract_desc.strike_price.get().value()
-       << ",order_entry_body.contract_desc.option_type=\"" << msg.fields.order_entry_body.contract_desc.option_type.get_trimmed().value() << '"'
-       << ",order_entry_body.contract_desc.ca_level=" << msg.fields.order_entry_body.contract_desc.ca_level.get().value()
-       << ",order_entry_body.counter_party_broker_id=\"" << msg.fields.order_entry_body.counter_party_broker_id.get_trimmed().value() << '"'
-       << ",order_entry_body.closeout_flag=\"" << msg.fields.order_entry_body.closeout_flag.get().value() << '"'
-       << ",order_entry_body.order_type=" << msg.fields.order_entry_body.order_type.get().value()
-       << ",order_entry_body.order_number=" << msg.fields.order_entry_body.order_number.get().value()
-       << ",order_entry_body.account_number=\"" << msg.fields.order_entry_body.account_number.get_trimmed().value() << '"'
-       << ",order_entry_body.book_type=\"" << nnf_orderentry::book_type::to_string(msg.fields.order_entry_body.book_type.get().value()) << '"'
-       << ",order_entry_body.buy_sell_indicator=\"" << nnf_orderentry::buy_sell_indicator::to_string(msg.fields.order_entry_body.buy_sell_indicator.get().value()) << '"'
-       << ",order_entry_body.disclosed_volume=" << msg.fields.order_entry_body.disclosed_volume.get().value()
-       << ",order_entry_body.disclosed_volume_remaining=" << msg.fields.order_entry_body.disclosed_volume_remaining.get().value()
-       << ",order_entry_body.total_volume_remaining=" << msg.fields.order_entry_body.total_volume_remaining.get().value()
-       << ",order_entry_body.volume=" << msg.fields.order_entry_body.volume.get().value()
-       << ",order_entry_body.volume_filled_today=" << msg.fields.order_entry_body.volume_filled_today.get().value()
-       << ",order_entry_body.price=" << msg.fields.order_entry_body.price.get().value()
-       << ",order_entry_body.trigger_price=" << msg.fields.order_entry_body.trigger_price.get().value()
-       << ",order_entry_body.good_till_date=" << msg.fields.order_entry_body.good_till_date.get().value()
-       << ",order_entry_body.entry_date_time=" << msg.fields.order_entry_body.entry_date_time.get().value()
-       << ",order_entry_body.minimum_fill_aon_volume=" << msg.fields.order_entry_body.minimum_fill_aon_volume.get().value()
-       << ",order_entry_body.last_modified=" << msg.fields.order_entry_body.last_modified.get().value()
-       << ",order_entry_body.st_order_flags=" << static_cast<unsigned>(msg.fields.order_entry_body.st_order_flags.get().value())
-       << ",order_entry_body.branch_id=" << msg.fields.order_entry_body.branch_id.get().value()
-       << ",order_entry_body.trader_id=" << msg.fields.order_entry_body.trader_id.get().value()
-       << ",order_entry_body.broker_id=\"" << msg.fields.order_entry_body.broker_id.get_trimmed().value() << '"'
-       << ",order_entry_body.c_ord_filler=\"" << msg.fields.order_entry_body.c_ord_filler.get_trimmed().value() << '"'
-       << ",order_entry_body.open_close=\"" << msg.fields.order_entry_body.open_close.get().value() << '"'
-       << ",order_entry_body.settlor=\"" << msg.fields.order_entry_body.settlor.get_trimmed().value() << '"'
-       << ",order_entry_body.pro_client_indicator=" << msg.fields.order_entry_body.pro_client_indicator.get().value()
-       << ",order_entry_body.settlement_period=" << msg.fields.order_entry_body.settlement_period.get().value()
-       << ",order_entry_body.additional_order_flags=" << static_cast<unsigned>(msg.fields.order_entry_body.additional_order_flags.get().value())
-       << ",order_entry_body.filler_116=\"" << msg.fields.order_entry_body.filler_116.get_trimmed().value() << '"'
-       << ",order_entry_body.filler_17=\"" << msg.fields.order_entry_body.filler_17.get().value() << '"'
-       << ",order_entry_body.filler_18=\"" << msg.fields.order_entry_body.filler_18.get().value() << '"'
-       << ",order_entry_body.nnf_field=" << msg.fields.order_entry_body.nnf_field.get().value()
-       << ",order_entry_body.mkt_replay=" << msg.fields.order_entry_body.mkt_replay.get().value()
-       << ",order_entry_body.pan=\"" << msg.fields.order_entry_body.pan.get_trimmed().value() << '"'
-       << ",order_entry_body.algo_id=" << msg.fields.order_entry_body.algo_id.get().value()
-       << ",order_entry_body.last_activity_reference=" << msg.fields.order_entry_body.last_activity_reference.get().value()
-       ;
-    return os;
-}
-
-inline std::ostream& operator<<(std::ostream& os, const order_entry_message& msg) {
-    os << "order_entry_body.participant_type=\"" << nnf_orderentry::participant_type::to_string(msg.fields.order_entry_body.participant_type.get().value()) << '"'
-       << ",order_entry_body.competitor_period=" << msg.fields.order_entry_body.competitor_period.get().value()
-       << ",order_entry_body.solicitor_period=" << msg.fields.order_entry_body.solicitor_period.get().value()
-       << ",order_entry_body.modified_cancelled_by=\"" << nnf_orderentry::modified_cancelled_by::to_string(msg.fields.order_entry_body.modified_cancelled_by.get().value()) << '"'
-       << ",order_entry_body.reason_code=\"" << nnf_orderentry::reason_code::to_string(msg.fields.order_entry_body.reason_code.get().value()) << '"'
-       << ",order_entry_body.token_no=" << msg.fields.order_entry_body.token_no.get().value()
-       << ",order_entry_body.contract_desc.instrument_name=\"" << msg.fields.order_entry_body.contract_desc.instrument_name.get_trimmed().value() << '"'
-       << ",order_entry_body.contract_desc.symbol=\"" << msg.fields.order_entry_body.contract_desc.symbol.get_trimmed().value() << '"'
-       << ",order_entry_body.contract_desc.expiry_date=" << msg.fields.order_entry_body.contract_desc.expiry_date.get().value()
-       << ",order_entry_body.contract_desc.strike_price=" << msg.fields.order_entry_body.contract_desc.strike_price.get().value()
-       << ",order_entry_body.contract_desc.option_type=\"" << msg.fields.order_entry_body.contract_desc.option_type.get_trimmed().value() << '"'
-       << ",order_entry_body.contract_desc.ca_level=" << msg.fields.order_entry_body.contract_desc.ca_level.get().value()
-       << ",order_entry_body.counter_party_broker_id=\"" << msg.fields.order_entry_body.counter_party_broker_id.get_trimmed().value() << '"'
-       << ",order_entry_body.closeout_flag=\"" << msg.fields.order_entry_body.closeout_flag.get().value() << '"'
-       << ",order_entry_body.order_type=" << msg.fields.order_entry_body.order_type.get().value()
-       << ",order_entry_body.order_number=" << msg.fields.order_entry_body.order_number.get().value()
-       << ",order_entry_body.account_number=\"" << msg.fields.order_entry_body.account_number.get_trimmed().value() << '"'
-       << ",order_entry_body.book_type=\"" << nnf_orderentry::book_type::to_string(msg.fields.order_entry_body.book_type.get().value()) << '"'
-       << ",order_entry_body.buy_sell_indicator=\"" << nnf_orderentry::buy_sell_indicator::to_string(msg.fields.order_entry_body.buy_sell_indicator.get().value()) << '"'
-       << ",order_entry_body.disclosed_volume=" << msg.fields.order_entry_body.disclosed_volume.get().value()
-       << ",order_entry_body.disclosed_volume_remaining=" << msg.fields.order_entry_body.disclosed_volume_remaining.get().value()
-       << ",order_entry_body.total_volume_remaining=" << msg.fields.order_entry_body.total_volume_remaining.get().value()
-       << ",order_entry_body.volume=" << msg.fields.order_entry_body.volume.get().value()
-       << ",order_entry_body.volume_filled_today=" << msg.fields.order_entry_body.volume_filled_today.get().value()
-       << ",order_entry_body.price=" << msg.fields.order_entry_body.price.get().value()
-       << ",order_entry_body.trigger_price=" << msg.fields.order_entry_body.trigger_price.get().value()
-       << ",order_entry_body.good_till_date=" << msg.fields.order_entry_body.good_till_date.get().value()
-       << ",order_entry_body.entry_date_time=" << msg.fields.order_entry_body.entry_date_time.get().value()
-       << ",order_entry_body.minimum_fill_aon_volume=" << msg.fields.order_entry_body.minimum_fill_aon_volume.get().value()
-       << ",order_entry_body.last_modified=" << msg.fields.order_entry_body.last_modified.get().value()
-       << ",order_entry_body.st_order_flags=" << static_cast<unsigned>(msg.fields.order_entry_body.st_order_flags.get().value())
-       << ",order_entry_body.branch_id=" << msg.fields.order_entry_body.branch_id.get().value()
-       << ",order_entry_body.trader_id=" << msg.fields.order_entry_body.trader_id.get().value()
-       << ",order_entry_body.broker_id=\"" << msg.fields.order_entry_body.broker_id.get_trimmed().value() << '"'
-       << ",order_entry_body.c_ord_filler=\"" << msg.fields.order_entry_body.c_ord_filler.get_trimmed().value() << '"'
-       << ",order_entry_body.open_close=\"" << msg.fields.order_entry_body.open_close.get().value() << '"'
-       << ",order_entry_body.settlor=\"" << msg.fields.order_entry_body.settlor.get_trimmed().value() << '"'
-       << ",order_entry_body.pro_client_indicator=" << msg.fields.order_entry_body.pro_client_indicator.get().value()
-       << ",order_entry_body.settlement_period=" << msg.fields.order_entry_body.settlement_period.get().value()
-       << ",order_entry_body.additional_order_flags=" << static_cast<unsigned>(msg.fields.order_entry_body.additional_order_flags.get().value())
-       << ",order_entry_body.filler_116=\"" << msg.fields.order_entry_body.filler_116.get_trimmed().value() << '"'
-       << ",order_entry_body.filler_17=\"" << msg.fields.order_entry_body.filler_17.get().value() << '"'
-       << ",order_entry_body.filler_18=\"" << msg.fields.order_entry_body.filler_18.get().value() << '"'
        << ",order_entry_body.nnf_field=" << msg.fields.order_entry_body.nnf_field.get().value()
        << ",order_entry_body.mkt_replay=" << msg.fields.order_entry_body.mkt_replay.get().value()
        << ",order_entry_body.pan=\"" << msg.fields.order_entry_body.pan.get_trimmed().value() << '"'
@@ -508,11 +390,9 @@ inline std::ostream& operator<<(std::ostream& os, const trade_inquiry_message& m
 
 inline std::ostream& operator<<(std::ostream& os, const spread_order_entry_message& msg) {
     os << "spread_order_body.participant_type_1=\"" << msg.fields.spread_order_body.participant_type_1.get().value() << '"'
-       << ",spread_order_body.filler_1=\"" << msg.fields.spread_order_body.filler_1.get().value() << '"'
        << ",spread_order_body.competitor_period_1=" << msg.fields.spread_order_body.competitor_period_1.get().value()
        << ",spread_order_body.solicitor_period_1=" << msg.fields.spread_order_body.solicitor_period_1.get().value()
        << ",spread_order_body.mod_cxl_by_1=\"" << msg.fields.spread_order_body.mod_cxl_by_1.get().value() << '"'
-       << ",spread_order_body.filler_9=\"" << msg.fields.spread_order_body.filler_9.get().value() << '"'
        << ",spread_order_body.reason_code_1=" << msg.fields.spread_order_body.reason_code_1.get().value()
        << ",spread_order_body.start_alpha_1=\"" << msg.fields.spread_order_body.start_alpha_1.get_trimmed().value() << '"'
        << ",spread_order_body.end_alpha_1=\"" << msg.fields.spread_order_body.end_alpha_1.get_trimmed().value() << '"'
@@ -524,9 +404,6 @@ inline std::ostream& operator<<(std::ostream& os, const spread_order_entry_messa
        << ",spread_order_body.contract_desc.option_type=\"" << msg.fields.spread_order_body.contract_desc.option_type.get_trimmed().value() << '"'
        << ",spread_order_body.contract_desc.ca_level=" << msg.fields.spread_order_body.contract_desc.ca_level.get().value()
        << ",spread_order_body.op_broker_id_1=\"" << msg.fields.spread_order_body.op_broker_id_1.get_trimmed().value() << '"'
-       << ",spread_order_body.fillerx_1=\"" << msg.fields.spread_order_body.fillerx_1.get().value() << '"'
-       << ",spread_order_body.filler_options_1=\"" << msg.fields.spread_order_body.filler_options_1.get_trimmed().value() << '"'
-       << ",spread_order_body.fillery_1=\"" << msg.fields.spread_order_body.fillery_1.get().value() << '"'
        << ",spread_order_body.order_type_1=" << msg.fields.spread_order_body.order_type_1.get().value()
        << ",spread_order_body.order_number_1=" << msg.fields.spread_order_body.order_number_1.get().value()
        << ",spread_order_body.account_number_1=\"" << msg.fields.spread_order_body.account_number_1.get_trimmed().value() << '"'
@@ -553,9 +430,6 @@ inline std::ostream& operator<<(std::ostream& os, const spread_order_entry_messa
        << ",spread_order_body.pro_client_1=" << msg.fields.spread_order_body.pro_client_1.get().value()
        << ",spread_order_body.settlement_period_1=" << msg.fields.spread_order_body.settlement_period_1.get().value()
        << ",spread_order_body.additional_order_flags=" << static_cast<unsigned>(msg.fields.spread_order_body.additional_order_flags.get().value())
-       << ",spread_order_body.filler_116=\"" << msg.fields.spread_order_body.filler_116.get_trimmed().value() << '"'
-       << ",spread_order_body.filler_17=\"" << msg.fields.spread_order_body.filler_17.get().value() << '"'
-       << ",spread_order_body.filler_18=\"" << msg.fields.spread_order_body.filler_18.get().value() << '"'
        << ",spread_order_body.nnf_field=" << msg.fields.spread_order_body.nnf_field.get().value()
        << ",spread_order_body.mkt_replay=" << msg.fields.spread_order_body.mkt_replay.get().value()
        << ",spread_order_body.pan=\"" << msg.fields.spread_order_body.pan.get_trimmed().value() << '"'
@@ -570,7 +444,6 @@ inline std::ostream& operator<<(std::ostream& os, const spread_order_entry_messa
        << ",spread_order_body.ms_spd_leg_info.contract_desc.option_type=\"" << msg.fields.spread_order_body.ms_spd_leg_info.contract_desc.option_type.get_trimmed().value() << '"'
        << ",spread_order_body.ms_spd_leg_info.contract_desc.ca_level=" << msg.fields.spread_order_body.ms_spd_leg_info.contract_desc.ca_level.get().value()
        << ",spread_order_body.ms_spd_leg_info.op_broker_id_2=\"" << msg.fields.spread_order_body.ms_spd_leg_info.op_broker_id_2.get_trimmed().value() << '"'
-       << ",spread_order_body.ms_spd_leg_info.fillerx_2=\"" << msg.fields.spread_order_body.ms_spd_leg_info.fillerx_2.get().value() << '"'
        << ",spread_order_body.ms_spd_leg_info.order_type_2=" << msg.fields.spread_order_body.ms_spd_leg_info.order_type_2.get().value()
        << ",spread_order_body.ms_spd_leg_info.buy_sell_2=" << msg.fields.spread_order_body.ms_spd_leg_info.buy_sell_2.get().value()
        << ",spread_order_body.ms_spd_leg_info.disclosed_vol_2=" << msg.fields.spread_order_body.ms_spd_leg_info.disclosed_vol_2.get().value()
@@ -584,7 +457,6 @@ inline std::ostream& operator<<(std::ostream& os, const spread_order_entry_messa
        << ",spread_order_body.ms_spd_leg_info.st_order_flags=" << static_cast<unsigned>(msg.fields.spread_order_body.ms_spd_leg_info.st_order_flags.get().value())
        << ",spread_order_body.ms_spd_leg_info.open_close_2=\"" << msg.fields.spread_order_body.ms_spd_leg_info.open_close_2.get().value() << '"'
        << ",spread_order_body.ms_spd_leg_info.additional_order_flags=" << static_cast<unsigned>(msg.fields.spread_order_body.ms_spd_leg_info.additional_order_flags.get().value())
-       << ",spread_order_body.ms_spd_leg_info.filler_y=\"" << msg.fields.spread_order_body.ms_spd_leg_info.filler_y.get().value() << '"'
        ;
     return os;
 }
@@ -728,7 +600,6 @@ inline std::ostream& operator<<(std::ostream& os, const system_information_out_m
 inline std::ostream& operator<<(std::ostream& os, const gateway_router_response_message& msg) {
     os << "box_id=" << msg.fields.box_id.get().value()
        << ",broker_id=\"" << msg.fields.broker_id.get_trimmed().value() << '"'
-       << ",filler=\"" << msg.fields.filler.get().value() << '"'
        << ",ip_address=\"" << msg.fields.ip_address.get_trimmed().value() << '"'
        << ",port=" << msg.fields.port.get().value()
        << ",session_key=\"" << msg.fields.session_key.get_trimmed().value() << '"'
@@ -762,16 +633,166 @@ inline std::ostream& operator<<(std::ostream& os, const update_local_database_da
 }
 
 inline std::ostream& operator<<(std::ostream& os, const message_record_message& msg) {
-    os << "inner_header.inner_trader_id=" << msg.fields.inner_header.inner_trader_id.get().value()
-       << ",inner_header.inner_log_time=" << msg.fields.inner_header.inner_log_time.get().value()
-       << ",inner_header.inner_alpha_char=\"" << msg.fields.inner_header.inner_alpha_char.get_trimmed().value() << '"'
-       << ",inner_header.inner_transaction_code=" << msg.fields.inner_header.inner_transaction_code.get().value()
-       << ",inner_header.inner_error_code=" << msg.fields.inner_header.inner_error_code.get().value()
-       << ",inner_header.inner_timestamp=" << msg.fields.inner_header.inner_timestamp.get().value()
-       << ",inner_header.inner_time_stamp_1=\"" << msg.fields.inner_header.inner_time_stamp_1.get_trimmed().value() << '"'
-       << ",inner_header.inner_time_stamp_2=\"" << msg.fields.inner_header.inner_time_stamp_2.get_trimmed().value() << '"'
-       << ",inner_header.inner_message_length=" << msg.fields.inner_header.inner_message_length.get().value()
+    os << "download_header.inner_transaction_code=" << msg.fields.download_header.inner_transaction_code.get().value()
+       << ",download_header.inner_log_time=" << msg.fields.download_header.inner_log_time.get().value()
+       << ",download_header.inner_alpha_char=\"" << msg.fields.download_header.inner_alpha_char.get_trimmed().value() << '"'
+       << ",download_header.inner_trader_id=" << msg.fields.download_header.inner_trader_id.get().value()
+       << ",download_header.inner_error_code=" << msg.fields.download_header.inner_error_code.get().value()
+       << ",download_header.inner_timestamp=" << msg.fields.download_header.inner_timestamp.get().value()
+       << ",download_header.inner_time_stamp_1=\"" << msg.fields.download_header.inner_time_stamp_1.get_trimmed().value() << '"'
+       << ",download_header.inner_time_stamp_2=\"" << msg.fields.download_header.inner_time_stamp_2.get_trimmed().value() << '"'
+       << ",download_header.inner_message_length=" << msg.fields.download_header.inner_message_length.get().value()
        << ",tail=" << json::tail_to_json_string(msg)
+       ;
+    return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const order_confirmation_message& msg) {
+    os << "order_entry_body.participant_type=\"" << nnf_orderentry::participant_type::to_string(msg.fields.order_entry_body.participant_type.get().value()) << '"'
+       << ",order_entry_body.competitor_period=" << msg.fields.order_entry_body.competitor_period.get().value()
+       << ",order_entry_body.solicitor_period=" << msg.fields.order_entry_body.solicitor_period.get().value()
+       << ",order_entry_body.modified_cancelled_by=\"" << nnf_orderentry::modified_cancelled_by::to_string(msg.fields.order_entry_body.modified_cancelled_by.get().value()) << '"'
+       << ",order_entry_body.reason_code=\"" << nnf_orderentry::reason_code::to_string(msg.fields.order_entry_body.reason_code.get().value()) << '"'
+       << ",order_entry_body.token_no=" << msg.fields.order_entry_body.token_no.get().value()
+       << ",order_entry_body.contract_desc.instrument_name=\"" << msg.fields.order_entry_body.contract_desc.instrument_name.get_trimmed().value() << '"'
+       << ",order_entry_body.contract_desc.symbol=\"" << msg.fields.order_entry_body.contract_desc.symbol.get_trimmed().value() << '"'
+       << ",order_entry_body.contract_desc.expiry_date=" << msg.fields.order_entry_body.contract_desc.expiry_date.get().value()
+       << ",order_entry_body.contract_desc.strike_price=" << msg.fields.order_entry_body.contract_desc.strike_price.get().value()
+       << ",order_entry_body.contract_desc.option_type=\"" << msg.fields.order_entry_body.contract_desc.option_type.get_trimmed().value() << '"'
+       << ",order_entry_body.contract_desc.ca_level=" << msg.fields.order_entry_body.contract_desc.ca_level.get().value()
+       << ",order_entry_body.counter_party_broker_id=\"" << msg.fields.order_entry_body.counter_party_broker_id.get_trimmed().value() << '"'
+       << ",order_entry_body.closeout_flag=\"" << msg.fields.order_entry_body.closeout_flag.get().value() << '"'
+       << ",order_entry_body.order_type=" << msg.fields.order_entry_body.order_type.get().value()
+       << ",order_entry_body.order_number=" << msg.fields.order_entry_body.order_number.get().value()
+       << ",order_entry_body.account_number=\"" << msg.fields.order_entry_body.account_number.get_trimmed().value() << '"'
+       << ",order_entry_body.book_type=\"" << nnf_orderentry::book_type::to_string(msg.fields.order_entry_body.book_type.get().value()) << '"'
+       << ",order_entry_body.buy_sell_indicator=\"" << nnf_orderentry::buy_sell_indicator::to_string(msg.fields.order_entry_body.buy_sell_indicator.get().value()) << '"'
+       << ",order_entry_body.disclosed_volume=" << msg.fields.order_entry_body.disclosed_volume.get().value()
+       << ",order_entry_body.disclosed_volume_remaining=" << msg.fields.order_entry_body.disclosed_volume_remaining.get().value()
+       << ",order_entry_body.total_volume_remaining=" << msg.fields.order_entry_body.total_volume_remaining.get().value()
+       << ",order_entry_body.volume=" << msg.fields.order_entry_body.volume.get().value()
+       << ",order_entry_body.volume_filled_today=" << msg.fields.order_entry_body.volume_filled_today.get().value()
+       << ",order_entry_body.price=" << msg.fields.order_entry_body.price.get().value()
+       << ",order_entry_body.trigger_price=" << msg.fields.order_entry_body.trigger_price.get().value()
+       << ",order_entry_body.good_till_date=" << msg.fields.order_entry_body.good_till_date.get().value()
+       << ",order_entry_body.entry_date_time=" << msg.fields.order_entry_body.entry_date_time.get().value()
+       << ",order_entry_body.minimum_fill_aon_volume=" << msg.fields.order_entry_body.minimum_fill_aon_volume.get().value()
+       << ",order_entry_body.last_modified=" << msg.fields.order_entry_body.last_modified.get().value()
+       << ",order_entry_body.st_order_flags=" << static_cast<unsigned>(msg.fields.order_entry_body.st_order_flags.get().value())
+       << ",order_entry_body.branch_id=" << msg.fields.order_entry_body.branch_id.get().value()
+       << ",order_entry_body.trader_id=" << msg.fields.order_entry_body.trader_id.get().value()
+       << ",order_entry_body.broker_id=\"" << msg.fields.order_entry_body.broker_id.get_trimmed().value() << '"'
+       << ",order_entry_body.c_ord_filler=\"" << msg.fields.order_entry_body.c_ord_filler.get_trimmed().value() << '"'
+       << ",order_entry_body.open_close=\"" << msg.fields.order_entry_body.open_close.get().value() << '"'
+       << ",order_entry_body.settlor=\"" << msg.fields.order_entry_body.settlor.get_trimmed().value() << '"'
+       << ",order_entry_body.pro_client_indicator=" << msg.fields.order_entry_body.pro_client_indicator.get().value()
+       << ",order_entry_body.settlement_period=" << msg.fields.order_entry_body.settlement_period.get().value()
+       << ",order_entry_body.additional_order_flags=" << static_cast<unsigned>(msg.fields.order_entry_body.additional_order_flags.get().value())
+       << ",order_entry_body.nnf_field=" << msg.fields.order_entry_body.nnf_field.get().value()
+       << ",order_entry_body.mkt_replay=" << msg.fields.order_entry_body.mkt_replay.get().value()
+       << ",order_entry_body.pan=\"" << msg.fields.order_entry_body.pan.get_trimmed().value() << '"'
+       << ",order_entry_body.algo_id=" << msg.fields.order_entry_body.algo_id.get().value()
+       << ",order_entry_body.last_activity_reference=" << msg.fields.order_entry_body.last_activity_reference.get().value()
+       ;
+    return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const order_modification_confirmation_message& msg) {
+    os << "order_entry_body.participant_type=\"" << nnf_orderentry::participant_type::to_string(msg.fields.order_entry_body.participant_type.get().value()) << '"'
+       << ",order_entry_body.competitor_period=" << msg.fields.order_entry_body.competitor_period.get().value()
+       << ",order_entry_body.solicitor_period=" << msg.fields.order_entry_body.solicitor_period.get().value()
+       << ",order_entry_body.modified_cancelled_by=\"" << nnf_orderentry::modified_cancelled_by::to_string(msg.fields.order_entry_body.modified_cancelled_by.get().value()) << '"'
+       << ",order_entry_body.reason_code=\"" << nnf_orderentry::reason_code::to_string(msg.fields.order_entry_body.reason_code.get().value()) << '"'
+       << ",order_entry_body.token_no=" << msg.fields.order_entry_body.token_no.get().value()
+       << ",order_entry_body.contract_desc.instrument_name=\"" << msg.fields.order_entry_body.contract_desc.instrument_name.get_trimmed().value() << '"'
+       << ",order_entry_body.contract_desc.symbol=\"" << msg.fields.order_entry_body.contract_desc.symbol.get_trimmed().value() << '"'
+       << ",order_entry_body.contract_desc.expiry_date=" << msg.fields.order_entry_body.contract_desc.expiry_date.get().value()
+       << ",order_entry_body.contract_desc.strike_price=" << msg.fields.order_entry_body.contract_desc.strike_price.get().value()
+       << ",order_entry_body.contract_desc.option_type=\"" << msg.fields.order_entry_body.contract_desc.option_type.get_trimmed().value() << '"'
+       << ",order_entry_body.contract_desc.ca_level=" << msg.fields.order_entry_body.contract_desc.ca_level.get().value()
+       << ",order_entry_body.counter_party_broker_id=\"" << msg.fields.order_entry_body.counter_party_broker_id.get_trimmed().value() << '"'
+       << ",order_entry_body.closeout_flag=\"" << msg.fields.order_entry_body.closeout_flag.get().value() << '"'
+       << ",order_entry_body.order_type=" << msg.fields.order_entry_body.order_type.get().value()
+       << ",order_entry_body.order_number=" << msg.fields.order_entry_body.order_number.get().value()
+       << ",order_entry_body.account_number=\"" << msg.fields.order_entry_body.account_number.get_trimmed().value() << '"'
+       << ",order_entry_body.book_type=\"" << nnf_orderentry::book_type::to_string(msg.fields.order_entry_body.book_type.get().value()) << '"'
+       << ",order_entry_body.buy_sell_indicator=\"" << nnf_orderentry::buy_sell_indicator::to_string(msg.fields.order_entry_body.buy_sell_indicator.get().value()) << '"'
+       << ",order_entry_body.disclosed_volume=" << msg.fields.order_entry_body.disclosed_volume.get().value()
+       << ",order_entry_body.disclosed_volume_remaining=" << msg.fields.order_entry_body.disclosed_volume_remaining.get().value()
+       << ",order_entry_body.total_volume_remaining=" << msg.fields.order_entry_body.total_volume_remaining.get().value()
+       << ",order_entry_body.volume=" << msg.fields.order_entry_body.volume.get().value()
+       << ",order_entry_body.volume_filled_today=" << msg.fields.order_entry_body.volume_filled_today.get().value()
+       << ",order_entry_body.price=" << msg.fields.order_entry_body.price.get().value()
+       << ",order_entry_body.trigger_price=" << msg.fields.order_entry_body.trigger_price.get().value()
+       << ",order_entry_body.good_till_date=" << msg.fields.order_entry_body.good_till_date.get().value()
+       << ",order_entry_body.entry_date_time=" << msg.fields.order_entry_body.entry_date_time.get().value()
+       << ",order_entry_body.minimum_fill_aon_volume=" << msg.fields.order_entry_body.minimum_fill_aon_volume.get().value()
+       << ",order_entry_body.last_modified=" << msg.fields.order_entry_body.last_modified.get().value()
+       << ",order_entry_body.st_order_flags=" << static_cast<unsigned>(msg.fields.order_entry_body.st_order_flags.get().value())
+       << ",order_entry_body.branch_id=" << msg.fields.order_entry_body.branch_id.get().value()
+       << ",order_entry_body.trader_id=" << msg.fields.order_entry_body.trader_id.get().value()
+       << ",order_entry_body.broker_id=\"" << msg.fields.order_entry_body.broker_id.get_trimmed().value() << '"'
+       << ",order_entry_body.c_ord_filler=\"" << msg.fields.order_entry_body.c_ord_filler.get_trimmed().value() << '"'
+       << ",order_entry_body.open_close=\"" << msg.fields.order_entry_body.open_close.get().value() << '"'
+       << ",order_entry_body.settlor=\"" << msg.fields.order_entry_body.settlor.get_trimmed().value() << '"'
+       << ",order_entry_body.pro_client_indicator=" << msg.fields.order_entry_body.pro_client_indicator.get().value()
+       << ",order_entry_body.settlement_period=" << msg.fields.order_entry_body.settlement_period.get().value()
+       << ",order_entry_body.additional_order_flags=" << static_cast<unsigned>(msg.fields.order_entry_body.additional_order_flags.get().value())
+       << ",order_entry_body.nnf_field=" << msg.fields.order_entry_body.nnf_field.get().value()
+       << ",order_entry_body.mkt_replay=" << msg.fields.order_entry_body.mkt_replay.get().value()
+       << ",order_entry_body.pan=\"" << msg.fields.order_entry_body.pan.get_trimmed().value() << '"'
+       << ",order_entry_body.algo_id=" << msg.fields.order_entry_body.algo_id.get().value()
+       << ",order_entry_body.last_activity_reference=" << msg.fields.order_entry_body.last_activity_reference.get().value()
+       ;
+    return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const order_response_message& msg) {
+    os << "order_entry_body.participant_type=\"" << nnf_orderentry::participant_type::to_string(msg.fields.order_entry_body.participant_type.get().value()) << '"'
+       << ",order_entry_body.competitor_period=" << msg.fields.order_entry_body.competitor_period.get().value()
+       << ",order_entry_body.solicitor_period=" << msg.fields.order_entry_body.solicitor_period.get().value()
+       << ",order_entry_body.modified_cancelled_by=\"" << nnf_orderentry::modified_cancelled_by::to_string(msg.fields.order_entry_body.modified_cancelled_by.get().value()) << '"'
+       << ",order_entry_body.reason_code=\"" << nnf_orderentry::reason_code::to_string(msg.fields.order_entry_body.reason_code.get().value()) << '"'
+       << ",order_entry_body.token_no=" << msg.fields.order_entry_body.token_no.get().value()
+       << ",order_entry_body.contract_desc.instrument_name=\"" << msg.fields.order_entry_body.contract_desc.instrument_name.get_trimmed().value() << '"'
+       << ",order_entry_body.contract_desc.symbol=\"" << msg.fields.order_entry_body.contract_desc.symbol.get_trimmed().value() << '"'
+       << ",order_entry_body.contract_desc.expiry_date=" << msg.fields.order_entry_body.contract_desc.expiry_date.get().value()
+       << ",order_entry_body.contract_desc.strike_price=" << msg.fields.order_entry_body.contract_desc.strike_price.get().value()
+       << ",order_entry_body.contract_desc.option_type=\"" << msg.fields.order_entry_body.contract_desc.option_type.get_trimmed().value() << '"'
+       << ",order_entry_body.contract_desc.ca_level=" << msg.fields.order_entry_body.contract_desc.ca_level.get().value()
+       << ",order_entry_body.counter_party_broker_id=\"" << msg.fields.order_entry_body.counter_party_broker_id.get_trimmed().value() << '"'
+       << ",order_entry_body.closeout_flag=\"" << msg.fields.order_entry_body.closeout_flag.get().value() << '"'
+       << ",order_entry_body.order_type=" << msg.fields.order_entry_body.order_type.get().value()
+       << ",order_entry_body.order_number=" << msg.fields.order_entry_body.order_number.get().value()
+       << ",order_entry_body.account_number=\"" << msg.fields.order_entry_body.account_number.get_trimmed().value() << '"'
+       << ",order_entry_body.book_type=\"" << nnf_orderentry::book_type::to_string(msg.fields.order_entry_body.book_type.get().value()) << '"'
+       << ",order_entry_body.buy_sell_indicator=\"" << nnf_orderentry::buy_sell_indicator::to_string(msg.fields.order_entry_body.buy_sell_indicator.get().value()) << '"'
+       << ",order_entry_body.disclosed_volume=" << msg.fields.order_entry_body.disclosed_volume.get().value()
+       << ",order_entry_body.disclosed_volume_remaining=" << msg.fields.order_entry_body.disclosed_volume_remaining.get().value()
+       << ",order_entry_body.total_volume_remaining=" << msg.fields.order_entry_body.total_volume_remaining.get().value()
+       << ",order_entry_body.volume=" << msg.fields.order_entry_body.volume.get().value()
+       << ",order_entry_body.volume_filled_today=" << msg.fields.order_entry_body.volume_filled_today.get().value()
+       << ",order_entry_body.price=" << msg.fields.order_entry_body.price.get().value()
+       << ",order_entry_body.trigger_price=" << msg.fields.order_entry_body.trigger_price.get().value()
+       << ",order_entry_body.good_till_date=" << msg.fields.order_entry_body.good_till_date.get().value()
+       << ",order_entry_body.entry_date_time=" << msg.fields.order_entry_body.entry_date_time.get().value()
+       << ",order_entry_body.minimum_fill_aon_volume=" << msg.fields.order_entry_body.minimum_fill_aon_volume.get().value()
+       << ",order_entry_body.last_modified=" << msg.fields.order_entry_body.last_modified.get().value()
+       << ",order_entry_body.st_order_flags=" << static_cast<unsigned>(msg.fields.order_entry_body.st_order_flags.get().value())
+       << ",order_entry_body.branch_id=" << msg.fields.order_entry_body.branch_id.get().value()
+       << ",order_entry_body.trader_id=" << msg.fields.order_entry_body.trader_id.get().value()
+       << ",order_entry_body.broker_id=\"" << msg.fields.order_entry_body.broker_id.get_trimmed().value() << '"'
+       << ",order_entry_body.c_ord_filler=\"" << msg.fields.order_entry_body.c_ord_filler.get_trimmed().value() << '"'
+       << ",order_entry_body.open_close=\"" << msg.fields.order_entry_body.open_close.get().value() << '"'
+       << ",order_entry_body.settlor=\"" << msg.fields.order_entry_body.settlor.get_trimmed().value() << '"'
+       << ",order_entry_body.pro_client_indicator=" << msg.fields.order_entry_body.pro_client_indicator.get().value()
+       << ",order_entry_body.settlement_period=" << msg.fields.order_entry_body.settlement_period.get().value()
+       << ",order_entry_body.additional_order_flags=" << static_cast<unsigned>(msg.fields.order_entry_body.additional_order_flags.get().value())
+       << ",order_entry_body.nnf_field=" << msg.fields.order_entry_body.nnf_field.get().value()
+       << ",order_entry_body.mkt_replay=" << msg.fields.order_entry_body.mkt_replay.get().value()
+       << ",order_entry_body.pan=\"" << msg.fields.order_entry_body.pan.get_trimmed().value() << '"'
+       << ",order_entry_body.algo_id=" << msg.fields.order_entry_body.algo_id.get().value()
+       << ",order_entry_body.last_activity_reference=" << msg.fields.order_entry_body.last_activity_reference.get().value()
        ;
     return os;
 }
@@ -948,9 +969,6 @@ inline std::ostream& operator<<(std::ostream& os, const global_indices_message& 
        << ",index_details.prev_close=" << msg.fields.index_details.prev_close.get().value()
        << ",index_details.life_high=" << msg.fields.index_details.life_high.get().value()
        << ",index_details.life_low=" << msg.fields.index_details.life_low.get().value()
-       << ",index_details.filler_4=" << msg.fields.index_details.filler_4.get().value()
-       << ",index_details.filler_2=" << msg.fields.index_details.filler_2.get().value()
-       << ",index_details.filler_3=" << msg.fields.index_details.filler_3.get().value()
        ;
     return os;
 }
@@ -978,9 +996,6 @@ inline std::ostream& operator<<(std::ostream& os, const global_contracts_message
        << ",contracts_details.limit_low=" << msg.fields.contracts_details.limit_low.get().value()
        << ",contracts_details.total_trades=" << msg.fields.contracts_details.total_trades.get().value()
        << ",contracts_details.open_interest_double=" << msg.fields.contracts_details.open_interest_double.get().value()
-       << ",contracts_details.filler_4=" << msg.fields.contracts_details.filler_4.get().value()
-       << ",contracts_details.filler_2=" << msg.fields.contracts_details.filler_2.get().value()
-       << ",contracts_details.filler_3=" << msg.fields.contracts_details.filler_3.get().value()
        ;
     return os;
 }
@@ -1037,7 +1052,6 @@ inline std::ostream& operator<<(std::ostream& os, const giveup_confirmation_mess
        << ",giveup.fill_volume=" << msg.fields.giveup.fill_volume.get().value()
        << ",giveup.fill_price=" << msg.fields.giveup.fill_price.get().value()
        << ",giveup.broker_id=\"" << msg.fields.giveup.broker_id.get_trimmed().value() << '"'
-       << ",giveup.filler=\"" << msg.fields.giveup.filler.get().value() << '"'
        << ",giveup.buy_sell=\"" << nnf_orderentry::buy_sell::to_string(msg.fields.giveup.buy_sell.get().value()) << '"'
        << ",giveup.book_type=\"" << nnf_orderentry::book_type::to_string(msg.fields.giveup.book_type.get().value()) << '"'
        << ",giveup.last_modified_date_time=" << msg.fields.giveup.last_modified_date_time.get().value()

@@ -7,7 +7,7 @@
 #include <string_view>
 #include "../cache/Required.hpp"
 
-namespace nasdaq::nsmequities::totalview::glimpse::v5_0 {
+namespace nasdaq::nsmequities::totalview::glimpse::v5_0_2026 {
 
 // client_packet_type
 struct client_packet_type {

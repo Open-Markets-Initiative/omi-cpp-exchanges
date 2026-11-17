@@ -49,6 +49,7 @@ int main(int argc, char** argv) {
         };
 
         sim::components::Engine<decltype(emit)> engine(emit, trades);
+        engine.dump(cfg.book_dump);   // its own book, also written out where the settings name a file
 
         std::printf("nasdaq-engine: matching, 1 in, 5 out\n");
 

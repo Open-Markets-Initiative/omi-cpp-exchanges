@@ -5,9 +5,9 @@
 #include <stdexcept>
 #include <string_view>
 
-namespace nasdaq::nsmequities::totalview::glimpse::v5_0 {
+namespace nasdaq::nsmequities::totalview::glimpse::v5_0_2026 {
 
-namespace glimpse_totalview = ::nasdaq::nsmequities::totalview::glimpse::v5_0;
+namespace glimpse_totalview = ::nasdaq::nsmequities::totalview::glimpse::v5_0_2026;
 
 
 inline external_var_data read_unsequenced_message(const unsequenced_data_packet& msg) {

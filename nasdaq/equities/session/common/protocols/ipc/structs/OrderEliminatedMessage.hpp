@@ -3,6 +3,7 @@
 #include <cstddef>
 #include "../types/Timestamp.hpp"
 #include "../types/OrderId.hpp"
+#include "../types/Symbol.hpp"
 #include "../types/Side.hpp"
 #include "../types/Price.hpp"
 #include "../types/Quantity.hpp"
@@ -19,6 +20,7 @@ struct order_eliminated_message {
 
     ipc_matchingengine::timestamp timestamp;
     ipc_matchingengine::order_id order_id;
+    ipc_matchingengine::symbol symbol;
     ipc_matchingengine::side side;
     ipc_matchingengine::price price;
     ipc_matchingengine::quantity quantity;
@@ -39,12 +41,13 @@ struct order_eliminated_message {
 // layout verification
 static_assert(offsetof(order_eliminated_message, timestamp) == 0, "unexpected offset of order_eliminated_message::timestamp");
 static_assert(offsetof(order_eliminated_message, order_id) == 8, "unexpected offset of order_eliminated_message::order_id");
-static_assert(offsetof(order_eliminated_message, side) == 16, "unexpected offset of order_eliminated_message::side");
-static_assert(offsetof(order_eliminated_message, price) == 17, "unexpected offset of order_eliminated_message::price");
-static_assert(offsetof(order_eliminated_message, quantity) == 25, "unexpected offset of order_eliminated_message::quantity");
-static_assert(offsetof(order_eliminated_message, time_in_force) == 29, "unexpected offset of order_eliminated_message::time_in_force");
-static_assert(offsetof(order_eliminated_message, display) == 30, "unexpected offset of order_eliminated_message::display");
-static_assert(sizeof(order_eliminated_message) == 31, "unexpected sizeof order_eliminated_message");
+static_assert(offsetof(order_eliminated_message, symbol) == 16, "unexpected offset of order_eliminated_message::symbol");
+static_assert(offsetof(order_eliminated_message, side) == 24, "unexpected offset of order_eliminated_message::side");
+static_assert(offsetof(order_eliminated_message, price) == 25, "unexpected offset of order_eliminated_message::price");
+static_assert(offsetof(order_eliminated_message, quantity) == 33, "unexpected offset of order_eliminated_message::quantity");
+static_assert(offsetof(order_eliminated_message, time_in_force) == 37, "unexpected offset of order_eliminated_message::time_in_force");
+static_assert(offsetof(order_eliminated_message, display) == 38, "unexpected offset of order_eliminated_message::display");
+static_assert(sizeof(order_eliminated_message) == 39, "unexpected sizeof order_eliminated_message");
 
 #pragma pack(pop)
 }

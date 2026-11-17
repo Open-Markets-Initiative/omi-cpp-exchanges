@@ -58,13 +58,15 @@ int main(int argc, char** argv) {
         // The engine events the gateway answers, on the gateway's own thread.
         sim::IpcEventServer gatewaymakerbasic_events(
             [&](const sim::ipc_ns::trade_message& t) { gatewaymakerbasic.on_event(t); },
-            [](const sim::ipc_ns::order_rested_message&) {},
+            [&](const sim::ipc_ns::order_rested_message& o) { gatewaymakerbasic.on_event(o); },
             [&](const sim::ipc_ns::order_canceled_message& c) { gatewaymakerbasic.on_event(c); },
             [&](const sim::ipc_ns::order_accepted_message& a) { gatewaymakerbasic.on_event(a); },
             [&](const sim::ipc_ns::order_eliminated_message& e) { gatewaymakerbasic.on_event(e); },
             [&](const sim::ipc_ns::order_refused_message& j) { gatewaymakerbasic.on_event(j); },
             [&](const sim::ipc_ns::order_replaced_message& w) { gatewaymakerbasic.on_event(w); },
-            [&](const sim::ipc_ns::order_reduced_message& y) { gatewaymakerbasic.on_event(y); });
+            [&](const sim::ipc_ns::order_reduced_message& y) { gatewaymakerbasic.on_event(y); },
+            [&](const sim::ipc_ns::cancel_pending_message& g) { gatewaymakerbasic.on_event(g); },
+            [&](const sim::ipc_ns::reduce_refused_message& z) { gatewaymakerbasic.on_event(z); });
 
         // A session per trader process, against the link that carries it. To the gateway a
         // trader on a link is what a client on a socket is: somewhere to write bytes.
@@ -86,7 +88,7 @@ int main(int argc, char** argv) {
             worked = order_entry.poll([&](int fd, std::string_view bytes) {
                 auto session = sessions.find(fd);
                 if (session == sessions.end())
-                    session = sessions.emplace(fd, gatewaymakerbasic.connect([fd](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); })).first;
+                    session = sessions.emplace(fd, gatewaymakerbasic.connect([&order_entry, fd](const char* b, std::size_t n) { order_entry.send(fd, b, n); })).first;
                 gatewaymakerbasic.on_bytes(session->second, bytes.data(), bytes.size());
             }, [&](int fd) {
                 if (const auto gone = sessions.find(fd); gone != sessions.end()) {

@@ -4,9 +4,9 @@
 #include <string_view>
 
 
-namespace iex::iexequities::matchingengine::ipc::v1_0 {
+namespace iex::iexequities::matchingengine::ipc::v2026 {
 
-namespace ipc_matchingengine = ::iex::iexequities::matchingengine::ipc::v1_0;
+namespace ipc_matchingengine = ::iex::iexequities::matchingengine::ipc::v2026;
 
 inline std::ostream& operator<<(std::ostream& os, const message_header& value) {
     os << "message_length=" << value.message_length.get().value()

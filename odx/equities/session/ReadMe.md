@@ -35,12 +35,12 @@ and a `verify.sh` that runs the venue and checks what its components carried.
 | Market Data (Itch) | Odx.OdxEquities.Pts.Itch.v2.2 |
 | Snapshot of Itch (Glimpse) | Odx.OdxEquities.Pts.Glimpse.v2.0 |
 | Stream of Itch (ItchTcp) | Odx.OdxEquities.TcpPts.Itch.v2.2 |
-| Trading Day | Odx.OdxEquities.Equities.Session.Trading |
+| Trading Day | Odx.OdxEquities.Equities.Session.TradingSession |
 | Internal Messaging | Odx.OdxEquities.MatchingEngine.Ipc.v2026 |
 
 ## Trading Day
 
-The engine runs `Odx.OdxEquities.Equities.Session.Trading`: each phase of the day decides whether an order
+The engine runs `Odx.OdxEquities.Equities.Session.TradingSession`: each phase of the day decides whether an order
 trades, waits for the next cross, or is refused. Each change of phase is announced on the
 internal messaging, and so is each cross completed, with the price it crossed at and the
 shares that traded there. The day the simulator is generated with:

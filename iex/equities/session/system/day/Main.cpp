@@ -33,6 +33,9 @@ int main(int argc, char** argv) {
 
         auto emit = [&](const char* b, std::size_t n) { sim::write_blocking(from_day, b, n); };
         sim::components::Day<decltype(emit)> day(emit);
+        day.books(cfg.book_every == "phase");   // whether it asks for the engine's book after each change of phase
+        { char* rest = nullptr; const long long each = std::strtoll(cfg.book_every.c_str(), &rest, 10); if (rest != cfg.book_every.c_str() && *rest == '\0') day.books_each(each); }   // or every so many milliseconds
+        day.every(cfg.clock_tick_milliseconds);   // how often the venue's time is sent its engine
         day.serve(cfg.day_at);
         std::printf("iex-day: serving the day, %zu change(s)\n", day.schedule.size());
 

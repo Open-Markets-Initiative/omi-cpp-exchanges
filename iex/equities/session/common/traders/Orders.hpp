@@ -22,12 +22,14 @@ struct Tag {
     static constexpr std::uint32_t Price = 44;
     static constexpr std::uint32_t Side = 54;
     static constexpr std::uint32_t Symbol = 55;
+    static constexpr std::uint32_t TimeInForce = 59;
     static constexpr std::uint32_t TransactTime = 60;
 };
 
 // What the venue answered, counted by the message each response transform builds (IexEquities.Ipc.Transforms.xml).
 struct Answers {
     std::uint64_t ExecutionReport = 0;
+    std::uint64_t OrderCancelReject = 0;
 };
 
 // A strategy's intent, as FIX requests on a client session. `Clock` tells the time each is
@@ -83,6 +85,7 @@ private:
         out.put_scaled(Tag::Price, static_cast<std::int64_t>(price), 4);
         out.put(Tag::OrderQty, static_cast<std::int64_t>(quantity));
         out.put(Tag::OrdType, '2');   // a trader entering a price enters a limit order
+        out.put(Tag::TimeInForce, '0');   // a trader enters day orders
         out.put_time(Tag::TransactTime, now);
         send("D", body.data(), out, now);
         entered_[reference] = Entered{side, price, quantity};
@@ -136,6 +139,7 @@ public:
     void logout() {}
     void message(std::string_view type, std::string_view) {
         if (type == "8") { ++answers_.ExecutionReport; return; }
+        if (type == "9") { ++answers_.OrderCancelReject; return; }
     }
 
     const std::string& name() const { return name_; }

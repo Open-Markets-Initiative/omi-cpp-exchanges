@@ -11,6 +11,7 @@
 #include "../protocols/marketdata/totalview/structs/PacketHeader.hpp"
 #include "../protocols/marketdata/totalview/structs/MessageHeader.hpp"
 #include "../protocols/marketdata/totalview/messages/AddOrderNoMpidAttributionMessage.hpp"
+#include "../protocols/marketdata/totalview/messages/AddOrderWithMpidAttributionMessage.hpp"
 
 namespace sim::traders {
 
@@ -51,6 +52,15 @@ private:
             switch (static_cast<char>(head->message_type.get().value())) {
                 case 'A': {
                     const auto& m = *captured_totalview::add_order_no_mpid_attribution_message::parse(bytes + at);
+                    quotes_.push_back(Quote{
+                        /*side*/ static_cast<char>(m.fields.buy_sell_indicator.get().value()),
+                        /*price*/ static_cast<std::int64_t>(m.fields.price.get().value()),
+                        /*quantity*/ static_cast<std::uint64_t>(m.fields.shares.get().value()),
+                    });
+                    break;
+                }
+                case 'F': {
+                    const auto& m = *captured_totalview::add_order_with_mpid_attribution_message::parse(bytes + at);
                     quotes_.push_back(Quote{
                         /*side*/ static_cast<char>(m.fields.buy_sell_indicator.get().value()),
                         /*price*/ static_cast<std::int64_t>(m.fields.price.get().value()),

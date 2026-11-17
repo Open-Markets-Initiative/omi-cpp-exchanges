@@ -1,7 +1,7 @@
 # Investors Exchange Equities Open — the single binary
 
 One process. Every component runs on its own thread, and every link between them is a lock-free
-queue of framed Iex.IexEquities.MatchingEngine.Ipc.v1.0 messages held in this process's own memory: a component hands
+queue of framed Iex.IexEquities.MatchingEngine.Ipc.v2026 messages held in this process's own memory: a component hands
 bytes to a queue rather than calling the next component.
 
 ```

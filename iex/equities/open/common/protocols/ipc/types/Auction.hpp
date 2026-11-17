@@ -7,7 +7,7 @@
 #include <string_view>
 #include "../cache/Required.hpp"
 
-namespace iex::iexequities::matchingengine::ipc::v1_0 {
+namespace iex::iexequities::matchingengine::ipc::v2026 {
 
 // auction
 struct auction {

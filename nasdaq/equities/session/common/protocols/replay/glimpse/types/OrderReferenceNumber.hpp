@@ -4,7 +4,7 @@
 #include <cstdint>
 #include "../cache/Required.hpp"
 
-namespace nasdaq::nsmequities::totalview::glimpse::v5_0 {
+namespace nasdaq::nsmequities::totalview::glimpse::v5_0_2026 {
 
 // order_reference_number
 struct order_reference_number {

@@ -7,7 +7,7 @@
 #include <string_view>
 #include "../cache/Required.hpp"
 
-namespace nasdaq::nsmequities::totalview::glimpse::v5_0 {
+namespace nasdaq::nsmequities::totalview::glimpse::v5_0_2026 {
 
 // market_category
 struct market_category {
@@ -22,10 +22,11 @@ struct market_category {
         nyse_texas = 'M',
         bats_z_exchange = 'Z',
         investors_exchange_llc = 'V',
+        texas_exchange = 'F',
         not_available = ' '
     };
 
-    static constexpr std::array<std::pair<std::string_view, enum_type>, 10> from_string_map = {{
+    static constexpr std::array<std::pair<std::string_view, enum_type>, 11> from_string_map = {{
         {"Bats Z Exchange", enum_type::bats_z_exchange},
         {"Investors Exchange Llc", enum_type::investors_exchange_llc},
         {"Nasdaq Capital Market", enum_type::nasdaq_capital_market},
@@ -35,7 +36,8 @@ struct market_category {
         {"Not Available", enum_type::not_available},
         {"Nyse American", enum_type::nyse_american},
         {"Nyse Arca", enum_type::nyse_arca},
-        {"Nyse Texas", enum_type::nyse_texas}
+        {"Nyse Texas", enum_type::nyse_texas},
+        {"Texas Exchange", enum_type::texas_exchange}
     }};
 
     static constexpr std::string_view to_string(enum_type value) {
@@ -49,6 +51,7 @@ struct market_category {
             case enum_type::nyse_texas: return "Nyse Texas";
             case enum_type::bats_z_exchange: return "Bats Z Exchange";
             case enum_type::investors_exchange_llc: return "Investors Exchange Llc";
+            case enum_type::texas_exchange: return "Texas Exchange";
             case enum_type::not_available: return "Not Available";
             default: return "unknown";
         }

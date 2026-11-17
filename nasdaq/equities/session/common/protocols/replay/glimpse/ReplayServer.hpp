@@ -17,13 +17,16 @@
 #include "../../marketdata/totalview/messages/OrderExecutedWithPriceMessage.hpp"
 #include "../../marketdata/totalview/messages/OrderReplaceMessage.hpp"
 #include "../../marketdata/totalview/messages/OrderCancelMessage.hpp"
+#include "../../marketdata/totalview/messages/StockDirectoryMessage.hpp"
+#include "../../marketdata/totalview/messages/StockTradingActionMessage.hpp"
+#include "../../marketdata/totalview/messages/RegShoShortSalePriceTestRestrictedIndicatorMessage.hpp"
 
 namespace sim::replay::glimpse {
 
 namespace feed_ns = ::nasdaq::nsmequities::totalview::itch::v5_0_2026;
 
 // The Glimpse service: the book as it stands, served to each client that logs in,
-// framed as Nasdaq.NsmEquities.TotalView.Glimpse.v5.0 sequenced data. Messages arrive from the TotalView feed in publish order.
+// framed as Nasdaq.NsmEquities.TotalView.Glimpse.v5.0.2026 sequenced data. Messages arrive from the TotalView feed in publish order.
 template <typename Send>
 class Server {
 public:
@@ -54,12 +57,29 @@ public:
         ++seen_;
         if (length <= 2) return;
         const auto* bytes = reinterpret_cast<const std::byte*>(message);
+        // What the snapshot serves ahead of the book, kept as the feed published it.
+        if (message[2] == 'R') {
+            const auto& m = *feed_ns::stock_directory_message::parse(const_cast<std::byte*>(bytes));
+            (void)m;
+            kept_0_[std::string(reinterpret_cast<const char*>(&m.fields.stock_locate), sizeof m.fields.stock_locate)] = Kept{ second_, std::string(message, length) };
+        }
+        if (message[2] == 'H') {
+            const auto& m = *feed_ns::stock_trading_action_message::parse(const_cast<std::byte*>(bytes));
+            (void)m;
+            kept_1_[std::string(reinterpret_cast<const char*>(&m.fields.stock_locate), sizeof m.fields.stock_locate)] = Kept{ second_, std::string(message, length) };
+        }
+        if (message[2] == 'Y') {
+            const auto& m = *feed_ns::reg_sho_short_sale_price_test_restricted_indicator_message::parse(const_cast<std::byte*>(bytes));
+            (void)m;
+            kept_2_[std::string(reinterpret_cast<const char*>(&m.fields.locate_code), sizeof m.fields.locate_code)] = Kept{ second_, std::string(message, length) };
+        }
         switch (message[2]) {
             case 'A': {
                 const auto& m = *feed_ns::add_order_no_mpid_attribution_message::parse(const_cast<std::byte*>(bytes));
                 const std::uint64_t reference = static_cast<std::uint64_t>(m.fields.order_reference_number.get().value());
                 // A resting order joins the book.
                 book_[reference].assign(message, length);
+                stamped_[reference] = second_;
                 break;
             }
             case 'D': {
@@ -67,6 +87,7 @@ public:
                 const std::uint64_t reference = static_cast<std::uint64_t>(m.fields.order_reference_number.get().value());
                 // A canceled order leaves it.
                 book_.erase(reference);
+                stamped_.erase(reference);
                 break;
             }
             case 'E': {
@@ -78,7 +99,7 @@ public:
                 auto& resting = *feed_ns::add_order_no_mpid_attribution_message::parse(reinterpret_cast<std::byte*>(held->second.data()));
                 const auto executed = static_cast<std::uint64_t>(m.fields.executed_shares.get().value());
                 const auto open = static_cast<std::uint64_t>(resting.fields.shares.get().value());
-                if (executed >= open) { book_.erase(held); break; }
+                if (executed >= open) { book_.erase(held); stamped_.erase(reference); break; }
                 resting.fields.shares.set(static_cast<std::remove_cvref_t<decltype(resting.fields.shares.get().value())>>(open - executed));
                 break;
             }
@@ -91,7 +112,7 @@ public:
                 auto& resting = *feed_ns::add_order_no_mpid_attribution_message::parse(reinterpret_cast<std::byte*>(held->second.data()));
                 const auto executed = static_cast<std::uint64_t>(m.fields.executed_shares.get().value());
                 const auto open = static_cast<std::uint64_t>(resting.fields.shares.get().value());
-                if (executed >= open) { book_.erase(held); break; }
+                if (executed >= open) { book_.erase(held); stamped_.erase(reference); break; }
                 resting.fields.shares.set(static_cast<std::remove_cvref_t<decltype(resting.fields.shares.get().value())>>(open - executed));
                 break;
             }
@@ -104,6 +125,9 @@ public:
                 if (held == book_.end()) break;
                 std::string replaced = std::move(held->second);
                 book_.erase(held);
+                auto stamp = std::move(stamped_[reference]);
+                stamped_.erase(reference);
+                stamped_[static_cast<std::uint64_t>(m.fields.new_order_reference_number.get().value())] = std::move(stamp);
                 auto& rests = *feed_ns::add_order_no_mpid_attribution_message::parse(reinterpret_cast<std::byte*>(replaced.data()));
                 rests.fields.order_reference_number.set(static_cast<std::remove_cvref_t<decltype(rests.fields.order_reference_number.get().value())>>(m.fields.new_order_reference_number.get().value()));
                 rests.fields.shares.set(static_cast<std::remove_cvref_t<decltype(rests.fields.shares.get().value())>>(m.fields.shares.get().value()));
@@ -120,7 +144,7 @@ public:
                 auto& resting = *feed_ns::add_order_no_mpid_attribution_message::parse(reinterpret_cast<std::byte*>(held->second.data()));
                 const auto canceled = static_cast<std::uint64_t>(m.fields.canceled_shares.get().value());
                 const auto open = static_cast<std::uint64_t>(resting.fields.shares.get().value());
-                if (canceled >= open) { book_.erase(held); break; }
+                if (canceled >= open) { book_.erase(held); stamped_.erase(reference); break; }
                 resting.fields.shares.set(static_cast<std::remove_cvref_t<decltype(resting.fields.shares.get().value())>>(open - canceled));
                 break;
             }
@@ -133,8 +157,28 @@ public:
         bool worked = false;
         for (auto& [number, client] : clients_) {
             if (!client->serving) continue;
-            // The book as it stands, then the session ends: the client resumes on the live feed.
-            for (const auto& resting : book_) client->session.sequenced(resting.second.data(), resting.second.size());
+            // What the snapshot lists, in its order, each after the second it was stamped under; then the session ends.
+            std::string served;   // the Seconds message last served
+            auto serve = [&](const std::string& second, const std::string& message) {
+                if (!second.empty() && second != served) { client->session.sequenced(second.data() + 2, second.size() - 2); served = second; }
+                client->session.sequenced(message.data() + 2, message.size() - 2);
+            };
+            for (const auto& [key, kept] : kept_0_) serve(kept.second, kept.message);
+            for (const auto& [key, kept] : kept_1_) serve(kept.second, kept.message);
+            for (const auto& [key, kept] : kept_2_) serve(kept.second, kept.message);
+            for (const auto& [reference, resting] : book_) {
+                const auto stamp = stamped_.find(reference);
+                serve(stamp == stamped_.end() ? std::string{} : stamp->second, resting);
+            }
+            // End Of Snapshot Message: where the live feed resumes, in decimal digits left-justified in 20 characters, filled with ' '.
+            {
+                char end[21];
+                end[0] = 'G';
+                std::fill(end + 1, end + 21, ' ');
+                const std::string digits = std::to_string(seen_ + 1);
+                std::copy_n(digits.data(), std::min<std::size_t>(digits.size(), 20), end + 1);
+                client->session.sequenced(end, sizeof end);
+            }
             client->session.end_of_session();
             client->serving = false;
             worked = true;
@@ -179,7 +223,7 @@ private:
             return std::nullopt;
         }
         void message(std::string_view) {}   // a replay client sends nothing but its login
-        void logout() { live = false; serving = false; }
+        void logout() { lost = true; live = false; serving = false; }   // logged out, or its login refused
         void silent() { lost = true; live = false; serving = false; }   // heard nothing for longer than the session allows
         bool lost = false;
     };
@@ -198,6 +242,12 @@ private:
     std::map<std::string, std::string, std::less<>> credentials_;
     std::uint64_t seen_ = 0;
     std::map<std::uint64_t, std::string> book_;   // the reference each resting order is known by
+    struct Kept { std::string second; std::string message; };   // a message, and the Seconds message it was stamped under
+    std::string second_;   // the feed's last Seconds message, which what follows it is stamped under
+    std::map<std::string, Kept> kept_0_;   // the last stock_directory_message for each fields.stock_locate
+    std::map<std::string, Kept> kept_1_;   // the last stock_trading_action_message for each fields.stock_locate
+    std::map<std::string, Kept> kept_2_;   // the last reg_sho_short_sale_price_test_restricted_indicator_message for each fields.locate_code
+    std::map<std::uint64_t, std::string> stamped_;   // the Seconds message each resting order was added under
 };
 
 }

@@ -261,10 +261,11 @@ struct error_code {
         err_trade_beyond_markup_price = 17182,
         err_encryption_flag_mismatch = 19030,
         err_md_5_checksum_failure = 19031,
-        err_user_having_null_rights = 17184
+        err_user_having_null_rights = 17184,
+        no_error = 0
     };
 
-    static constexpr std::array<std::pair<std::string_view, enum_type>, 247> from_string_map = {{
+    static constexpr std::array<std::pair<std::string_view, enum_type>, 248> from_string_map = {{
         {"Auction Number Invalid", enum_type::auction_number_invalid},
         {"Broker Not Found", enum_type::broker_not_found},
         {"Chg St Exists", enum_type::chg_st_exists},
@@ -448,6 +449,7 @@ struct error_code {
         {"Mit Not Allowed", enum_type::mit_not_allowed},
         {"Msg Code Suspended Status", enum_type::msg_code_suspended_status},
         {"Msg Code Voluntary Close Out Status", enum_type::msg_code_voluntary_close_out_status},
+        {"No Error", enum_type::no_error},
         {"Oe Admin Susp Can", enum_type::oe_admin_susp_can},
         {"Oe Ato In Open", enum_type::oe_ato_in_open},
         {"Oe Auc Period Greater", enum_type::oe_auc_period_greater},
@@ -763,6 +765,7 @@ struct error_code {
             case enum_type::err_encryption_flag_mismatch: return "Err Encryption Flag Mismatch";
             case enum_type::err_md_5_checksum_failure: return "Err Md 5 Checksum Failure";
             case enum_type::err_user_having_null_rights: return "Err User Having Null Rights";
+            case enum_type::no_error: return "No Error";
             default: return "unknown";
         }
     }
@@ -788,7 +791,7 @@ struct error_code {
     using storage_type = result_type;
 
     error_code()
-     : value{ enum_type{} } {}
+     : value{ static_cast<enum_type>(__builtin_bswap16(static_cast<std::underlying_type_t<enum_type>>(static_cast<enum_type>(0)))) } {}
 
     error_code(enum_type v)
      : value{ static_cast<enum_type>(__builtin_bswap16(static_cast<std::underlying_type_t<enum_type>>(v))) } {}
@@ -805,7 +808,7 @@ struct error_code {
         if (value.has_value())
             set(value.value());
         else
-            set(enum_type::err_user_having_null_rights);
+            set(static_cast<enum_type>(0));
     }
 
   protected:

@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
         glimpse.allow("DAVE01", "dave000001");
 
         // Its own socket: the clients that ask it for a replay dial this, not the gateway.
-        net::TcpServer glimpse_server(cfg.glimpse_replay_port == 0 ? "0.0.0.0" : "127.0.0.1", cfg.glimpse_replay_port);
+        net::TcpServer glimpse_server(cfg.glimpse_replay_host, cfg.glimpse_replay_port);   // where its settings say: every interface in a container
         std::map<int, std::size_t> glimpse_sessions;
 
         std::printf("nasdaq-glimpse: serving snapshot of TotalView on port %u\n", (unsigned)cfg.glimpse_replay_port);
@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
             worked = glimpse_server.poll([&](int fd, std::string_view bytes) {
                 auto session = glimpse_sessions.find(fd);
                 if (session == glimpse_sessions.end())
-                    session = glimpse_sessions.emplace(fd, glimpse.connect([fd](const char* b, std::size_t n) { net::TcpServer::send(fd, b, n); })).first;
+                    session = glimpse_sessions.emplace(fd, glimpse.connect([&server = glimpse_server, fd](const char* b, std::size_t n) { server.send(fd, b, n); })).first;
                 glimpse.on_bytes(session->second, bytes.data(), bytes.size());
             }, [&](int fd) {
                 if (const auto gone = glimpse_sessions.find(fd); gone != glimpse_sessions.end()) {

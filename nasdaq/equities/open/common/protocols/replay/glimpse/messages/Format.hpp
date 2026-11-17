@@ -22,9 +22,9 @@
 #include "../json/messages/unsequenced_data_packet_json.hpp"
 #include "../json/messages/sequenced_data_packet_json.hpp"
 
-namespace nasdaq::nsmequities::totalview::glimpse::v5_0 {
+namespace nasdaq::nsmequities::totalview::glimpse::v5_0_2026 {
 
-namespace glimpse_totalview = ::nasdaq::nsmequities::totalview::glimpse::v5_0;
+namespace glimpse_totalview = ::nasdaq::nsmequities::totalview::glimpse::v5_0_2026;
 
 inline std::ostream& operator<<(std::ostream& os, const client_packet_header& value) {
     os << "packet_length=" << value.packet_length.get().value()
@@ -131,7 +131,7 @@ inline std::ostream& operator<<(std::ostream& os, const stock_directory_message&
        << ",issue_sub_type=\"" << msg.fields.issue_sub_type.get_trimmed().value() << '"'
        << ",authenticity=\"" << glimpse_totalview::authenticity::to_string(msg.fields.authenticity.get().value()) << '"'
        << ",short_sale_threshold_indicator=\"" << msg.fields.short_sale_threshold_indicator.get().value() << '"'
-       << ",ipo_flag=\"" << msg.fields.ipo_flag.get().value() << '"'
+       << ",ipo_flag=\"" << glimpse_totalview::ipo_flag::to_string(msg.fields.ipo_flag.get().value()) << '"'
        << ",luld_reference_price_tier=\"" << msg.fields.luld_reference_price_tier.get().value() << '"'
        << ",etp_flag=\"" << msg.fields.etp_flag.get().value() << '"'
        << ",etp_leverage_factor=" << msg.fields.etp_leverage_factor.get().value()

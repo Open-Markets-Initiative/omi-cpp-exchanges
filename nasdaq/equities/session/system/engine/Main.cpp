@@ -5,6 +5,7 @@
 
 #include "engine/Engine.hpp"
 #include "run/SharedRing.hpp"
+#include "SimulatorConfiguration.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -20,11 +21,13 @@ std::atomic<bool> running{true};
 void on_interrupt(int) { running.store(false, std::memory_order_release); }
 }
 
-int main() {
+int main(int argc, char** argv) {
     std::signal(SIGINT, on_interrupt);
     std::signal(SIGTERM, on_interrupt);
 
     try {
+        sim::RuntimeConfig cfg = sim::load_config(argc, argv);
+
         // The links, attached the way their names say.
         sim::IpcRing sequenced("sequencer -> engine", sim::IpcRing::End::Reads);
         sim::IpcRing to_clients_gatewaymakerbasic("engine -> gatewaymakerbasic", sim::IpcRing::End::Writes);
@@ -46,6 +49,7 @@ int main() {
         };
 
         sim::components::Engine<decltype(emit)> engine(emit, trades);
+        engine.dump(cfg.book_dump);   // its own book, also written out where the settings name a file
 
         std::printf("nasdaq-engine: matching, 1 in, 5 out\n");
 

@@ -17,7 +17,7 @@
 
 namespace sim::replay::glimpse::soupbin {
 
-namespace protocol = ::nasdaq::nsmequities::totalview::glimpse::v5_0;
+namespace protocol = ::nasdaq::nsmequities::totalview::glimpse::v5_0_2026;
 
 // The type of a packet code, as the model types the field it is read from: a letter
 // in SoupBin, a number in Nnf.
@@ -31,7 +31,7 @@ template <typename Code, bool = std::is_enum_v<Code>> struct wire_code { using t
 template <typename Code> struct wire_code<Code, true> { using type = std::underlying_type_t<Code>; };
 using code = typename wire_code<std::remove_cvref_t<decltype(std::declval<const protocol::client_packet_header&>().client_packet_type.get().value())>>::type;
 
-// Packet type codes, as the branch rules of Nasdaq.NsmEquities.TotalView.Glimpse.v5.0 select them.
+// Packet type codes, as the branch rules of Nasdaq.NsmEquities.TotalView.Glimpse.v5.0.2026 select them.
 // One flat set, because the same struct is read from both ends: a client reading a
 // code called "received" would be reading the server's word for what it sends.
 struct Code {
@@ -50,7 +50,7 @@ struct Code {
 using status = std::remove_cvref_t<decltype(std::declval<const protocol::login_rejected_packet&>().fields.reject_reason_code.get().value())>;
 
 // The states this connection rests in, as the chart names them.
-enum class State { NotLoggedIn, Authenticating, LoggedIn };
+enum class State { NotLoggedIn, Authenticating, LoggedIn, Ended };
 
 // The time a session's timers wait by, in nanoseconds: a steady clock, since a timer waits
 // an interval and no interval should move when the wall clock does.
@@ -65,8 +65,8 @@ struct SessionClock {
 // Clock:   callable() telling the time in nanoseconds, which its timers wait by
 // Handler: answers what the session cannot decide itself, and receives what it does not interpret:
 // login(username, password, session_id, requested_sequence_number)
-// message(packet)
 // logout()
+// message(packet)
 // silent()
 template <typename Send, typename Handler, typename Clock = SessionClock>
 class Session {
@@ -99,6 +99,8 @@ public:
         now_ns_ = clock_();
         frame(Code::session_end, nullptr, 0);
         beat_due_ = 0;
+        silence_due_ = 0;
+        state_ = State::Ended;
     }
 
     // Bytes read from the other end: each whole packet is handled as it completes.
@@ -168,6 +170,8 @@ private:
                         break;
                 }
                 break;
+            case State::Ended:
+                break;   // nothing the chart answers here
         }
     }
 
@@ -195,6 +199,7 @@ private:
             protocol::login_rejected_packet reply{};
             reply.fields.reject_reason_code.set(*refused);
             send_(reinterpret_cast<const char*>(&reply), sizeof reply);
+            handler_.logout();
             state_ = State::NotLoggedIn;
             return;
         }

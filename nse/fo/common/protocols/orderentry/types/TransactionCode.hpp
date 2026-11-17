@@ -36,13 +36,13 @@ struct transaction_code {
         order_cancellation_request_message = 2070,
         order_confirmation_message = 2073,
         order_modification_confirmation_message = 2074,
-        order_entry_message_2012 = 2012,
-        order_entry_message_2042 = 2042,
-        order_entry_message_2062 = 2062,
-        order_entry_message_2072 = 2072,
-        order_entry_message_2170 = 2170,
-        order_entry_message_2231 = 2231,
-        order_entry_message_9002 = 9002,
+        order_response_message_2012 = 2012,
+        order_response_message_2042 = 2042,
+        order_response_message_2072 = 2072,
+        order_response_message_2170 = 2170,
+        order_response_message_2231 = 2231,
+        order_response_message_9002 = 9002,
+        kill_switch_request_message = 2062,
         price_modification_message_2013 = 2013,
         price_modification_message_20406 = 20406,
         trade_inquiry_message_5445 = 5445,
@@ -134,6 +134,7 @@ struct transaction_code {
         {"Header Record Message", enum_type::header_record_message},
         {"Heartbeat Message", enum_type::heartbeat_message},
         {"Industry Index Report Message", enum_type::industry_index_report_message},
+        {"Kill Switch Request Message", enum_type::kill_switch_request_message},
         {"Market Index Report Message", enum_type::market_index_report_message},
         {"Market Statistics Report Message", enum_type::market_statistics_report_message},
         {"Message Record Message", enum_type::message_record_message},
@@ -141,16 +142,15 @@ struct transaction_code {
         {"Order Cancellation Confirmation Message", enum_type::order_cancellation_confirmation_message},
         {"Order Cancellation Request Message", enum_type::order_cancellation_request_message},
         {"Order Confirmation Message", enum_type::order_confirmation_message},
-        {"Order Entry Message", enum_type::order_entry_message_2012},
-        {"Order Entry Message", enum_type::order_entry_message_2042},
-        {"Order Entry Message", enum_type::order_entry_message_2062},
-        {"Order Entry Message", enum_type::order_entry_message_2072},
-        {"Order Entry Message", enum_type::order_entry_message_2170},
-        {"Order Entry Message", enum_type::order_entry_message_2231},
-        {"Order Entry Message", enum_type::order_entry_message_9002},
         {"Order Entry Request Message", enum_type::order_entry_request_message},
         {"Order Modification Confirmation Message", enum_type::order_modification_confirmation_message},
         {"Order Modification Request Message", enum_type::order_modification_request_message},
+        {"Order Response Message", enum_type::order_response_message_2012},
+        {"Order Response Message", enum_type::order_response_message_2042},
+        {"Order Response Message", enum_type::order_response_message_2072},
+        {"Order Response Message", enum_type::order_response_message_2170},
+        {"Order Response Message", enum_type::order_response_message_2231},
+        {"Order Response Message", enum_type::order_response_message_9002},
         {"Price Modification Message", enum_type::price_modification_message_2013},
         {"Price Modification Message", enum_type::price_modification_message_20406},
         {"Reset User Password Message", enum_type::reset_user_password_message},
@@ -235,13 +235,13 @@ struct transaction_code {
             case enum_type::order_cancellation_request_message: return "Order Cancellation Request Message";
             case enum_type::order_confirmation_message: return "Order Confirmation Message";
             case enum_type::order_modification_confirmation_message: return "Order Modification Confirmation Message";
-            case enum_type::order_entry_message_2012: return "Order Entry Message";
-            case enum_type::order_entry_message_2042: return "Order Entry Message";
-            case enum_type::order_entry_message_2062: return "Order Entry Message";
-            case enum_type::order_entry_message_2072: return "Order Entry Message";
-            case enum_type::order_entry_message_2170: return "Order Entry Message";
-            case enum_type::order_entry_message_2231: return "Order Entry Message";
-            case enum_type::order_entry_message_9002: return "Order Entry Message";
+            case enum_type::order_response_message_2012: return "Order Response Message";
+            case enum_type::order_response_message_2042: return "Order Response Message";
+            case enum_type::order_response_message_2072: return "Order Response Message";
+            case enum_type::order_response_message_2170: return "Order Response Message";
+            case enum_type::order_response_message_2231: return "Order Response Message";
+            case enum_type::order_response_message_9002: return "Order Response Message";
+            case enum_type::kill_switch_request_message: return "Kill Switch Request Message";
             case enum_type::price_modification_message_2013: return "Price Modification Message";
             case enum_type::price_modification_message_20406: return "Price Modification Message";
             case enum_type::trade_inquiry_message_5445: return "Trade Inquiry Message";

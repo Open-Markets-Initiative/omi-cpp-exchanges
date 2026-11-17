@@ -61,7 +61,8 @@ int main(int argc, char** argv) {
                 auto mtbt_order_cancellation = sim::to_mtbt_order_cancellation(c);
                 mtbt.publish_message(reinterpret_cast<const char*>(&mtbt_order_cancellation), sizeof mtbt_order_cancellation);
                 mtbt.flush();
-            });
+            },
+            [](const sim::ipc_ns::order_refused_message&) {});
 
         std::printf("nse-mtbt: publishing to %s:%u\n", cfg.mtbt_feed.host.c_str(), (unsigned)cfg.mtbt_feed.port);
 

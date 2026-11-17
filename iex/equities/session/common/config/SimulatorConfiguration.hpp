@@ -41,12 +41,16 @@ struct RuntimeConfig {
     Endpoint to_takerbasic_link;
     Endpoint from_takerbasic_link;
     // The seconds after a served venue starts that each change of its trading day is asked for.
-    std::array<int, 7> day_at;
+    std::array<int, 10> day_at;
     std::string recording_directory;
+    // The engine's own book: the file it is also written to, none where empty, and when the day asks for it.
+    std::string book_dump;
+    std::string book_every;
     // How the venue keeps time: its mode, the time of day its day starts at, and the zone that is in.
     std::string clock_mode;
     std::string clock_start;
     std::string clock_zone;
+    int clock_tick_milliseconds;   // how often the venue's time is sent its engine
 };
 
 // Parse [--config <file>] (default simulator.ini); missing file / keys keep the generated defaults.
@@ -96,13 +100,19 @@ inline RuntimeConfig load_config(int argc, char** argv) {
         ("link-from_takerbasic.host", po::value<std::string>(&c.from_takerbasic_link.host)->default_value("gatewaytakerbasic"))
         ("link-from_takerbasic.port", po::value<unsigned short>(&c.from_takerbasic_link.port)->default_value(19012))
         ("day.preopen", po::value<int>(&c.day_at[0])->default_value(0))
-        ("day.open", po::value<int>(&c.day_at[1])->default_value(30))
-        ("day.halt", po::value<int>(&c.day_at[2])->default_value(120))
-        ("day.resume", po::value<int>(&c.day_at[3])->default_value(150))
-        ("day.preclose", po::value<int>(&c.day_at[4])->default_value(240))
-        ("day.close", po::value<int>(&c.day_at[5])->default_value(270))
-        ("day.end", po::value<int>(&c.day_at[6])->default_value(300))
+        ("day.openinglockin", po::value<int>(&c.day_at[1])->default_value(27))
+        ("day.openinglockout", po::value<int>(&c.day_at[2])->default_value(29))
+        ("day.open", po::value<int>(&c.day_at[3])->default_value(30))
+        ("day.halt", po::value<int>(&c.day_at[4])->default_value(120))
+        ("day.resume", po::value<int>(&c.day_at[5])->default_value(150))
+        ("day.preclose", po::value<int>(&c.day_at[6])->default_value(240))
+        ("day.closinglockout", po::value<int>(&c.day_at[7])->default_value(269))
+        ("day.close", po::value<int>(&c.day_at[8])->default_value(270))
+        ("day.end", po::value<int>(&c.day_at[9])->default_value(300))
+        ("clock.tick-milliseconds", po::value<int>(&c.clock_tick_milliseconds)->default_value(1000))
         ("recording.directory", po::value<std::string>(&c.recording_directory)->default_value("recordings"))
+        ("book.dump", po::value<std::string>(&c.book_dump)->default_value(""))
+        ("book.every", po::value<std::string>(&c.book_every)->default_value("none"))
         ("clock.mode", po::value<std::string>(&c.clock_mode)->default_value("Elapsed"))
         ("clock.start", po::value<std::string>(&c.clock_start)->default_value("00:00:00"))
         ("clock.zone", po::value<std::string>(&c.clock_zone)->default_value("UTC"));

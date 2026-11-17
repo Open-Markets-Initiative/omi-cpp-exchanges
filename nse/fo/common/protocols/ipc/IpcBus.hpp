@@ -5,6 +5,8 @@
 #include <cstring>
 #include <chrono>
 #include "../../run/Clock.hpp"
+#include <cstdio>
+#include <optional>
 #include <string_view>
 #include <type_traits>
 #include "structs/NewOrderMessage.hpp"
@@ -12,20 +14,33 @@
 #include "structs/TradeMessage.hpp"
 #include "structs/OrderRestedMessage.hpp"
 #include "structs/OrderCanceledMessage.hpp"
+#include "structs/OrderRefusedMessage.hpp"
+#include "structs/PhaseAnnouncedMessage.hpp"
+#include "structs/PhaseRequestMessage.hpp"
+#include "structs/CrossCompletedMessage.hpp"
+#include "structs/ImbalanceRequestMessage.hpp"
+#include "structs/ImbalanceIndicatedMessage.hpp"
 #include "MatchingEngine.hpp"
+#include "TradingPhases.hpp"
 
 namespace sim {
 
-namespace ipc_ns = nse::nsefo::matchingengine::ipc::v1_0;
+namespace ipc_ns = nse::nsefo::matchingengine::ipc::v2026;
 
 // Ipc message type codes (ascii) — mirror the Ipc specification.
 struct IpcType {
-    static constexpr char Heartbeat     = 'H';
-    static constexpr char NewOrder      = 'N';
-    static constexpr char CancelOrder   = 'C';
-    static constexpr char OrderRested   = 'R';
-    static constexpr char OrderCanceled = 'X';
-    static constexpr char Trade         = 'T';
+    static constexpr char Heartbeat          = 'H';
+    static constexpr char NewOrder           = 'N';
+    static constexpr char CancelOrder        = 'C';
+    static constexpr char OrderRested        = 'R';
+    static constexpr char OrderCanceled      = 'X';
+    static constexpr char Trade              = 'T';
+    static constexpr char OrderRefused       = 'J';
+    static constexpr char PhaseAnnounced     = 'S';
+    static constexpr char PhaseRequest       = 'P';
+    static constexpr char CrossCompleted     = 'U';
+    static constexpr char ImbalanceRequest   = 'Q';
+    static constexpr char ImbalanceIndicated = 'I';
 };
 
 // The instrument the engine trades, by the number the venue's protocols identify it by —
@@ -113,6 +128,15 @@ public:
                 engine_.on_cancel(m->order_id.get().value());
                 return true;
             }
+            case IpcType::ImbalanceRequest: {
+                if constexpr (requires { engine_.indicate(); }) {
+                    if (bytes.size() < 3 + sizeof(ipc_ns::imbalance_request_message)) return false;
+                    engine_.indicate();
+                    return true;
+                } else {
+                    return false;
+                }
+            }
             default:
                 return false;
         }
@@ -130,7 +154,7 @@ struct IgnoreEvent {
 
 // Event-side endpoint: decodes engine events off the bus and hands them to the
 // consumers (feed publishers / gateway exec reports) as matching types.
-template <typename OnTrade, typename OnRest, typename OnCanceled = IgnoreEvent>
+template <typename OnTrade, typename OnRest, typename OnCanceled = IgnoreEvent, typename OnRefused = IgnoreEvent>
 class IpcEventServer {
 public:
     IpcEventServer(OnTrade on_trade, OnRest on_rest)
@@ -139,6 +163,8 @@ public:
     IpcEventServer(OnTrade on_trade, OnRest on_rest, OnCanceled on_canceled)
         : on_trade_(on_trade), on_rest_(on_rest), on_canceled_(on_canceled) {}
 
+    IpcEventServer(OnTrade on_trade, OnRest on_rest, OnCanceled on_canceled, OnRefused on_refused)
+        : on_trade_(on_trade), on_rest_(on_rest), on_canceled_(on_canceled), on_refused_(on_refused) {}
     bool on_message(std::string_view bytes) {
         if (bytes.size() < 3) return false;
         const std::byte* data = reinterpret_cast<const std::byte*>(bytes.data()) + 3;
@@ -159,6 +185,11 @@ public:
                 on_canceled_(*ipc_ns::order_canceled_message::parse(const_cast<std::byte*>(data)));
                 return true;
             }
+            case IpcType::OrderRefused: {
+                if (bytes.size() < 3 + sizeof(ipc_ns::order_refused_message)) return false;
+                on_refused_(*ipc_ns::order_refused_message::parse(const_cast<std::byte*>(data)));
+                return true;
+            }
             default:
                 return false;
         }
@@ -168,6 +199,7 @@ private:
     OnTrade    on_trade_;
     OnRest     on_rest_;
     OnCanceled on_canceled_;
+    OnRefused   on_refused_;
 };
 
 // Event-side encoders: matching-engine events as Ipc messages (consumed by feed
@@ -207,4 +239,13 @@ inline void emit_canceled(Emit& emit, const matching::Order& order) {
     m.price.set(order.price);
     m.quantity.set(static_cast<std::uint32_t>(order.qty));
     detail_ipc::emit_framed(emit, IpcType::OrderCanceled, m);
+}
+// The trading day's events: an order the phase it arrived in does not accept, and what the
+// venue announces as its phases change, each as the internal messaging model codes it.
+template <typename Emit>
+inline void emit_refused(Emit& emit, const matching::Order& order) {
+    ipc_ns::order_refused_message m{};
+    m.timestamp.set(send_time_nanos());
+    m.order_id.set(order.id);
+    detail_ipc::emit_framed(emit, IpcType::OrderRefused, m);
 }}

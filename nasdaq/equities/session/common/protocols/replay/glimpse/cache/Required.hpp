@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <type_traits>
 
-namespace nasdaq::nsmequities::totalview::glimpse::v5_0 {
+namespace nasdaq::nsmequities::totalview::glimpse::v5_0_2026 {
 
 /// Lightweight wrapper for required (non-optional) values.
 /// Provides std::optional-compatible interface: has_value(), value(), operator bool.

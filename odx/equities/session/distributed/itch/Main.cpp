@@ -163,6 +163,7 @@ int main(int argc, char** argv) {
             worked = to_itch.read([&](std::string_view message) { itch_events.on_message(message); ++handled; }) || worked;
             to_glimpse.deliver();
             to_itchtcp.deliver();
+            itch.idle();
             if (!worked) std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
 

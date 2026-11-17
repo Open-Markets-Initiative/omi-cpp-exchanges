@@ -164,7 +164,7 @@ inline void to_fix_filled_resting(protocol::Writer& out, const ipc_ns::trade_mes
     out.put(Tag::OrderQty, static_cast<std::int64_t>(order.quantity));
     out.put(Tag::OrdStatus, std::string_view{"2"});
     out.put(Tag::OrdType, std::string_view{order.entered_ord_type});
-    out.put(Tag::Price, std::string_view{order.entered_price});
+    if (!order.entered_price.empty()) { out.put(Tag::Price, std::string_view{order.entered_price}); }
     out.put(Tag::Rule80A, std::string_view{"P"});
     out.put(Tag::Side, std::string_view{order.entered_side});
     out.put(Tag::Symbol, std::string_view{order.entered_symbol});
@@ -191,7 +191,7 @@ inline void to_fix_partially_filled_resting(protocol::Writer& out, const ipc_ns:
     out.put(Tag::OrderQty, static_cast<std::int64_t>(order.quantity));
     out.put(Tag::OrdStatus, std::string_view{"1"});
     out.put(Tag::OrdType, std::string_view{order.entered_ord_type});
-    out.put(Tag::Price, std::string_view{order.entered_price});
+    if (!order.entered_price.empty()) { out.put(Tag::Price, std::string_view{order.entered_price}); }
     out.put(Tag::Rule80A, std::string_view{"P"});
     out.put(Tag::Side, std::string_view{order.entered_side});
     out.put(Tag::Symbol, std::string_view{order.entered_symbol});
@@ -218,7 +218,7 @@ inline void to_fix_filled_aggressor(protocol::Writer& out, const ipc_ns::trade_m
     out.put(Tag::OrderQty, static_cast<std::int64_t>(order.quantity));
     out.put(Tag::OrdStatus, std::string_view{"2"});
     out.put(Tag::OrdType, std::string_view{order.entered_ord_type});
-    out.put(Tag::Price, std::string_view{order.entered_price});
+    if (!order.entered_price.empty()) { out.put(Tag::Price, std::string_view{order.entered_price}); }
     out.put(Tag::Rule80A, std::string_view{"P"});
     out.put(Tag::Side, std::string_view{order.entered_side});
     out.put(Tag::Symbol, std::string_view{order.entered_symbol});
@@ -245,7 +245,7 @@ inline void to_fix_partially_filled_aggressor(protocol::Writer& out, const ipc_n
     out.put(Tag::OrderQty, static_cast<std::int64_t>(order.quantity));
     out.put(Tag::OrdStatus, std::string_view{"1"});
     out.put(Tag::OrdType, std::string_view{order.entered_ord_type});
-    out.put(Tag::Price, std::string_view{order.entered_price});
+    if (!order.entered_price.empty()) { out.put(Tag::Price, std::string_view{order.entered_price}); }
     out.put(Tag::Rule80A, std::string_view{"P"});
     out.put(Tag::Side, std::string_view{order.entered_side});
     out.put(Tag::Symbol, std::string_view{order.entered_symbol});
@@ -271,7 +271,7 @@ inline void to_fix_canceled(protocol::Writer& out, const ipc_ns::order_canceled_
     out.put(Tag::OrdStatus, std::string_view{"4"});
     out.put(Tag::OrdType, std::string_view{order.entered_ord_type});
     out.put(Tag::OrigClOrdID, std::string_view{order.reference});
-    out.put(Tag::Price, std::string_view{order.entered_price});
+    if (!order.entered_price.empty()) { out.put(Tag::Price, std::string_view{order.entered_price}); }
     out.put(Tag::Rule80A, std::string_view{"P"});
     out.put(Tag::Side, std::string_view{order.entered_side});
     out.put(Tag::Symbol, std::string_view{order.entered_symbol});
@@ -295,7 +295,7 @@ inline void to_fix_expired(protocol::Writer& out, const ipc_ns::order_eliminated
     out.put(Tag::OrderQty, static_cast<std::int64_t>(order.quantity));
     out.put(Tag::OrdStatus, std::string_view{"4"});
     out.put(Tag::OrdType, std::string_view{order.entered_ord_type});
-    out.put(Tag::Price, std::string_view{order.entered_price});
+    if (!order.entered_price.empty()) { out.put(Tag::Price, std::string_view{order.entered_price}); }
     out.put(Tag::Rule80A, std::string_view{"P"});
     out.put(Tag::Side, std::string_view{order.entered_side});
     out.put(Tag::Symbol, std::string_view{order.entered_symbol});

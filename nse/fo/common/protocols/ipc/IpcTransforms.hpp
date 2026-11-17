@@ -13,7 +13,7 @@
 
 namespace sim {
 
-namespace ipc_ns = nse::nsefo::matchingengine::ipc::v1_0;
+namespace ipc_ns = nse::nsefo::matchingengine::ipc::v2026;
 
 // The value a field is set with, for a mapped value that must be cast to it.
 template <typename Field>

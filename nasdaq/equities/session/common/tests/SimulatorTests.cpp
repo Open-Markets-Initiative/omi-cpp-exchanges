@@ -74,7 +74,9 @@ BOOST_AUTO_TEST_CASE(gateway_admits_fills_and_cancels_an_order) {
         [](const sim::ipc_ns::cross_completed_message&) {},
         [](const sim::ipc_ns::imbalance_indicated_message&) {},
         [](const sim::ipc_ns::order_replaced_message&) {},
-        [](const sim::ipc_ns::order_reduced_message&) {});
+        [](const sim::ipc_ns::order_reduced_message&) {},
+        [](const sim::ipc_ns::cancel_pending_message&) {},
+        [](const sim::ipc_ns::reduce_refused_message&) {});
     auto event_emit = [&](const char* b, std::size_t n) { events.on_message(std::string_view(b, n)); };
     matching::MatchingEngine engine(
         [&](const matching::Trade& t)  { sim::emit_trade(event_emit, t); },
@@ -116,7 +118,7 @@ BOOST_AUTO_TEST_CASE(gateway_admits_fills_and_cancels_an_order) {
     gateway.on_bytes(client, whole(order).data(), whole(order).size());
     BOOST_REQUIRE_EQUAL(sent.size(), 2u);
     BOOST_CHECK_EQUAL(gateway.open_orders(), 1u);
-    const auto* accepted = entry::order_accepted_message::parse(answer(1));
+    const auto* accepted = entry::rejected_order_message::parse(answer(1));
     BOOST_CHECK_EQUAL(accepted->fields.user_ref_num.get().value(), 7u);
 
     // The engine fills part of it against an order of its own
@@ -132,7 +134,7 @@ BOOST_AUTO_TEST_CASE(gateway_admits_fills_and_cancels_an_order) {
     request.fields.quantity.set(0);
     gateway.on_bytes(client, whole(request).data(), whole(request).size());
     BOOST_REQUIRE_EQUAL(sent.size(), 4u);
-    const auto* gone = entry::canceled_message::parse(answer(3));
+    const auto* gone = entry::aiq_canceled_message::parse(answer(3));
     BOOST_CHECK_EQUAL(gone->fields.user_ref_num.get().value(), 7u);
     BOOST_CHECK_EQUAL(gateway.open_orders(), 0u);
 }
@@ -163,7 +165,9 @@ BOOST_AUTO_TEST_CASE(VerifyEachTradersGatewayAnswersOnlyItsOwnOrders) {
         [](const sim::ipc_ns::cross_completed_message&) {},
         [](const sim::ipc_ns::imbalance_indicated_message&) {},
         [](const sim::ipc_ns::order_replaced_message&) {},
-        [](const sim::ipc_ns::order_reduced_message&) {});
+        [](const sim::ipc_ns::order_reduced_message&) {},
+        [](const sim::ipc_ns::cancel_pending_message&) {},
+        [](const sim::ipc_ns::reduce_refused_message&) {});
 
     // TakerBasic's gateway, gateway 2 of 4: it numbers 2, 6, 10 ...
     std::vector<std::string> takerbasic_sent;
@@ -184,7 +188,9 @@ BOOST_AUTO_TEST_CASE(VerifyEachTradersGatewayAnswersOnlyItsOwnOrders) {
         [](const sim::ipc_ns::cross_completed_message&) {},
         [](const sim::ipc_ns::imbalance_indicated_message&) {},
         [](const sim::ipc_ns::order_replaced_message&) {},
-        [](const sim::ipc_ns::order_reduced_message&) {});
+        [](const sim::ipc_ns::order_reduced_message&) {},
+        [](const sim::ipc_ns::cancel_pending_message&) {},
+        [](const sim::ipc_ns::reduce_refused_message&) {});
 
     // The engine's events, told to every gateway.
     auto event_emit = [&](const char* b, std::size_t n) {
@@ -299,7 +305,9 @@ BOOST_AUTO_TEST_CASE(VerifyRefusedOrderIsCanceledClosed) {
         [](const sim::ipc_ns::cross_completed_message&) {},
         [](const sim::ipc_ns::imbalance_indicated_message&) {},
         [](const sim::ipc_ns::order_replaced_message&) {},
-        [](const sim::ipc_ns::order_reduced_message&) {});
+        [](const sim::ipc_ns::order_reduced_message&) {},
+        [](const sim::ipc_ns::cancel_pending_message&) {},
+        [](const sim::ipc_ns::reduce_refused_message&) {});
     auto event_emit = [&](const char* b, std::size_t n) { events.on_message(std::string_view(b, n)); };
     std::atomic<std::uint64_t> trades{0};
     sim::components::Engine<decltype(event_emit)> engine(event_emit, trades);
@@ -308,10 +316,16 @@ BOOST_AUTO_TEST_CASE(VerifyRefusedOrderIsCanceledClosed) {
 
     // Every change the day is declared with, in order, each one made.
     BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::PreOpen));
+    BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::OpeningLockIn));
+    BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::OpeningLockOut));
+    BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::OpeningLate));
     BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::Open));
     BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::Halt));
+    BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::Quote));
     BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::Resume));
     BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::PreClose));
+    BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::ClosingLockOut));
+    BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::ClosingFreeze));
     BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::Close));
     BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::End));
 
@@ -375,7 +389,9 @@ BOOST_AUTO_TEST_CASE(VerifyCrossFillIsFlaggedWithItsCross) {
         [](const sim::ipc_ns::cross_completed_message&) {},
         [](const sim::ipc_ns::imbalance_indicated_message&) {},
         [](const sim::ipc_ns::order_replaced_message&) {},
-        [](const sim::ipc_ns::order_reduced_message&) {});
+        [](const sim::ipc_ns::order_reduced_message&) {},
+        [](const sim::ipc_ns::cancel_pending_message&) {},
+        [](const sim::ipc_ns::reduce_refused_message&) {});
     auto event_emit = [&](const char* b, std::size_t n) { events.on_message(std::string_view(b, n)); };
     std::atomic<std::uint64_t> trades{0};
     sim::components::Engine<decltype(event_emit)> engine(event_emit, trades);
@@ -384,6 +400,9 @@ BOOST_AUTO_TEST_CASE(VerifyCrossFillIsFlaggedWithItsCross) {
 
     // Every change the day is declared with up to the one that ends the Opening cross, each one made.
     BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::PreOpen));
+    BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::OpeningLockIn));
+    BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::OpeningLockOut));
+    BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::OpeningLate));
 
     const auto client = gateway.connect([&](const char* b, std::size_t n) { sent.emplace_back(b, n); });
     const auto whole = [](const auto& packet) {
@@ -440,7 +459,9 @@ BOOST_AUTO_TEST_CASE(VerifyCollectingAuctionIndicatesItsImbalance) {
         [](const sim::ipc_ns::cross_completed_message&) {},
         [&](const sim::ipc_ns::imbalance_indicated_message& i) { indicated.push_back(i); },
         [](const sim::ipc_ns::order_replaced_message&) {},
-        [](const sim::ipc_ns::order_reduced_message&) {});
+        [](const sim::ipc_ns::order_reduced_message&) {},
+        [](const sim::ipc_ns::cancel_pending_message&) {},
+        [](const sim::ipc_ns::reduce_refused_message&) {});
     auto event_emit = [&](const char* b, std::size_t n) { events.on_message(std::string_view(b, n)); };
     std::atomic<std::uint64_t> trades{0};
     sim::components::Engine<decltype(event_emit)> engine(event_emit, trades);

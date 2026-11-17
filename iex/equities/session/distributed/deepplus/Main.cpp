@@ -57,6 +57,8 @@ int main(int argc, char** argv) {
                 deepplus.flush();
             },
             [](const sim::ipc_ns::order_canceled_message&) {},
+            [](const sim::ipc_ns::order_accepted_message&) {},
+            [](const sim::ipc_ns::order_eliminated_message&) {},
             [](const sim::ipc_ns::order_refused_message&) {},
             [&](const sim::ipc_ns::phase_announced_message& s) {
                 // phase_announced_message -> the feeds its transforms declare (IexEquities.Ipc.Transforms.xml).
@@ -82,7 +84,9 @@ int main(int argc, char** argv) {
                 }
                 deepplus.flush();
             },
-            [](const sim::ipc_ns::imbalance_indicated_message&) {});
+            [](const sim::ipc_ns::imbalance_indicated_message&) {},
+            [](const sim::ipc_ns::order_replaced_message&) {},
+            [](const sim::ipc_ns::cancel_refused_message&) {});
 
         std::printf("iex-deepplus: publishing to %s:%u\n", cfg.deepplus_feed.host.c_str(), (unsigned)cfg.deepplus_feed.port);
 
@@ -90,7 +94,7 @@ int main(int argc, char** argv) {
         // Nothing to do means nothing to do: back off rather than spin a core.
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
-            worked = to_deepplus.read([&](std::string_view message) { deepplus_events.on_message(message); ++handled; }) || worked;
+            worked = to_deepplus.read([&](std::string_view message) { if (const auto asked = sim::book_end_of(message)) deepplus_rec.mark(*asked); deepplus_events.on_message(message); ++handled; }) || worked;
             if (!worked) std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
 

@@ -23,18 +23,27 @@
 #include "protocols/marketdata/deepplus/messages/SecurityDirectoryMessage.hpp"
 #include "protocols/marketdata/deepplus/messages/TradingStatusMessage.hpp"
 #include "protocols/marketdata/deepplus/messages/RetailLiquidityIndicatorMessage.hpp"
+#include "protocols/ipc/structs/BookRequestMessage.hpp"
+#include "protocols/ipc/structs/BookOrderMessage.hpp"
+#include "protocols/ipc/structs/BookEndMessage.hpp"
 #include "protocols/ipc/structs/HeartbeatMessage.hpp"
 #include "protocols/ipc/structs/NewOrderMessage.hpp"
 #include "protocols/ipc/structs/CancelOrderMessage.hpp"
 #include "protocols/ipc/structs/OrderRestedMessage.hpp"
 #include "protocols/ipc/structs/OrderCanceledMessage.hpp"
 #include "protocols/ipc/structs/TradeMessage.hpp"
+#include "protocols/ipc/structs/OrderAcceptedMessage.hpp"
 #include "protocols/ipc/structs/OrderRefusedMessage.hpp"
+#include "protocols/ipc/structs/CancelRefusedMessage.hpp"
+#include "protocols/ipc/structs/OrderEliminatedMessage.hpp"
 #include "protocols/ipc/structs/PhaseRequestMessage.hpp"
 #include "protocols/ipc/structs/PhaseAnnouncedMessage.hpp"
 #include "protocols/ipc/structs/CrossCompletedMessage.hpp"
 #include "protocols/ipc/structs/ImbalanceRequestMessage.hpp"
 #include "protocols/ipc/structs/ImbalanceIndicatedMessage.hpp"
+#include "protocols/ipc/structs/ReplaceOrderMessage.hpp"
+#include "protocols/ipc/structs/OrderReplacedMessage.hpp"
+#include "protocols/ipc/structs/ClockMessage.hpp"
 #include "protocols/ipc/IpcBus.hpp"
 
 using namespace iexiexequities::order_entry;
@@ -334,7 +343,28 @@ BOOST_AUTO_TEST_CASE(deepplus_retail_liquidity_indicator_message_encodes_type) {
 
 
 // --- Exchange-internal Ipc messages ---
-namespace ipc_ns = iex::iexequities::matchingengine::ipc::v1_0;
+namespace ipc_ns = iex::iexequities::matchingengine::ipc::v2026;
+
+BOOST_AUTO_TEST_CASE(ipc_book_request_message_compiles_and_parses) {
+    ipc_ns::book_request_message m{};
+    auto* buffer = reinterpret_cast<std::byte*>(&m);
+    BOOST_CHECK(ipc_ns::book_request_message::parse(buffer) == &m);
+    BOOST_CHECK(sizeof m > 0u);
+}
+
+BOOST_AUTO_TEST_CASE(ipc_book_order_message_compiles_and_parses) {
+    ipc_ns::book_order_message m{};
+    auto* buffer = reinterpret_cast<std::byte*>(&m);
+    BOOST_CHECK(ipc_ns::book_order_message::parse(buffer) == &m);
+    BOOST_CHECK(sizeof m > 0u);
+}
+
+BOOST_AUTO_TEST_CASE(ipc_book_end_message_compiles_and_parses) {
+    ipc_ns::book_end_message m{};
+    auto* buffer = reinterpret_cast<std::byte*>(&m);
+    BOOST_CHECK(ipc_ns::book_end_message::parse(buffer) == &m);
+    BOOST_CHECK(sizeof m > 0u);
+}
 
 BOOST_AUTO_TEST_CASE(ipc_heartbeat_message_compiles_and_parses) {
     ipc_ns::heartbeat_message m{};
@@ -378,10 +408,31 @@ BOOST_AUTO_TEST_CASE(ipc_trade_message_compiles_and_parses) {
     BOOST_CHECK(sizeof m > 0u);
 }
 
+BOOST_AUTO_TEST_CASE(ipc_order_accepted_message_compiles_and_parses) {
+    ipc_ns::order_accepted_message m{};
+    auto* buffer = reinterpret_cast<std::byte*>(&m);
+    BOOST_CHECK(ipc_ns::order_accepted_message::parse(buffer) == &m);
+    BOOST_CHECK(sizeof m > 0u);
+}
+
 BOOST_AUTO_TEST_CASE(ipc_order_refused_message_compiles_and_parses) {
     ipc_ns::order_refused_message m{};
     auto* buffer = reinterpret_cast<std::byte*>(&m);
     BOOST_CHECK(ipc_ns::order_refused_message::parse(buffer) == &m);
+    BOOST_CHECK(sizeof m > 0u);
+}
+
+BOOST_AUTO_TEST_CASE(ipc_cancel_refused_message_compiles_and_parses) {
+    ipc_ns::cancel_refused_message m{};
+    auto* buffer = reinterpret_cast<std::byte*>(&m);
+    BOOST_CHECK(ipc_ns::cancel_refused_message::parse(buffer) == &m);
+    BOOST_CHECK(sizeof m > 0u);
+}
+
+BOOST_AUTO_TEST_CASE(ipc_order_eliminated_message_compiles_and_parses) {
+    ipc_ns::order_eliminated_message m{};
+    auto* buffer = reinterpret_cast<std::byte*>(&m);
+    BOOST_CHECK(ipc_ns::order_eliminated_message::parse(buffer) == &m);
     BOOST_CHECK(sizeof m > 0u);
 }
 
@@ -417,6 +468,27 @@ BOOST_AUTO_TEST_CASE(ipc_imbalance_indicated_message_compiles_and_parses) {
     ipc_ns::imbalance_indicated_message m{};
     auto* buffer = reinterpret_cast<std::byte*>(&m);
     BOOST_CHECK(ipc_ns::imbalance_indicated_message::parse(buffer) == &m);
+    BOOST_CHECK(sizeof m > 0u);
+}
+
+BOOST_AUTO_TEST_CASE(ipc_replace_order_message_compiles_and_parses) {
+    ipc_ns::replace_order_message m{};
+    auto* buffer = reinterpret_cast<std::byte*>(&m);
+    BOOST_CHECK(ipc_ns::replace_order_message::parse(buffer) == &m);
+    BOOST_CHECK(sizeof m > 0u);
+}
+
+BOOST_AUTO_TEST_CASE(ipc_order_replaced_message_compiles_and_parses) {
+    ipc_ns::order_replaced_message m{};
+    auto* buffer = reinterpret_cast<std::byte*>(&m);
+    BOOST_CHECK(ipc_ns::order_replaced_message::parse(buffer) == &m);
+    BOOST_CHECK(sizeof m > 0u);
+}
+
+BOOST_AUTO_TEST_CASE(ipc_clock_message_compiles_and_parses) {
+    ipc_ns::clock_message m{};
+    auto* buffer = reinterpret_cast<std::byte*>(&m);
+    BOOST_CHECK(ipc_ns::clock_message::parse(buffer) == &m);
     BOOST_CHECK(sizeof m > 0u);
 }
 

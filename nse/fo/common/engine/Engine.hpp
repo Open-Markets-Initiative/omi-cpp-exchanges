@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MatchingEngine.hpp"
+#include "TradingPhases.hpp"
 #include "protocols/ipc/IpcBus.hpp"
 
 #include <atomic>
@@ -39,12 +40,22 @@ class Engine {
 
     using Book = matching::MatchingEngine<OnTrade, OnRested, OnCanceled>;
 
+    // The day's callback: an order the phase it arrived in does not accept, framed onto the Ipc
+    // for the gateway.
+    struct OnRefused {
+        Engine* self;
+        void operator()(const matching::Order& order) const { sim::emit_refused(self->emit_, order); }
+    };
+
+    using Day = matching::TradingPhases<Book, OnRefused>;
+
 public:
     Engine(Emit emit, std::atomic<std::uint64_t>& trades)
         : emit_(std::move(emit)),
           trades_(trades),
           book_(OnTrade{this}, OnRested{this}, OnCanceled{this}),
-          server_(book_) {}
+          day_(book_, OnRefused{this}),
+          server_(day_) {}
 
     // The callbacks hold the component itself, so it stays where it was built.
     Engine(const Engine&)            = delete;
@@ -62,6 +73,9 @@ public:
     // The book itself, for a test that puts an order in without going through a link.
     Book& book() { return book_; }
 
+    // The trading day, for a test that walks it by hand.
+    Day& day() { return day_; }
+
 private:
     void matched(const matching::Trade& trade) {
         trades_.fetch_add(1, std::memory_order_relaxed);
@@ -74,7 +88,8 @@ private:
     Emit                        emit_;
     std::atomic<std::uint64_t>& trades_;
     Book                        book_;
-    sim::IpcEngineServer<Book>  server_;
+    Day                         day_;
+    sim::IpcEngineServer<Day>  server_;
 };
 
 }

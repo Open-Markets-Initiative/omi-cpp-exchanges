@@ -3,6 +3,7 @@
 #include <cstddef>
 #include "../types/Timestamp.hpp"
 #include "../types/OrderId.hpp"
+#include "../types/Symbol.hpp"
 #include "../types/RefusalReason.hpp"
 
 namespace nasdaq::nsmequities::matchingengine::ipc::v2026 {
@@ -15,6 +16,7 @@ struct order_refused_message {
 
     ipc_matchingengine::timestamp timestamp;
     ipc_matchingengine::order_id order_id;
+    ipc_matchingengine::symbol symbol;
     ipc_matchingengine::refusal_reason refusal_reason;
 
     // parse method
@@ -31,8 +33,9 @@ struct order_refused_message {
 // layout verification
 static_assert(offsetof(order_refused_message, timestamp) == 0, "unexpected offset of order_refused_message::timestamp");
 static_assert(offsetof(order_refused_message, order_id) == 8, "unexpected offset of order_refused_message::order_id");
-static_assert(offsetof(order_refused_message, refusal_reason) == 16, "unexpected offset of order_refused_message::refusal_reason");
-static_assert(sizeof(order_refused_message) == 17, "unexpected sizeof order_refused_message");
+static_assert(offsetof(order_refused_message, symbol) == 16, "unexpected offset of order_refused_message::symbol");
+static_assert(offsetof(order_refused_message, refusal_reason) == 24, "unexpected offset of order_refused_message::refusal_reason");
+static_assert(sizeof(order_refused_message) == 25, "unexpected sizeof order_refused_message");
 
 #pragma pack(pop)
 }

@@ -160,3 +160,7 @@ target_link_libraries(nasdaq_distributed_replay PRIVATE Boost::program_options T
 add_executable(nasdaq_distributed_requests distributed/requests/Main.cpp)
 target_include_directories(nasdaq_distributed_requests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
 target_link_libraries(nasdaq_distributed_requests PRIVATE Boost::program_options Threads::Threads)
+
+# The book check: the book the venue's book model states, built from a recording of its feed, held against the engine's own.
+add_executable(nasdaq_book common/book/Check.cpp)
+target_include_directories(nasdaq_book PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})

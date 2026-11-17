@@ -70,6 +70,12 @@ int main(int argc, char** argv) {
                     sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_add_order), sizeof totalview_add_order);
                     sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_add_order), sizeof totalview_add_order);
                 }
+                if (static_cast<char>(o.display.get().value()) == 'A') {
+                    auto totalview_add_order_attributed = sim::to_totalview_add_order_attributed(o);
+                    totalview.publish_message(reinterpret_cast<const char*>(&totalview_add_order_attributed), sizeof totalview_add_order_attributed);
+                    sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_add_order_attributed), sizeof totalview_add_order_attributed);
+                    sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_add_order_attributed), sizeof totalview_add_order_attributed);
+                }
                 totalview.flush();
             },
             [&](const sim::ipc_ns::order_canceled_message& c) {
@@ -96,11 +102,17 @@ int main(int argc, char** argv) {
             [](const sim::ipc_ns::order_refused_message&) {},
             [&](const sim::ipc_ns::order_replaced_message& w) {
                 // order_replaced_message -> the feeds its transforms declare (NsmEquities.Ipc.Transforms.xml).
-                if (static_cast<char>(w.display.get().value()) == 'Y') {
+                if (static_cast<char>(w.display.get().value()) == 'Y' && w.quantity.get().value() != 0) {
                     auto totalview_order_replace = sim::to_totalview_order_replace(w);
                     totalview.publish_message(reinterpret_cast<const char*>(&totalview_order_replace), sizeof totalview_order_replace);
                     sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_replace), sizeof totalview_order_replace);
                     sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_replace), sizeof totalview_order_replace);
+                }
+                if (w.quantity.get().value() == 0 && static_cast<char>(w.display.get().value()) != 'N') {
+                    auto totalview_order_replaced_away = sim::to_totalview_order_replaced_away(w);
+                    totalview.publish_message(reinterpret_cast<const char*>(&totalview_order_replaced_away), sizeof totalview_order_replaced_away);
+                    sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_replaced_away), sizeof totalview_order_replaced_away);
+                    sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_replaced_away), sizeof totalview_order_replaced_away);
                 }
                 totalview.flush();
             },
@@ -113,7 +125,9 @@ int main(int argc, char** argv) {
                     sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_cancel), sizeof totalview_order_cancel);
                 }
                 totalview.flush();
-            });
+            },
+            [](const sim::ipc_ns::cancel_pending_message&) {},
+            [](const sim::ipc_ns::reduce_refused_message&) {});
 
         std::printf("nasdaq-totalview: publishing to %s:%u\n", cfg.totalview_feed.host.c_str(), (unsigned)cfg.totalview_feed.port);
 
@@ -121,9 +135,10 @@ int main(int argc, char** argv) {
         // Nothing to do means nothing to do: back off rather than spin a core.
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
-            worked = to_totalview.read([&](std::string_view message) { totalview_events.on_message(message); ++handled; }) || worked;
+            worked = to_totalview.read([&](std::string_view message) { if (const auto asked = sim::book_end_of(message)) totalview_rec.mark(*asked); totalview_events.on_message(message); ++handled; }) || worked;
             to_glimpse.deliver();
             to_totalviewtcp.deliver();
+            totalview.idle();
             if (!worked) std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
 

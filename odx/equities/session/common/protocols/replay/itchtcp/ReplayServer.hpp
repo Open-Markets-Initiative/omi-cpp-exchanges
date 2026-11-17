@@ -106,7 +106,7 @@ private:
             return std::nullopt;
         }
         void message(std::string_view) {}   // a replay client sends nothing but its login
-        void logout() { live = false; serving = false; }
+        void logout() { lost = true; live = false; serving = false; }   // logged out, or its login refused
         void silent() { lost = true; live = false; serving = false; }   // heard nothing for longer than the session allows
         bool lost = false;
     };

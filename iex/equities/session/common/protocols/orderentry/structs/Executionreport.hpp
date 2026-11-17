@@ -39,10 +39,10 @@
 #include "../structs/Fill.hpp"
 #include "../structs/Canceled.hpp"
 #include "../structs/Replaced.hpp"
-#include "../types/Pendingcancel.hpp"
+#include "../structs/Pendingcancel.hpp"
 #include "../structs/Rejected.hpp"
 #include "../structs/Restated.hpp"
-#include "../types/Pendingreplace.hpp"
+#include "../structs/Pendingreplace.hpp"
 
 namespace iex::iexequities::orderentry::fix::v2_91 {
 

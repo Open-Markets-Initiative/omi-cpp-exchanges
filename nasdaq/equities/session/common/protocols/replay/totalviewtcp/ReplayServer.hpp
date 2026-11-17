@@ -45,6 +45,10 @@ public:
     // One message the feed published, in publish order.
     void on_message(const char* message, std::size_t length) {
         ++seen_;
+        // Each message begins with the feed's own 2-byte length, which the session's packet says instead.
+        if (length <= 2) return;
+        message += 2;
+        length -= 2;
         stream_.emplace_back(message, length);
         // A client already served follows the feed from here.
         for (auto& [number, client] : clients_) if (client->live) client->session.sequenced(message, length);
@@ -102,7 +106,7 @@ private:
             return std::nullopt;
         }
         void message(std::string_view) {}   // a replay client sends nothing but its login
-        void logout() { live = false; serving = false; }
+        void logout() { lost = true; live = false; serving = false; }   // logged out, or its login refused
         void silent() { lost = true; live = false; serving = false; }   // heard nothing for longer than the session allows
         bool lost = false;
     };

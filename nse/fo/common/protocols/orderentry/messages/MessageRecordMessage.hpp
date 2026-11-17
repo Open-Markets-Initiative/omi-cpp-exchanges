@@ -3,7 +3,7 @@
 #include <cstddef>
 #include "../structs/MessageHeader.hpp"
 #include "../structs/SbeGroupSupport.hpp"
-#include "../structs/InnerHeader.hpp"
+#include "../structs/DownloadHeader.hpp"
 
 namespace nse::nsefo::orderentry::nnf::v9_50 {
 
@@ -16,7 +16,7 @@ namespace nnf_orderentry = ::nse::nsefo::orderentry::nnf::v9_50;
 struct message_record_message {
 
     struct fields_type {
-        nnf_orderentry::inner_header inner_header;
+        nnf_orderentry::download_header download_header;
     };
 
     nnf_orderentry::message_header header = {transaction_code::enum_type::message_record_message, {}, {}, {}, {}, {}, {}, {}, std::uint16_t(sizeof(nnf_orderentry::message_header) + sizeof(fields_type))};
@@ -55,7 +55,7 @@ struct message_record_message {
 };
 
 // layout verification
-static_assert(offsetof(message_record_message::fields_type, inner_header) == 0, "unexpected offset of message_record_message::fields_type::inner_header");
+static_assert(offsetof(message_record_message::fields_type, download_header) == 0, "unexpected offset of message_record_message::fields_type::download_header");
 static_assert(sizeof(message_record_message::fields_type) == 40, "unexpected sizeof message_record_message::fields_type");
 
 #pragma pack(pop)

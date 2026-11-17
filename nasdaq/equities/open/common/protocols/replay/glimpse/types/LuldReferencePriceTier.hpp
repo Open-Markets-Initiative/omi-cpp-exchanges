@@ -3,7 +3,7 @@
 #include <cstddef>
 #include "../cache/Required.hpp"
 
-namespace nasdaq::nsmequities::totalview::glimpse::v5_0 {
+namespace nasdaq::nsmequities::totalview::glimpse::v5_0_2026 {
 
 // luld_reference_price_tier
 struct luld_reference_price_tier {

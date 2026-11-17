@@ -3,7 +3,7 @@
 Generated exchange simulator for Investors Exchange Equities Open: an order-entry gateway, an always open price-time matching engine,
 market data feed publishers, snapshot (replay) servers,
 and traders that exercise the exchange end to end. Every link between two components carries
-framed Iex.IexEquities.MatchingEngine.Ipc.v1.0 messages: the gateway owns the client sockets, the engine owns the
+framed Iex.IexEquities.MatchingEngine.Ipc.v2026 messages: the gateway owns the client sockets, the engine owns the
 book, and each feed owns its market data and the snapshots it serves.
 
 The components are generated once, into `common/`, and deployed three ways - `process/`, one binary with a thread per component, `system/`, a process per component on this host, `distributed/`, a process per component across machines. Each directory has a ReadMe of its own.
@@ -31,19 +31,19 @@ and a `verify.sh` that runs the venue and checks what its components carried.
 | Role | Model |
 | --- | --- |
 | Order Entry | Iex.IexEquities.OrderEntry.Fix.v2.91 |
-| Order Entry Session | Fix.Fix |
+| Order Entry Session | Iex.IexEquities.Fix |
 | Market Data (Tops) | Iex.IexEquities.Tops.IexTp.v1.66 |
 | Market Data (Deep) | Iex.IexEquities.Deep.IexTp.v1.08 |
 | Market Data (DeepPlus) | Iex.IexEquities.DeepPlus.IexTp.v1.05 |
 | Snapshot (Deep) | Iex.IexEquities.Deep.Snap.v1.6 |
 | Snapshot (Tops) | Iex.IexEquities.Tops.Snap.v1.6 |
 | Snapshot (DeepPlus) | Iex.IexEquities.DeepPlus.Snap.v1.06 |
-| Always Open | Iex.IexEquities.Equities.Open.Trading |
-| Internal Messaging | Iex.IexEquities.MatchingEngine.Ipc.v1.0 |
+| Always Open | Iex.IexEquities.Equities.Open.TradingSession |
+| Internal Messaging | Iex.IexEquities.MatchingEngine.Ipc.v2026 |
 
 ## Always Open
 
-The engine runs `Iex.IexEquities.Equities.Open.Trading`: one phase, whatever the time, in which an order
+The engine runs `Iex.IexEquities.Equities.Open.TradingSession`: one phase, whatever the time, in which an order
 trades what it crosses and rests the rest, and a cancel takes it out of the book. The chart
 answers no change of phase, so nothing asks it one. What it refuses is said on the internal
 messaging, and answered to the client whose order it was.

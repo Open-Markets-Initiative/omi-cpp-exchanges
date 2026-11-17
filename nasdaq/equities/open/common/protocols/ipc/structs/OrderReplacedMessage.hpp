@@ -8,6 +8,7 @@
 #include "../types/Side.hpp"
 #include "../types/Price.hpp"
 #include "../types/Quantity.hpp"
+#include "../types/OpenQuantity.hpp"
 #include "../types/Display.hpp"
 
 namespace nasdaq::nsmequities::matchingengine::ipc::v2026 {
@@ -25,6 +26,7 @@ struct order_replaced_message {
     ipc_matchingengine::side side;
     ipc_matchingengine::price price;
     ipc_matchingengine::quantity quantity;
+    ipc_matchingengine::open_quantity open_quantity;
     ipc_matchingengine::display display;
 
     // parse method
@@ -46,8 +48,9 @@ static_assert(offsetof(order_replaced_message, symbol) == 24, "unexpected offset
 static_assert(offsetof(order_replaced_message, side) == 32, "unexpected offset of order_replaced_message::side");
 static_assert(offsetof(order_replaced_message, price) == 33, "unexpected offset of order_replaced_message::price");
 static_assert(offsetof(order_replaced_message, quantity) == 41, "unexpected offset of order_replaced_message::quantity");
-static_assert(offsetof(order_replaced_message, display) == 45, "unexpected offset of order_replaced_message::display");
-static_assert(sizeof(order_replaced_message) == 46, "unexpected sizeof order_replaced_message");
+static_assert(offsetof(order_replaced_message, open_quantity) == 45, "unexpected offset of order_replaced_message::open_quantity");
+static_assert(offsetof(order_replaced_message, display) == 49, "unexpected offset of order_replaced_message::display");
+static_assert(sizeof(order_replaced_message) == 50, "unexpected sizeof order_replaced_message");
 
 #pragma pack(pop)
 }

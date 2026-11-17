@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include "../cache/Required.hpp"
 
 namespace nse::nsefo::orderentry::nnf::v9_50 {
@@ -11,19 +12,21 @@ struct log_time {
 
     static constexpr const char* name = "log_time";
     static constexpr std::size_t size = 4;
-    static constexpr bool is_optional = false;
+    static constexpr bool is_optional = true;
+    static constexpr std::int32_t null_value = 0;
 
-    using result_type = required<std::int32_t>;
+    using result_type = std::optional<std::int32_t>;
     using storage_type = result_type;
 
-    constexpr log_time()
-     : value{ 0 } {}
+    log_time()
+     : value{ static_cast<std::int32_t>(__builtin_bswap32(null_value)) } {}
 
     log_time(std::int32_t v)
      : value{ static_cast<std::int32_t>(__builtin_bswap32(v)) } {}
 
     [[nodiscard]] result_type get() const {
-        return result_type{static_cast<std::int32_t>(__builtin_bswap32(value))};
+        auto host = static_cast<std::int32_t>(__builtin_bswap32(value));
+        return host == null_value ? std::nullopt : result_type{host};
     }
 
     void set(std::int32_t v) {
@@ -34,7 +37,11 @@ struct log_time {
         if (value.has_value())
             set(value.value());
         else
-            set(0);
+            set(null_value);
+    }
+
+    constexpr void set_null() {
+        value = null_value;
     }
 
   protected:

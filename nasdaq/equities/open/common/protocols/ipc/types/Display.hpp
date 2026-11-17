@@ -14,10 +14,12 @@ struct display {
 
     enum class enum_type : char {
         visible = 'Y',
-        hidden = 'N'
+        hidden = 'N',
+        attributable = 'A'
     };
 
-    static constexpr std::array<std::pair<std::string_view, enum_type>, 2> from_string_map = {{
+    static constexpr std::array<std::pair<std::string_view, enum_type>, 3> from_string_map = {{
+        {"Attributable", enum_type::attributable},
         {"Hidden", enum_type::hidden},
         {"Visible", enum_type::visible}
     }};
@@ -26,6 +28,7 @@ struct display {
         switch (value) {
             case enum_type::visible: return "Visible";
             case enum_type::hidden: return "Hidden";
+            case enum_type::attributable: return "Attributable";
             default: return "unknown";
         }
     }
@@ -68,7 +71,7 @@ struct display {
         if (value.has_value())
             set(value.value());
         else
-            set(enum_type::hidden);
+            set(enum_type::attributable);
     }
 
   protected:

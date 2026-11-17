@@ -17,18 +17,30 @@ struct phase_change {
         open = 'O',
         halt = 'H',
         resume = 'R',
+        quote = 'Q',
+        opening_lock_in = 'I',
+        opening_lock_out = 'K',
+        opening_late = 'J',
+        closing_lock_out = 'X',
+        closing_freeze = 'F',
         pre_close = 'L',
         close = 'C',
         end = 'E'
     };
 
-    static constexpr std::array<std::pair<std::string_view, enum_type>, 7> from_string_map = {{
+    static constexpr std::array<std::pair<std::string_view, enum_type>, 13> from_string_map = {{
         {"Close", enum_type::close},
+        {"Closing Freeze", enum_type::closing_freeze},
+        {"Closing Lock Out", enum_type::closing_lock_out},
         {"End", enum_type::end},
         {"Halt", enum_type::halt},
         {"Open", enum_type::open},
+        {"Opening Late", enum_type::opening_late},
+        {"Opening Lock In", enum_type::opening_lock_in},
+        {"Opening Lock Out", enum_type::opening_lock_out},
         {"Pre Close", enum_type::pre_close},
         {"Pre Open", enum_type::pre_open},
+        {"Quote", enum_type::quote},
         {"Resume", enum_type::resume}
     }};
 
@@ -38,6 +50,12 @@ struct phase_change {
             case enum_type::open: return "Open";
             case enum_type::halt: return "Halt";
             case enum_type::resume: return "Resume";
+            case enum_type::quote: return "Quote";
+            case enum_type::opening_lock_in: return "Opening Lock In";
+            case enum_type::opening_lock_out: return "Opening Lock Out";
+            case enum_type::opening_late: return "Opening Late";
+            case enum_type::closing_lock_out: return "Closing Lock Out";
+            case enum_type::closing_freeze: return "Closing Freeze";
             case enum_type::pre_close: return "Pre Close";
             case enum_type::close: return "Close";
             case enum_type::end: return "End";

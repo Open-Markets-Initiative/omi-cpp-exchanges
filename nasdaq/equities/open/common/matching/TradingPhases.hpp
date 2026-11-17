@@ -5,6 +5,7 @@
 // meets. The book itself is MatchingEngine.hpp.
 
 #include <cstdint>
+#include <limits>
 
 #include "MatchingEngine.hpp"
 
@@ -12,6 +13,8 @@ namespace matching {
 
 // The phases the chart states. The day starts in the first of them.
 enum class Phase : std::uint8_t { Continuous };
+// Why a phase refuses an order, where the chart says: each word its refusals give.
+enum class Reason : std::uint8_t { Lifetime, Type };
 
 // The trading day. An order is given to the phase the venue is in, which
 // crosses it, takes it out of the book, or refuses it, as the chart says.
@@ -27,9 +30,20 @@ public:
     // resumed is not one that never opened.
     std::uint64_t phases() const { return phases_; }
 
+    // The time, in nanoseconds, as the owner hands it with each message it gives the
+    // day: what a timer set now is due from. The day keeps no clock of its own.
+    void at(std::int64_t now) { now_ = now; }
+
+    // The time come, as the owner's clock hands it: each timer due by then fires, in
+    // the order the chart sets them, and is not set again until the chart sets it.
+    void clock(std::int64_t now) {
+        now_ = now;
+        engine_.lapse(now);   // what expires by a time of its own, its time come
+    }
+
     void on_new_order(Order order) {
         switch (phase_) {
-            case Phase::Continuous: engine_.on_new_order(order); return;
+            case Phase::Continuous: if (order.lifetime == matching::Lifetime::Timed) { on_refused_(order, Reason::Lifetime); return; } if ((order.price == market(order.side) && order.peg == matching::Peg::None)) { on_refused_(order, Reason::Type); return; } engine_.on_new_order(order); return;
         }
     }
 
@@ -61,7 +75,7 @@ public:
     // as it rests.
     void on_replace(Order order, std::uint64_t replaced) {
         switch (phase_) {
-            case Phase::Continuous: if (!engine_.take_replaced(replaced)) { on_refused_(order); return; } engine_.on_new_order(order); engine_.replaced(order); return;
+            case Phase::Continuous: if (!engine_.take_replaced(replaced)) { on_refused_(order); return; } order.expires = engine_.expires_replaced(); engine_.on_new_order(order); engine_.replaced(order); return;
         }
     }
 
@@ -77,5 +91,6 @@ private:
     OnRefused     on_refused_;
     Phase         phase_ = Phase::Continuous;
     std::uint64_t phases_ = 0;
+    std::int64_t  now_ = 0;   // the time the owner last handed, in nanoseconds
 };
 }
