@@ -366,16 +366,13 @@ int main(int argc, char** argv) {
     sim::Component glimpse_thread("glimpse", [&] {
         bool worked = to_glimpse.read([&](std::string_view message) { glimpse.on_message(message.data(), message.size()); });
         if (glimpse_server) worked = glimpse_server->poll([&](int fd, std::string_view bytes) {
-            auto session = glimpse_sessions.find(fd);
-            if (session == glimpse_sessions.end())
-                session = glimpse_sessions.emplace(fd, glimpse.connect([server = glimpse_server.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })).first;
-            glimpse.on_bytes(session->second, bytes.data(), bytes.size());
+            glimpse.on_bytes(glimpse_sessions.at(fd), bytes.data(), bytes.size());
         }, [&](int fd) {
             if (const auto gone = glimpse_sessions.find(fd); gone != glimpse_sessions.end()) {
                 glimpse.disconnect(gone->second);
                 glimpse_sessions.erase(gone);
             }
-        }) || worked;
+        }, [&](int fd) { glimpse_sessions.emplace(fd, glimpse.connect([server = glimpse_server.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })); }) || worked;
         glimpse.tick();
         for (auto session = glimpse_sessions.begin(); session != glimpse_sessions.end(); ) {
             if (!glimpse.ended(session->second)) { ++session; continue; }
@@ -389,16 +386,13 @@ int main(int argc, char** argv) {
     sim::Component itchtcp_thread("itchtcp", [&] {
         bool worked = to_itchtcp.read([&](std::string_view message) { itchtcp.on_message(message.data(), message.size()); });
         if (itchtcp_server) worked = itchtcp_server->poll([&](int fd, std::string_view bytes) {
-            auto session = itchtcp_sessions.find(fd);
-            if (session == itchtcp_sessions.end())
-                session = itchtcp_sessions.emplace(fd, itchtcp.connect([server = itchtcp_server.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })).first;
-            itchtcp.on_bytes(session->second, bytes.data(), bytes.size());
+            itchtcp.on_bytes(itchtcp_sessions.at(fd), bytes.data(), bytes.size());
         }, [&](int fd) {
             if (const auto gone = itchtcp_sessions.find(fd); gone != itchtcp_sessions.end()) {
                 itchtcp.disconnect(gone->second);
                 itchtcp_sessions.erase(gone);
             }
-        }) || worked;
+        }, [&](int fd) { itchtcp_sessions.emplace(fd, itchtcp.connect([server = itchtcp_server.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })); }) || worked;
         itchtcp.tick();
         for (auto session = itchtcp_sessions.begin(); session != itchtcp_sessions.end(); ) {
             if (!itchtcp.ended(session->second)) { ++session; continue; }
@@ -413,16 +407,13 @@ int main(int argc, char** argv) {
         bool worked = to_clients_gatewaymakerbasic.read([&](std::string_view message) { gatewaymakerbasic_events.on_message(message); });
         worked = from_makerbasic.read([&](std::string_view bytes) { gatewaymakerbasic.on_bytes(makerbasic_client, bytes.data(), bytes.size()); }) || worked;
         if (gatewaymakerbasic_order_entry) worked = gatewaymakerbasic_order_entry->poll([&](int fd, std::string_view bytes) {
-            auto session = gatewaymakerbasic_sessions.find(fd);
-            if (session == gatewaymakerbasic_sessions.end())
-                session = gatewaymakerbasic_sessions.emplace(fd, gatewaymakerbasic.connect([server = gatewaymakerbasic_order_entry.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })).first;
-            gatewaymakerbasic.on_bytes(session->second, bytes.data(), bytes.size());
+            gatewaymakerbasic.on_bytes(gatewaymakerbasic_sessions.at(fd), bytes.data(), bytes.size());
         }, [&](int fd) {
             if (const auto gone = gatewaymakerbasic_sessions.find(fd); gone != gatewaymakerbasic_sessions.end()) {
                 gatewaymakerbasic.disconnect(gone->second);
                 gatewaymakerbasic_sessions.erase(gone);
             }
-        }) || worked;
+        }, [&](int fd) { gatewaymakerbasic_sessions.emplace(fd, gatewaymakerbasic.connect([server = gatewaymakerbasic_order_entry.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })); }) || worked;
         gatewaymakerbasic.tick();
         if (gatewaymakerbasic.ended(makerbasic_client)) {
             gatewaymakerbasic.disconnect(makerbasic_client);
@@ -442,16 +433,13 @@ int main(int argc, char** argv) {
         bool worked = to_clients_gatewaytakerbasic.read([&](std::string_view message) { gatewaytakerbasic_events.on_message(message); });
         worked = from_takerbasic.read([&](std::string_view bytes) { gatewaytakerbasic.on_bytes(takerbasic_client, bytes.data(), bytes.size()); }) || worked;
         if (gatewaytakerbasic_order_entry) worked = gatewaytakerbasic_order_entry->poll([&](int fd, std::string_view bytes) {
-            auto session = gatewaytakerbasic_sessions.find(fd);
-            if (session == gatewaytakerbasic_sessions.end())
-                session = gatewaytakerbasic_sessions.emplace(fd, gatewaytakerbasic.connect([server = gatewaytakerbasic_order_entry.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })).first;
-            gatewaytakerbasic.on_bytes(session->second, bytes.data(), bytes.size());
+            gatewaytakerbasic.on_bytes(gatewaytakerbasic_sessions.at(fd), bytes.data(), bytes.size());
         }, [&](int fd) {
             if (const auto gone = gatewaytakerbasic_sessions.find(fd); gone != gatewaytakerbasic_sessions.end()) {
                 gatewaytakerbasic.disconnect(gone->second);
                 gatewaytakerbasic_sessions.erase(gone);
             }
-        }) || worked;
+        }, [&](int fd) { gatewaytakerbasic_sessions.emplace(fd, gatewaytakerbasic.connect([server = gatewaytakerbasic_order_entry.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })); }) || worked;
         gatewaytakerbasic.tick();
         if (gatewaytakerbasic.ended(takerbasic_client)) {
             gatewaytakerbasic.disconnect(takerbasic_client);
@@ -471,16 +459,13 @@ int main(int argc, char** argv) {
         bool worked = to_clients_gatewayreplay.read([&](std::string_view message) { gatewayreplay_events.on_message(message); });
         worked = from_replay.read([&](std::string_view bytes) { gatewayreplay.on_bytes(replay_client, bytes.data(), bytes.size()); }) || worked;
         if (gatewayreplay_order_entry) worked = gatewayreplay_order_entry->poll([&](int fd, std::string_view bytes) {
-            auto session = gatewayreplay_sessions.find(fd);
-            if (session == gatewayreplay_sessions.end())
-                session = gatewayreplay_sessions.emplace(fd, gatewayreplay.connect([server = gatewayreplay_order_entry.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })).first;
-            gatewayreplay.on_bytes(session->second, bytes.data(), bytes.size());
+            gatewayreplay.on_bytes(gatewayreplay_sessions.at(fd), bytes.data(), bytes.size());
         }, [&](int fd) {
             if (const auto gone = gatewayreplay_sessions.find(fd); gone != gatewayreplay_sessions.end()) {
                 gatewayreplay.disconnect(gone->second);
                 gatewayreplay_sessions.erase(gone);
             }
-        }) || worked;
+        }, [&](int fd) { gatewayreplay_sessions.emplace(fd, gatewayreplay.connect([server = gatewayreplay_order_entry.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })); }) || worked;
         gatewayreplay.tick();
         if (gatewayreplay.ended(replay_client)) {
             gatewayreplay.disconnect(replay_client);

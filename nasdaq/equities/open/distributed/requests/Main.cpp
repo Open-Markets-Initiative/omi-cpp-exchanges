@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
         sim::MessageSocket from_requests("requests -> gatewayrequests", sim::MessageSocket::End::Writes, cfg.from_requests_link.host, cfg.from_requests_link.port);
 
         auto requests_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_requests, b, n); };
-        sim::traders::Trader<decltype(requests_send)> requests("Requests", "DAVE01", "dave000001", requests_send);
+        sim::traders::Trader<decltype(requests_send)> requests("Requests", "ASKER1", "asker10000", requests_send);
         // Requests takes its orders from a capture of this venue's own order entry: the requests a
         // client sent, replayed here as this trader's own. A capture it cannot read leaves it quiet.
         sim::traders::Capture requests_capture("captures/Ouch.pcap");

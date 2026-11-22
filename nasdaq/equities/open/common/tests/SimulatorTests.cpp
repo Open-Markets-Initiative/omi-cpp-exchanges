@@ -59,7 +59,7 @@ BOOST_AUTO_TEST_CASE(gateway_admits_fills_and_cancels_an_order) {
     std::function<void(const char*, std::size_t)> to_engine;
     auto emit = [&](const char* b, std::size_t n) { to_engine(b, n); };
     sim::orderentry::Gateway<decltype(emit)> gateway(emit);
-    gateway.allow("ALICE1", "alice00001");
+    gateway.allow("MAKER1", "maker10000");
 
     sim::IpcEventServer events(
         [&](const sim::ipc_ns::trade_message& t) { gateway.on_event(t); },
@@ -91,8 +91,8 @@ BOOST_AUTO_TEST_CASE(gateway_admits_fills_and_cancels_an_order) {
 
     // Login, presenting what this protocol's own login carries.
     entry::login_request_packet login{};
-    login.fields.username.set("ALICE1");
-    login.fields.password.set("alice00001");
+    login.fields.username.set("MAKER1");
+    login.fields.password.set("maker10000");
     login.fields.requested_session.set("");
     login.fields.requested_sequence_number.set("0");
     gateway.on_bytes(client, whole(login).data(), whole(login).size());
@@ -145,10 +145,10 @@ BOOST_AUTO_TEST_CASE(VerifyEachTradersGatewayAnswersOnlyItsOwnOrders) {
     std::vector<std::string> makerbasic_sent;
     auto gatewaymakerbasic_emit = [&](const char* b, std::size_t n) { to_engine(b, n); };
     sim::orderentry::Gateway<decltype(gatewaymakerbasic_emit)> gatewaymakerbasic(gatewaymakerbasic_emit, 1, 4);
-    gatewaymakerbasic.allow("ALICE1", "alice00001");
-    gatewaymakerbasic.allow("BOB001", "bob0000001");
-    gatewaymakerbasic.allow("CAROL1", "carol00001");
-    gatewaymakerbasic.allow("DAVE01", "dave000001");
+    gatewaymakerbasic.allow("MAKER1", "maker10000");
+    gatewaymakerbasic.allow("TAKER1", "taker10000");
+    gatewaymakerbasic.allow("REPLAY", "replay0000");
+    gatewaymakerbasic.allow("ASKER1", "asker10000");
     sim::IpcEventServer gatewaymakerbasic_events(
         [&](const sim::ipc_ns::trade_message& t) { resting = t.resting_order_id.get().value(); aggressor = t.aggressor_order_id.get().value(); gatewaymakerbasic.on_event(t); },
         [](const sim::ipc_ns::order_rested_message&) {},
@@ -165,10 +165,10 @@ BOOST_AUTO_TEST_CASE(VerifyEachTradersGatewayAnswersOnlyItsOwnOrders) {
     std::vector<std::string> takerbasic_sent;
     auto gatewaytakerbasic_emit = [&](const char* b, std::size_t n) { to_engine(b, n); };
     sim::orderentry::Gateway<decltype(gatewaytakerbasic_emit)> gatewaytakerbasic(gatewaytakerbasic_emit, 2, 4);
-    gatewaytakerbasic.allow("ALICE1", "alice00001");
-    gatewaytakerbasic.allow("BOB001", "bob0000001");
-    gatewaytakerbasic.allow("CAROL1", "carol00001");
-    gatewaytakerbasic.allow("DAVE01", "dave000001");
+    gatewaytakerbasic.allow("MAKER1", "maker10000");
+    gatewaytakerbasic.allow("TAKER1", "taker10000");
+    gatewaytakerbasic.allow("REPLAY", "replay0000");
+    gatewaytakerbasic.allow("ASKER1", "asker10000");
     sim::IpcEventServer gatewaytakerbasic_events(
         [&](const sim::ipc_ns::trade_message& t) { gatewaytakerbasic.on_event(t); },
         [](const sim::ipc_ns::order_rested_message&) {},
@@ -204,8 +204,8 @@ BOOST_AUTO_TEST_CASE(VerifyEachTradersGatewayAnswersOnlyItsOwnOrders) {
 
     // Login, presenting what this protocol's own login carries.
     entry::login_request_packet makerbasic_login{};
-    makerbasic_login.fields.username.set("ALICE1");
-    makerbasic_login.fields.password.set("alice00001");
+    makerbasic_login.fields.username.set("MAKER1");
+    makerbasic_login.fields.password.set("maker10000");
     makerbasic_login.fields.requested_session.set("");
     makerbasic_login.fields.requested_sequence_number.set("0");
     gatewaymakerbasic.on_bytes(makerbasic_client, whole(makerbasic_login).data(), whole(makerbasic_login).size());
@@ -219,8 +219,8 @@ BOOST_AUTO_TEST_CASE(VerifyEachTradersGatewayAnswersOnlyItsOwnOrders) {
 
     // Login, presenting what this protocol's own login carries.
     entry::login_request_packet takerbasic_login{};
-    takerbasic_login.fields.username.set("BOB001");
-    takerbasic_login.fields.password.set("bob0000001");
+    takerbasic_login.fields.username.set("TAKER1");
+    takerbasic_login.fields.password.set("taker10000");
     takerbasic_login.fields.requested_session.set("");
     takerbasic_login.fields.requested_sequence_number.set("0");
     gatewaytakerbasic.on_bytes(takerbasic_client, whole(takerbasic_login).data(), whole(takerbasic_login).size());

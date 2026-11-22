@@ -36,7 +36,8 @@ int main(int argc, char** argv) {
         sim::MessageSocket from_takerbasic("takerbasic -> gatewaytakerbasic", sim::MessageSocket::End::Writes, cfg.from_takerbasic_link.host, cfg.from_takerbasic_link.port);
 
         auto takerbasic_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_takerbasic, b, n); };
-        sim::traders::Trader<decltype(takerbasic_send)> takerbasic("TakerBasic", "BOB001", "bob0000001", takerbasic_send);
+        sim::traders::Trader<decltype(takerbasic_send)> takerbasic("TakerBasic", "TAKER1", "taker10000", takerbasic_send);
+        takerbasic.orders().trade(sim::instruments[0]);
         sim::traders::TakerBasic<std::remove_reference_t<decltype(takerbasic.orders())>> takerbasic_strategy(/*mid*/10000, /*cross*/20, /*size*/50, /*period*/3);
         int takerbasic_ticks = 0;
         std::chrono::steady_clock::time_point takerbasic_paced{};   // when a served trader next orders

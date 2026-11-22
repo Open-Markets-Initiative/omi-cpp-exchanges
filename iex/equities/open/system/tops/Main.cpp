@@ -68,6 +68,7 @@ int main(int argc, char** argv) {
 
         std::uint64_t handled = 0;
         // Nothing to do means nothing to do: back off rather than spin a core.
+        sim::reading();   // launch.sh starts the next component once this one reads its links
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
             worked = to_tops.read([&](std::string_view message) { if (const auto asked = sim::book_end_of(message)) tops_rec.mark(*asked); tops_events.on_message(message); ++handled; }) || worked;

@@ -112,8 +112,13 @@ inline void Equities::draw_order(const Routing& routed, Quantity by) {
     }
 }
 
-// OrderAdd: 4 statement(s)
+// OrderAdd: 5 statement(s)
 inline void Equities::order_add(OrderId orderId, Key key, Side side, Price price, Quantity qty) {
+    // routing/{OrderId}: applies only where nothing is held at this address
+    if (routing_locate(orderId) != nullptr) {
+        return;   // already held: a second one would leave the first with nothing routing to it
+    }
+
     // books/{Key}/sides/{Side}/levels/{Price}/orders/{Arrival}: rest a new member at the tail of its queue
     Order* order_placed = rest_order(key, side, price, qty);
 

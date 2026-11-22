@@ -9,6 +9,7 @@
 #include "../types/Quantity.hpp"
 #include "../types/TimeInForce.hpp"
 #include "../types/Display.hpp"
+#include "../types/EliminationReason.hpp"
 
 namespace nasdaq::nsmequities::matchingengine::ipc::v2026 {
 
@@ -26,6 +27,7 @@ struct order_eliminated_message {
     ipc_matchingengine::quantity quantity;
     ipc_matchingengine::time_in_force time_in_force;
     ipc_matchingengine::display display;
+    ipc_matchingengine::elimination_reason elimination_reason;
 
     // parse method
     static order_eliminated_message* parse(std::byte* buffer) {
@@ -47,7 +49,8 @@ static_assert(offsetof(order_eliminated_message, price) == 25, "unexpected offse
 static_assert(offsetof(order_eliminated_message, quantity) == 33, "unexpected offset of order_eliminated_message::quantity");
 static_assert(offsetof(order_eliminated_message, time_in_force) == 37, "unexpected offset of order_eliminated_message::time_in_force");
 static_assert(offsetof(order_eliminated_message, display) == 38, "unexpected offset of order_eliminated_message::display");
-static_assert(sizeof(order_eliminated_message) == 39, "unexpected sizeof order_eliminated_message");
+static_assert(offsetof(order_eliminated_message, elimination_reason) == 39, "unexpected offset of order_eliminated_message::elimination_reason");
+static_assert(sizeof(order_eliminated_message) == 40, "unexpected sizeof order_eliminated_message");
 
 #pragma pack(pop)
 }

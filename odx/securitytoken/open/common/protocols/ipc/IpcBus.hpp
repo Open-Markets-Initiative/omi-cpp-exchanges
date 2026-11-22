@@ -196,7 +196,7 @@ public:
         m.orderbook.set(instrument_symbol);
         m.order_id.set(order.id);
         m.side.set(static_cast<std::remove_cvref_t<decltype(m.side.get().value())>>(order.side == matching::Side::Buy ? 'B' : 'S'));
-        m.price.set(order.price);
+        m.price.set(order.price == matching::market(order.side) ? std::nullopt : std::make_optional(static_cast<std::remove_cvref_t<decltype(m.price.get().value())>>(order.price)));
         m.quantity.set(static_cast<std::uint32_t>(order.qty));
         m.order_type.set(static_cast<std::remove_cvref_t<decltype(m.order_type.get().value())>>(order.price == matching::market(order.side) ? '1' : '2'));
         m.time_in_force.set(static_cast<std::remove_cvref_t<decltype(m.time_in_force.get().value())>>('0'));
@@ -243,7 +243,7 @@ public:
                     matching::Order refused{};
                     refused.id    = m->order_id.get().value();
                     refused.side  = side;
-                    refused.price = m->price.get().value();
+                    refused.price = m->price.get().value_or(matching::market(side));
                     refused.qty   = m->quantity.get().value();
                     on_refused_(refused, !market ? Refusal::Type : Refusal::Lifetime);
                     return true;
@@ -251,7 +251,7 @@ public:
                 engine_.on_new_order(matching::Order{
                     m->order_id.get().value(),
                     side,
-                    *market ? matching::market(side) : m->price.get().value(),
+                    *market ? matching::market(side) : m->price.get().value_or(0),
                     m->quantity.get().value(),
                     *lifetime,
                 });
@@ -392,7 +392,7 @@ inline void emit_rested(Emit& emit, const matching::Order& order) {
     m.orderbook.set(instrument_symbol);
     m.order_id.set(order.id);
     m.side.set(static_cast<std::remove_cvref_t<decltype(m.side.get().value())>>(order.side == matching::Side::Buy ? 'B' : 'S'));
-    m.price.set(order.price);
+    m.price.set(order.price == matching::market(order.side) ? std::nullopt : std::make_optional(static_cast<std::remove_cvref_t<decltype(m.price.get().value())>>(order.price)));
     m.quantity.set(static_cast<std::uint32_t>(order.qty));
     detail_ipc::emit_framed(emit, IpcType::OrderRested, m);
 }
@@ -420,7 +420,7 @@ inline void emit_eliminated(Emit& emit, const matching::Order& order) {
     m.timestamp.set(send_time_nanos());
     m.order_id.set(order.id);
     m.side.set(static_cast<std::remove_cvref_t<decltype(m.side.get().value())>>(order.side == matching::Side::Buy ? 'B' : 'S'));
-    m.price.set(order.price);
+    m.price.set(order.price == matching::market(order.side) ? std::nullopt : std::make_optional(static_cast<std::remove_cvref_t<decltype(m.price.get().value())>>(order.price)));
     m.quantity.set(static_cast<std::uint32_t>(order.qty));
     m.time_in_force.set(static_cast<std::remove_cvref_t<decltype(m.time_in_force.get().value())>>('0'));
     detail_ipc::emit_framed(emit, IpcType::OrderEliminated, m);

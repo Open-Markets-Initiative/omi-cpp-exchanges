@@ -21,14 +21,18 @@ struct announcement {
         end_of_messages = 'C',
         halted = 'H',
         resumed = 'T',
-        quoting = 'q'
+        quoting = 'q',
+        postponed = 'W',
+        extended = 'X'
     };
 
-    static constexpr std::array<std::pair<std::string_view, enum_type>, 9> from_string_map = {{
+    static constexpr std::array<std::pair<std::string_view, enum_type>, 11> from_string_map = {{
         {"End Of Market Hours", enum_type::end_of_market_hours},
         {"End Of Messages", enum_type::end_of_messages},
         {"End Of System Hours", enum_type::end_of_system_hours},
+        {"Extended", enum_type::extended},
         {"Halted", enum_type::halted},
+        {"Postponed", enum_type::postponed},
         {"Quoting", enum_type::quoting},
         {"Resumed", enum_type::resumed},
         {"Start Of Market Hours", enum_type::start_of_market_hours},
@@ -47,6 +51,8 @@ struct announcement {
             case enum_type::halted: return "Halted";
             case enum_type::resumed: return "Resumed";
             case enum_type::quoting: return "Quoting";
+            case enum_type::postponed: return "Postponed";
+            case enum_type::extended: return "Extended";
             default: return "unknown";
         }
     }
@@ -89,7 +95,7 @@ struct announcement {
         if (value.has_value())
             set(value.value());
         else
-            set(enum_type::quoting);
+            set(enum_type::extended);
     }
 
   protected:

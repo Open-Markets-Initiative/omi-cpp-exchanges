@@ -12,6 +12,7 @@ struct price {
     static constexpr const char* name = "price";
     static constexpr std::size_t size = 4;
     static constexpr bool is_optional = false;
+    static constexpr int exponent = -4;
 
     using result_type = required<std::uint32_t>;
     using storage_type = result_type;

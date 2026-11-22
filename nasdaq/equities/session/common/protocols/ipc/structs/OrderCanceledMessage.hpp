@@ -10,6 +10,7 @@
 #include "../types/PreventedQuantity.hpp"
 #include "../types/PreventedPrice.hpp"
 #include "../types/PreventedStrategy.hpp"
+#include "../types/EliminationReason.hpp"
 
 namespace nasdaq::nsmequities::matchingengine::ipc::v2026 {
 
@@ -28,6 +29,7 @@ struct order_canceled_message {
     ipc_matchingengine::prevented_quantity prevented_quantity;
     ipc_matchingengine::prevented_price prevented_price;
     ipc_matchingengine::prevented_strategy prevented_strategy;
+    ipc_matchingengine::elimination_reason elimination_reason;
 
     // parse method
     static order_canceled_message* parse(std::byte* buffer) {
@@ -50,7 +52,8 @@ static_assert(offsetof(order_canceled_message, prevented_liquidity) == 26, "unex
 static_assert(offsetof(order_canceled_message, prevented_quantity) == 27, "unexpected offset of order_canceled_message::prevented_quantity");
 static_assert(offsetof(order_canceled_message, prevented_price) == 31, "unexpected offset of order_canceled_message::prevented_price");
 static_assert(offsetof(order_canceled_message, prevented_strategy) == 39, "unexpected offset of order_canceled_message::prevented_strategy");
-static_assert(sizeof(order_canceled_message) == 40, "unexpected sizeof order_canceled_message");
+static_assert(offsetof(order_canceled_message, elimination_reason) == 40, "unexpected offset of order_canceled_message::elimination_reason");
+static_assert(sizeof(order_canceled_message) == 41, "unexpected sizeof order_canceled_message");
 
 #pragma pack(pop)
 }

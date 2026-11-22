@@ -21,6 +21,10 @@ would be the wrong place for it.
 | `nasdaq_distributed_gatewaytakerbasic` | `gatewaytakerbasic/` | `entry` | TakerBasic's order entry over Tcp, a session per client, the orders it has admitted, numbered in an interleave of its own |
 | `nasdaq_distributed_gatewayreplay` | `gatewayreplay/` | `entry` | Replay's order entry over Tcp, a session per client, the orders it has admitted, numbered in an interleave of its own |
 | `nasdaq_distributed_gatewayrequests` | `gatewayrequests/` | `entry` | Requests's order entry over Tcp, a session per client, the orders it has admitted, numbered in an interleave of its own |
+| `nasdaq_distributed_gatewaymakersecond` | `gatewaymakersecond/` | `entry` | MakerSecond's order entry over Tcp, a session per client, the orders it has admitted, numbered in an interleave of its own |
+| `nasdaq_distributed_gatewaytakersecond` | `gatewaytakersecond/` | `entry` | TakerSecond's order entry over Tcp, a session per client, the orders it has admitted, numbered in an interleave of its own |
+| `nasdaq_distributed_gatewayfixmaker` | `gatewayfixmaker/` | `entry` | FixMaker's order entry over Tcp, a session per client, the orders it has admitted, numbered in an interleave of its own |
+| `nasdaq_distributed_gatewayfixtaker` | `gatewayfixtaker/` | `entry` | FixTaker's order entry over Tcp, a session per client, the orders it has admitted, numbered in an interleave of its own |
 | `nasdaq_distributed_engine` | `engine/` | `matching` | the book: it matches what it is sent and emits what happened |
 | `nasdaq_distributed_sequencer` | `sequencer/` | `matching` | its engine's sequencer: everything bound for the engine, from every gateway and the day, put in one order and stamped with its place and time |
 | `nasdaq_distributed_day` | `day/` | `day` | the trading day: each change of phase asked of the engine on the clock, and the auction collecting asked what it would cross at |
@@ -31,6 +35,10 @@ would be the wrong place for it.
 | `nasdaq_distributed_takerbasic` | `takerbasic/` | `clients` | the trader TakerBasic, a takerbasic trading through the venue's own order entry |
 | `nasdaq_distributed_replay` | `replay/` | `clients` | the trader Replay, a capture trading through the venue's own order entry |
 | `nasdaq_distributed_requests` | `requests/` | `clients` | the trader Requests, a capture trading through the venue's own order entry |
+| `nasdaq_distributed_makersecond` | `makersecond/` | `clients` | the trader MakerSecond, a makerbasic trading through the venue's own order entry |
+| `nasdaq_distributed_takersecond` | `takersecond/` | `clients` | the trader TakerSecond, a takerbasic trading through the venue's own order entry |
+| `nasdaq_distributed_fixmaker` | `fixmaker/` | `clients` | the trader FixMaker, a makerbasic trading through the venue's own order entry |
+| `nasdaq_distributed_fixtaker` | `fixtaker/` | `clients` | the trader FixTaker, a takerbasic trading through the venue's own order entry |
 
 ## The topology
 
@@ -42,6 +50,10 @@ flowchart LR
     gatewaytakerbasic["gatewaytakerbasic<br/><small>order entry</small>"]
     gatewayreplay["gatewayreplay<br/><small>order entry</small>"]
     gatewayrequests["gatewayrequests<br/><small>order entry</small>"]
+    gatewaymakersecond["gatewaymakersecond<br/><small>order entry</small>"]
+    gatewaytakersecond["gatewaytakersecond<br/><small>order entry</small>"]
+    gatewayfixmaker["gatewayfixmaker<br/><small>order entry</small>"]
+    gatewayfixtaker["gatewayfixtaker<br/><small>order entry</small>"]
     end
     subgraph tier_matching[matching]
     engine["engine<br/><small>matching</small>"]
@@ -62,22 +74,38 @@ flowchart LR
     takerbasic["takerbasic<br/><small>trader</small>"]
     replay["replay<br/><small>trader</small>"]
     requests["requests<br/><small>trader</small>"]
+    makersecond["makersecond<br/><small>trader</small>"]
+    takersecond["takersecond<br/><small>trader</small>"]
+    fixmaker["fixmaker<br/><small>trader</small>"]
+    fixtaker["fixtaker<br/><small>trader</small>"]
     end
     totalview_out([TotalView Udp])
     clients -->|SoupBin Tcp| gatewaymakerbasic
     clients -->|SoupBin Tcp| gatewaytakerbasic
     clients -->|SoupBin Tcp| gatewayreplay
     clients -->|SoupBin Tcp| gatewayrequests
+    clients -->|SoupBin Tcp| gatewaymakersecond
+    clients -->|SoupBin Tcp| gatewaytakersecond
+    clients -->|SoupBin Tcp| gatewayfixmaker
+    clients -->|SoupBin Tcp| gatewayfixtaker
     gatewaymakerbasic -->|ipc Tcp| sequencer
     gatewaytakerbasic -->|ipc Tcp| sequencer
     gatewayreplay -->|ipc Tcp| sequencer
     gatewayrequests -->|ipc Tcp| sequencer
+    gatewaymakersecond -->|ipc Tcp| sequencer
+    gatewaytakersecond -->|ipc Tcp| sequencer
+    gatewayfixmaker -->|ipc Tcp| sequencer
+    gatewayfixtaker -->|ipc Tcp| sequencer
     day -->|ipc Tcp| sequencer
     sequencer -->|ipc Tcp| engine
     engine -->|ipc Tcp| gatewaymakerbasic
     engine -->|ipc Tcp| gatewaytakerbasic
     engine -->|ipc Tcp| gatewayreplay
     engine -->|ipc Tcp| gatewayrequests
+    engine -->|ipc Tcp| gatewaymakersecond
+    engine -->|ipc Tcp| gatewaytakersecond
+    engine -->|ipc Tcp| gatewayfixmaker
+    engine -->|ipc Tcp| gatewayfixtaker
     engine -->|ipc Tcp| totalview
     totalview -->|messages Tcp| glimpse
     totalview -->|messages Tcp| totalviewtcp
@@ -89,6 +117,14 @@ flowchart LR
     replay -->|messages Tcp| gatewayreplay
     gatewayrequests -->|messages Tcp| requests
     requests -->|messages Tcp| gatewayrequests
+    gatewaymakersecond -->|messages Tcp| makersecond
+    makersecond -->|messages Tcp| gatewaymakersecond
+    gatewaytakersecond -->|messages Tcp| takersecond
+    takersecond -->|messages Tcp| gatewaytakersecond
+    gatewayfixmaker -->|messages Tcp| fixmaker
+    fixmaker -->|messages Tcp| gatewayfixmaker
+    gatewayfixtaker -->|messages Tcp| fixtaker
+    fixtaker -->|messages Tcp| gatewayfixtaker
     totalview -.-> totalview_out
 ```
 

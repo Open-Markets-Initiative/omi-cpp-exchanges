@@ -167,7 +167,7 @@ public:
     // silent. A trader the venue has gone silent on logs in again, asking to resume at the next
     // number it is owed, once a second until it is let in. What the venue sent in between is not
     // sent again: the venue's order entry keeps no stream to serve it from, and an order this
-    // trader left resting is reported, if at all, to the session it was entered on.
+    // trader left resting is reported to whichever connection is logged in on its port when it is told.
     void tick() {
         session_.tick();
         if (!lost_ || logged_in()) return;

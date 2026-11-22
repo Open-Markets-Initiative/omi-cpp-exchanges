@@ -95,7 +95,7 @@ inline std::ostream& operator<<(std::ostream& os, const order_added_message& msg
        << ",quantity=" << msg.fields.quantity.get().value()
        << ",orderbook_id=\"" << msg.fields.orderbook_id.get_trimmed().value() << '"'
        << ",group=\"" << msg.fields.group.get_trimmed().value() << '"'
-       << ",price=" << msg.fields.price.get().value()
+       << ",price=" << (msg.fields.price.get().has_value() ? std::to_string(msg.fields.price.get().value()) : std::string_view("null"))
        ;
     return os;
 }
@@ -121,7 +121,7 @@ inline std::ostream& operator<<(std::ostream& os, const order_replaced_message& 
        << ",original_order_number=" << msg.fields.original_order_number.get().value()
        << ",new_order_number=" << msg.fields.new_order_number.get().value()
        << ",quantity=" << msg.fields.quantity.get().value()
-       << ",price=" << msg.fields.price.get().value()
+       << ",price=" << (msg.fields.price.get().has_value() ? std::to_string(msg.fields.price.get().value()) : std::string_view("null"))
        ;
     return os;
 }

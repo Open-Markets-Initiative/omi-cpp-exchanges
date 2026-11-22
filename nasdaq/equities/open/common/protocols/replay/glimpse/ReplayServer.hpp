@@ -14,8 +14,8 @@
 #include "../../marketdata/totalview/messages/AddOrderNoMpidAttributionMessage.hpp"
 #include "../../marketdata/totalview/messages/OrderDeleteMessage.hpp"
 #include "../../marketdata/totalview/messages/OrderExecutedMessage.hpp"
-#include "../../marketdata/totalview/messages/OrderReplaceMessage.hpp"
 #include "../../marketdata/totalview/messages/OrderCancelMessage.hpp"
+#include "../../marketdata/totalview/messages/OrderReplaceMessage.hpp"
 
 namespace sim::replay::glimpse {
 
@@ -84,6 +84,19 @@ public:
                 resting.fields.shares.set(static_cast<std::remove_cvref_t<decltype(resting.fields.shares.get().value())>>(open - executed));
                 break;
             }
+            case 'X': {
+                const auto& m = *feed_ns::order_cancel_message::parse(const_cast<std::byte*>(bytes));
+                const std::uint64_t reference = static_cast<std::uint64_t>(m.fields.order_reference_number.get().value());
+                // A partial cancel takes its shares off the order where it rests.
+                auto held = book_.find(reference);
+                if (held == book_.end()) break;
+                auto& resting = *feed_ns::add_order_no_mpid_attribution_message::parse(reinterpret_cast<std::byte*>(held->second.data()));
+                const auto canceled = static_cast<std::uint64_t>(m.fields.canceled_shares.get().value());
+                const auto open = static_cast<std::uint64_t>(resting.fields.shares.get().value());
+                if (canceled >= open) { book_.erase(held); stamped_.erase(reference); break; }
+                resting.fields.shares.set(static_cast<std::remove_cvref_t<decltype(resting.fields.shares.get().value())>>(open - canceled));
+                break;
+            }
             case 'U': {
                 const auto& m = *feed_ns::order_replace_message::parse(const_cast<std::byte*>(bytes));
                 const std::uint64_t reference = static_cast<std::uint64_t>(m.fields.original_order_reference_number.get().value());
@@ -101,19 +114,6 @@ public:
                 rests.fields.shares.set(static_cast<std::remove_cvref_t<decltype(rests.fields.shares.get().value())>>(m.fields.shares.get().value()));
                 rests.fields.price.set(static_cast<std::remove_cvref_t<decltype(rests.fields.price.get().value())>>(m.fields.price.get().value()));
                 book_[static_cast<std::uint64_t>(m.fields.new_order_reference_number.get().value())] = std::move(replaced);
-                break;
-            }
-            case 'X': {
-                const auto& m = *feed_ns::order_cancel_message::parse(const_cast<std::byte*>(bytes));
-                const std::uint64_t reference = static_cast<std::uint64_t>(m.fields.order_reference_number.get().value());
-                // A partial cancel takes its shares off the order where it rests.
-                auto held = book_.find(reference);
-                if (held == book_.end()) break;
-                auto& resting = *feed_ns::add_order_no_mpid_attribution_message::parse(reinterpret_cast<std::byte*>(held->second.data()));
-                const auto canceled = static_cast<std::uint64_t>(m.fields.canceled_shares.get().value());
-                const auto open = static_cast<std::uint64_t>(resting.fields.shares.get().value());
-                if (canceled >= open) { book_.erase(held); stamped_.erase(reference); break; }
-                resting.fields.shares.set(static_cast<std::remove_cvref_t<decltype(resting.fields.shares.get().value())>>(open - canceled));
                 break;
             }
             default: break;   // a message the book is not kept from

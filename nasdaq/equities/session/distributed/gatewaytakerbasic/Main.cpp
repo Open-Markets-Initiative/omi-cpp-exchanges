@@ -49,11 +49,29 @@ int main(int argc, char** argv) {
             ipc_msgs.fetch_add(1, std::memory_order_relaxed);
             sim::write_blocking(to_sequencer_gatewaytakerbasic, b, n);
         };
-        sim::orderentry::Gateway<decltype(gatewaytakerbasic_emit)> gatewaytakerbasic(gatewaytakerbasic_emit, 2, 4);
-        gatewaytakerbasic.allow("ALICE1", "alice00001");
-        gatewaytakerbasic.allow("BOB001", "bob0000001");
-        gatewaytakerbasic.allow("CAROL1", "carol00001");
-        gatewaytakerbasic.allow("DAVE01", "dave000001");
+        sim::orderentry::Gateway<decltype(gatewaytakerbasic_emit)> gatewaytakerbasic(gatewaytakerbasic_emit, 2, 8);
+        gatewaytakerbasic.allow("MAKER1", "maker10000");
+        gatewaytakerbasic.allow("TAKER1", "taker10000");
+        gatewaytakerbasic.allow("REPLAY", "replay0000");
+        gatewaytakerbasic.allow("ASKER1", "asker10000");
+        gatewaytakerbasic.allow("MAKER2", "maker20000");
+        gatewaytakerbasic.allow("TAKER2", "taker20000");
+        gatewaytakerbasic.allow("FIXMKR", "fixmkr0000");
+        gatewaytakerbasic.allow("FIXTKR", "fixtkr0000");
+        gatewaytakerbasic.allow("RISKST", "riskst0000");
+        gatewaytakerbasic.allow("RSTRCT", "rstrct0000");
+        gatewaytakerbasic.allow("RATEDP", "ratedp0000");
+        gatewaytakerbasic.allow("KILLSW", "killsw0000");
+        gatewaytakerbasic.allow("GROSSX", "grossx0000");
+        gatewaytakerbasic.allow("FATFNG", "fatfng0000");
+        gatewaytakerbasic.allow("OUCETC", "oucetc0000");
+        gatewaytakerbasic.allow("HALTCX", "haltcx0000");
+        gatewaytakerbasic.allow("MELOBY", "meloby0000");
+        gatewaytakerbasic.allow("MELOSL", "melosl0000");
+        gatewaytakerbasic.allow("MELOPG", "melopg0000");
+        gatewaytakerbasic.allow("FIXETC", "fixetc0000");
+        gatewaytakerbasic.allow("FIXOPT", "fixopt0000");
+        gatewaytakerbasic.allow("FIXRSK", "fixrsk0000");
 
         // The engine events the gateway answers, on the gateway's own thread.
         sim::IpcEventServer gatewaytakerbasic_events(
@@ -69,7 +87,8 @@ int main(int argc, char** argv) {
             [&](const sim::ipc_ns::order_replaced_message& w) { gatewaytakerbasic.on_event(w); },
             [&](const sim::ipc_ns::order_reduced_message& y) { gatewaytakerbasic.on_event(y); },
             [&](const sim::ipc_ns::cancel_pending_message& g) { gatewaytakerbasic.on_event(g); },
-            [&](const sim::ipc_ns::reduce_refused_message& z) { gatewaytakerbasic.on_event(z); });
+            [&](const sim::ipc_ns::reduce_refused_message& z) { gatewaytakerbasic.on_event(z); },
+            [&](const sim::ipc_ns::trade_broken_message& x) { gatewaytakerbasic.on_event(x); });
 
         // A session per trader process, against the link that carries it. To the gateway a
         // trader on a link is what a client on a socket is: somewhere to write bytes.
@@ -89,16 +108,13 @@ int main(int argc, char** argv) {
             worked = to_clients_gatewaytakerbasic.read([&](std::string_view message) { gatewaytakerbasic_events.on_message(message); }) || worked;
             worked = from_takerbasic.read([&](std::string_view bytes) { gatewaytakerbasic.on_bytes(takerbasic_client, bytes.data(), bytes.size()); }) || worked;
             worked = order_entry.poll([&](int fd, std::string_view bytes) {
-                auto session = sessions.find(fd);
-                if (session == sessions.end())
-                    session = sessions.emplace(fd, gatewaytakerbasic.connect([&order_entry, fd](const char* b, std::size_t n) { order_entry.send(fd, b, n); })).first;
-                gatewaytakerbasic.on_bytes(session->second, bytes.data(), bytes.size());
+                gatewaytakerbasic.on_bytes(sessions.at(fd), bytes.data(), bytes.size());
             }, [&](int fd) {
                 if (const auto gone = sessions.find(fd); gone != sessions.end()) {
                     gatewaytakerbasic.disconnect(gone->second);
                     sessions.erase(gone);
                 }
-            }) || worked;
+            }, [&](int fd) { sessions.emplace(fd, gatewaytakerbasic.connect([&order_entry, fd](const char* b, std::size_t n) { order_entry.send(fd, b, n); })); }) || worked;
             gatewaytakerbasic.tick();
             if (gatewaytakerbasic.ended(takerbasic_client)) {
                 gatewaytakerbasic.disconnect(takerbasic_client);

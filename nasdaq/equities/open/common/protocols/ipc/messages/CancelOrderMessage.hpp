@@ -5,6 +5,7 @@
 #include "../types/Timestamp.hpp"
 #include "../types/Sequence.hpp"
 #include "../types/OrderId.hpp"
+#include "../types/Symbol.hpp"
 
 namespace nasdaq::nsmequities::matchingengine::ipc::v2026 {
 
@@ -19,6 +20,7 @@ struct cancel_order_message {
         ipc_matchingengine::timestamp timestamp;
         ipc_matchingengine::sequence sequence;
         ipc_matchingengine::order_id order_id;
+        ipc_matchingengine::symbol symbol;
     };
 
     ipc_matchingengine::message_header header = {std::uint16_t(sizeof(ipc_matchingengine::message_header) + sizeof(fields_type) - 2), {}};
@@ -41,8 +43,9 @@ struct cancel_order_message {
 static_assert(offsetof(cancel_order_message::fields_type, timestamp) == 0, "unexpected offset of cancel_order_message::fields_type::timestamp");
 static_assert(offsetof(cancel_order_message::fields_type, sequence) == 8, "unexpected offset of cancel_order_message::fields_type::sequence");
 static_assert(offsetof(cancel_order_message::fields_type, order_id) == 16, "unexpected offset of cancel_order_message::fields_type::order_id");
-static_assert(sizeof(cancel_order_message::fields_type) == 24, "unexpected sizeof cancel_order_message::fields_type");
-static_assert(sizeof(cancel_order_message) == sizeof(ipc_matchingengine::message_header) + 24, "unexpected sizeof cancel_order_message");
+static_assert(offsetof(cancel_order_message::fields_type, symbol) == 24, "unexpected offset of cancel_order_message::fields_type::symbol");
+static_assert(sizeof(cancel_order_message::fields_type) == 32, "unexpected sizeof cancel_order_message::fields_type");
+static_assert(sizeof(cancel_order_message) == sizeof(ipc_matchingengine::message_header) + 32, "unexpected sizeof cancel_order_message");
 
 #pragma pack(pop)
 }

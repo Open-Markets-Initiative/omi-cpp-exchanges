@@ -17,15 +17,25 @@ struct refusal_reason {
         invalid_peg_type = 'P',
         market_not_allowed = 'T',
         other = 'O',
-        invalid_cross = 'C'
+        invalid_cross = 'C',
+        post_only_slid = 'G',
+        no_reference = 'N',
+        too_aggressive = 'A',
+        fat_finger = 'F',
+        limit_order_protection = 'L'
     };
 
-    static constexpr std::array<std::pair<std::string_view, enum_type>, 5> from_string_map = {{
+    static constexpr std::array<std::pair<std::string_view, enum_type>, 10> from_string_map = {{
         {"Closed", enum_type::closed},
+        {"Fat Finger", enum_type::fat_finger},
         {"Invalid Cross", enum_type::invalid_cross},
         {"Invalid Peg Type", enum_type::invalid_peg_type},
+        {"Limit Order Protection", enum_type::limit_order_protection},
         {"Market Not Allowed", enum_type::market_not_allowed},
-        {"Other", enum_type::other}
+        {"No Reference", enum_type::no_reference},
+        {"Other", enum_type::other},
+        {"Post Only Slid", enum_type::post_only_slid},
+        {"Too Aggressive", enum_type::too_aggressive}
     }};
 
     static constexpr std::string_view to_string(enum_type value) {
@@ -35,6 +45,11 @@ struct refusal_reason {
             case enum_type::market_not_allowed: return "Market Not Allowed";
             case enum_type::other: return "Other";
             case enum_type::invalid_cross: return "Invalid Cross";
+            case enum_type::post_only_slid: return "Post Only Slid";
+            case enum_type::no_reference: return "No Reference";
+            case enum_type::too_aggressive: return "Too Aggressive";
+            case enum_type::fat_finger: return "Fat Finger";
+            case enum_type::limit_order_protection: return "Limit Order Protection";
             default: return "unknown";
         }
     }
@@ -77,7 +92,7 @@ struct refusal_reason {
         if (value.has_value())
             set(value.value());
         else
-            set(enum_type::invalid_cross);
+            set(enum_type::limit_order_protection);
     }
 
   protected:

@@ -49,11 +49,29 @@ int main(int argc, char** argv) {
             ipc_msgs.fetch_add(1, std::memory_order_relaxed);
             sim::write_blocking(to_sequencer_gatewaymakerbasic, b, n);
         };
-        sim::orderentry::Gateway<decltype(gatewaymakerbasic_emit)> gatewaymakerbasic(gatewaymakerbasic_emit, 1, 4);
-        gatewaymakerbasic.allow("ALICE1", "alice00001");
-        gatewaymakerbasic.allow("BOB001", "bob0000001");
-        gatewaymakerbasic.allow("CAROL1", "carol00001");
-        gatewaymakerbasic.allow("DAVE01", "dave000001");
+        sim::orderentry::Gateway<decltype(gatewaymakerbasic_emit)> gatewaymakerbasic(gatewaymakerbasic_emit, 1, 8);
+        gatewaymakerbasic.allow("MAKER1", "maker10000");
+        gatewaymakerbasic.allow("TAKER1", "taker10000");
+        gatewaymakerbasic.allow("REPLAY", "replay0000");
+        gatewaymakerbasic.allow("ASKER1", "asker10000");
+        gatewaymakerbasic.allow("MAKER2", "maker20000");
+        gatewaymakerbasic.allow("TAKER2", "taker20000");
+        gatewaymakerbasic.allow("FIXMKR", "fixmkr0000");
+        gatewaymakerbasic.allow("FIXTKR", "fixtkr0000");
+        gatewaymakerbasic.allow("RISKST", "riskst0000");
+        gatewaymakerbasic.allow("RSTRCT", "rstrct0000");
+        gatewaymakerbasic.allow("RATEDP", "ratedp0000");
+        gatewaymakerbasic.allow("KILLSW", "killsw0000");
+        gatewaymakerbasic.allow("GROSSX", "grossx0000");
+        gatewaymakerbasic.allow("FATFNG", "fatfng0000");
+        gatewaymakerbasic.allow("OUCETC", "oucetc0000");
+        gatewaymakerbasic.allow("HALTCX", "haltcx0000");
+        gatewaymakerbasic.allow("MELOBY", "meloby0000");
+        gatewaymakerbasic.allow("MELOSL", "melosl0000");
+        gatewaymakerbasic.allow("MELOPG", "melopg0000");
+        gatewaymakerbasic.allow("FIXETC", "fixetc0000");
+        gatewaymakerbasic.allow("FIXOPT", "fixopt0000");
+        gatewaymakerbasic.allow("FIXRSK", "fixrsk0000");
 
         // The engine events the gateway answers, on the gateway's own thread.
         sim::IpcEventServer gatewaymakerbasic_events(
@@ -69,7 +87,8 @@ int main(int argc, char** argv) {
             [&](const sim::ipc_ns::order_replaced_message& w) { gatewaymakerbasic.on_event(w); },
             [&](const sim::ipc_ns::order_reduced_message& y) { gatewaymakerbasic.on_event(y); },
             [&](const sim::ipc_ns::cancel_pending_message& g) { gatewaymakerbasic.on_event(g); },
-            [&](const sim::ipc_ns::reduce_refused_message& z) { gatewaymakerbasic.on_event(z); });
+            [&](const sim::ipc_ns::reduce_refused_message& z) { gatewaymakerbasic.on_event(z); },
+            [&](const sim::ipc_ns::trade_broken_message& x) { gatewaymakerbasic.on_event(x); });
 
         // A session per trader process, against the link that carries it. To the gateway a
         // trader on a link is what a client on a socket is: somewhere to write bytes.
@@ -84,21 +103,19 @@ int main(int argc, char** argv) {
                     cfg.order_entry.host.c_str(), (unsigned)cfg.gatewaymakerbasic_port);
 
         // Nothing to do means nothing to do: back off rather than spin a core.
+        sim::reading();   // launch.sh starts the next component once this one reads its links
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
             worked = to_clients_gatewaymakerbasic.read([&](std::string_view message) { gatewaymakerbasic_events.on_message(message); }) || worked;
             worked = from_makerbasic.read([&](std::string_view bytes) { gatewaymakerbasic.on_bytes(makerbasic_client, bytes.data(), bytes.size()); }) || worked;
             worked = order_entry.poll([&](int fd, std::string_view bytes) {
-                auto session = sessions.find(fd);
-                if (session == sessions.end())
-                    session = sessions.emplace(fd, gatewaymakerbasic.connect([&order_entry, fd](const char* b, std::size_t n) { order_entry.send(fd, b, n); })).first;
-                gatewaymakerbasic.on_bytes(session->second, bytes.data(), bytes.size());
+                gatewaymakerbasic.on_bytes(sessions.at(fd), bytes.data(), bytes.size());
             }, [&](int fd) {
                 if (const auto gone = sessions.find(fd); gone != sessions.end()) {
                     gatewaymakerbasic.disconnect(gone->second);
                     sessions.erase(gone);
                 }
-            }) || worked;
+            }, [&](int fd) { sessions.emplace(fd, gatewaymakerbasic.connect([&order_entry, fd](const char* b, std::size_t n) { order_entry.send(fd, b, n); })); }) || worked;
             gatewaymakerbasic.tick();
             if (gatewaymakerbasic.ended(makerbasic_client)) {
                 gatewaymakerbasic.disconnect(makerbasic_client);

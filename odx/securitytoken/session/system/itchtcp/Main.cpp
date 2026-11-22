@@ -51,20 +51,18 @@ int main(int argc, char** argv) {
         std::printf("odx-itchtcp: serving stream of Itch on port %u\n", (unsigned)cfg.itchtcp_replay_port);
 
         // Nothing to do means nothing to do: back off rather than spin a core.
+        sim::reading();   // launch.sh starts the next component once this one reads its links
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
             worked = to_itchtcp.read([&](std::string_view message) { itchtcp.on_message(message.data(), message.size()); }) || worked;
             worked = itchtcp_server.poll([&](int fd, std::string_view bytes) {
-                auto session = itchtcp_sessions.find(fd);
-                if (session == itchtcp_sessions.end())
-                    session = itchtcp_sessions.emplace(fd, itchtcp.connect([&server = itchtcp_server, fd](const char* b, std::size_t n) { server.send(fd, b, n); })).first;
-                itchtcp.on_bytes(session->second, bytes.data(), bytes.size());
+                itchtcp.on_bytes(itchtcp_sessions.at(fd), bytes.data(), bytes.size());
             }, [&](int fd) {
                 if (const auto gone = itchtcp_sessions.find(fd); gone != itchtcp_sessions.end()) {
                     itchtcp.disconnect(gone->second);
                     itchtcp_sessions.erase(gone);
                 }
-            }) || worked;
+            }, [&](int fd) { itchtcp_sessions.emplace(fd, itchtcp.connect([&server = itchtcp_server, fd](const char* b, std::size_t n) { server.send(fd, b, n); })); }) || worked;
             itchtcp.tick();
             for (auto session = itchtcp_sessions.begin(); session != itchtcp_sessions.end(); ) {
                 if (!itchtcp.ended(session->second)) { ++session; continue; }

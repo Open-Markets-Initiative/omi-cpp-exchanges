@@ -74,6 +74,9 @@ class Engine {
             switch (reason) {
                 case matching::Reason::Lifetime: sim::emit_refused(self->emit_, order, sim::Refusal::Lifetime); return;
                 case matching::Reason::Type: sim::emit_refused(self->emit_, order, sim::Refusal::Type); return;
+                case matching::Reason::Slid: sim::emit_refused(self->emit_, order, sim::Refusal::Slid); return;
+                case matching::Reason::FatFinger: sim::emit_refused(self->emit_, order, sim::Refusal::FatFinger); return;
+                case matching::Reason::LimitProtection: sim::emit_refused(self->emit_, order, sim::Refusal::LimitProtection); return;
             }
         }
     };

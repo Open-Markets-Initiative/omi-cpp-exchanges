@@ -37,6 +37,7 @@ int main(int argc, char** argv) {
         { char* rest = nullptr; const long long each = std::strtoll(cfg.book_every.c_str(), &rest, 10); if (rest != cfg.book_every.c_str() && *rest == '\0') day.books_each(each); }   // or every so many milliseconds
         day.every(cfg.clock_tick_milliseconds);   // how often the venue's time is sent its engine
         day.serve(cfg.day_at);
+        day.supervise(cfg.supervisor_port);   // a supervisor's requests, where the settings give a port
         std::printf("nasdaq-day: serving the day, %zu change(s)\n", day.schedule.size());
 
         // A pass with nothing due is a pass the day had nothing to ask; it waits a moment rather than spin.

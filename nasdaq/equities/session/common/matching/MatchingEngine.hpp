@@ -25,8 +25,10 @@ enum class Side : std::uint8_t { Buy, Sell };
 //   Timed     — until a time of its own, within the day
 enum class Lifetime : std::uint8_t { Session, Canceled, Immediate, Date, Extended, Timed };
 
-// Which auction a trade ended, or the one an order trades in alone. None is continuous trading.
-enum class Cross : std::uint8_t { None, Opening, Intraday, Closing };
+// Which auction a trade ended, or the one an order trades in alone. None is continuous trading;
+// Extended the Extended Trading Close, after the Closing Cross at its price;
+// ExtendedLife the Midpoint Extended Life book, matched apart at the midpoint, in no auction.
+enum class Cross : std::uint8_t { None, Opening, Intraday, Closing, Extended, ExtendedLife };
 
 // The reference price a pegged order follows: none, the midpoint of the best bid and offer, the
 // best price on its own side (Near) or the best on the other side (Far).
@@ -51,6 +53,10 @@ struct Prevented {
     bool          resting  = false;
     bool          shown    = false;
 };
+
+// Why the engine eliminated an order, where the day says: Unstated is as its time in force or
+// its cross says, and each other is the reason a change of phase gave.
+enum class Elimination : std::uint8_t { Unstated, Halt, Protection };
 
 struct Order {
     std::uint64_t id;
@@ -78,6 +84,20 @@ struct Order {
     Prevented     prevented{};   // what a prevented match took of it, on the cancel or the reduce that says so
     std::uint64_t display = 0;   // what of it the book shows now, where it shows a floor
     std::uint64_t renamed = 0;   // the id it stood under before what it shows was refreshed, as it is told resting again; 0 otherwise
+    bool          withdraws = false;   // a post-only order of a port that has one canceled rather than repriced
+    bool          rejects_aggressive = false;   // a late order for a cross of a port that has one priced beyond its cross's reference prices rejected rather than repriced
+    std::uint32_t protection_percent = 0;   // how far through the best opposite price its port lets it be priced, in hundredths of a percent of it; 0 for none
+    std::int64_t  protection_amount = 0;   // and as an amount; 0 for none, the tighter of the two applying where both are given
+    bool          repriced = false;   // told resting again because the engine repriced it, under a new id
+    std::int64_t  discretion = 0;   // its discretionary price, the far end of the range it trades within unseen; 0 for none
+    std::uint64_t random = 0;   // the range its displayed size is drawn from about its floor, where it has one: a Random Reserve
+    bool          imbalance_only = false;   // for its cross, it trades only against the cross's own orders: an OIO or IO Order
+    bool          extends = false;   // what the Closing Cross leaves of it, at or within its limit, joins the Extended Trading Close: an ETC Eligible LOC Order
+    std::int64_t  life_due = 0;   // a Midpoint Extended Life order's: when its holding period ends, by the day's clock; 0 while it has not begun
+    bool          life_continuous = false;   // and does it trade also with the continuous book's Trade Now midpoint pegs: a M-ELO+CB
+    std::int64_t  at_midpoint = 0;   // a Trade Now midpoint peg's: since when it has rested at the midpoint, by the day's clock; 0 while it is not there
+    std::uint64_t entered = 0;   // when it took its place at its price, in the engine's own count: what ranks it in time there
+    Elimination   eliminated = Elimination::Unstated;   // why the engine eliminated it, where the day gave a reason
 };
 
 // How much of a resting order the book shows: its floor's worth where it shows one, all of it otherwise.
@@ -103,6 +123,7 @@ struct Trade {
     bool          resting_shown   = true;    // did the book show the resting side
     bool          aggressor_shown = false;   // and the aggressor: only one that rested was, as both sides of an uncross did
     bool          resting_midpoint = false;   // did the resting side follow the midpoint
+    bool          offset = false;   // is the resting side an imbalance-only order, offsetting the aggressor - the cross's own
 };
 
 // What an auction would cross at now: the price, how much would trade there, what would be left
@@ -113,6 +134,9 @@ struct Indicative {
     std::uint64_t qty     = 0;
     std::uint64_t surplus = 0;
     bool          buyers  = false;
+    std::int64_t  near_price = 0;       // the Near price, over the cross's own orders and the book trading on; 0 for none
+    std::int64_t  far_price  = 0;       // the Far price, over the cross's own orders alone; 0 for none
+    bool          early      = false;   // asked for early, so stating neither
 };
 
 // The prices a book steps by: each range goes by its size from its start on, the range a price is
@@ -226,7 +250,12 @@ public:
 
 
     void on_new_order(Order order) {
-        if (order.lifetime != Lifetime::Immediate) permit(order);   // a short sale under the test is taken at its Permitted Price
+        reshort();   // the short sales the test repriced follow the bid as it stands before this one
+        if (order.lifetime != Lifetime::Immediate) {   // a short sale under the test is taken at its Permitted Price
+            const std::int64_t entered = order.price;
+            permit(order);
+            if (order.price != entered) shorted_.emplace_back(order.id, entered);   // and follows a declining bid down to its limit
+        }
         if (replacing_ == 0) on_accepted_(taken(order));   // taken, before anything it makes of it - a replacement is said as the replace
         if (order.lifetime == Lifetime::Immediate) permit(order);   // an IOC one trades at a Permitted Price and higher, and is not repriced
         repeg();   // the book's pegged orders follow the midpoint as it stands before this one
@@ -254,7 +283,8 @@ public:
                 return;
             }
         }
-        const std::int64_t reach = order.post_only ? improving(order) : order.price;   // a post-only order trades only where that betters its limit by an increment
+        std::int64_t reach = order.post_only ? improving(order) : order.price;   // a post-only order trades only where that betters its limit by an increment
+        if (order.discretion != 0 && order.lifetime == Lifetime::Immediate) reach = order.discretion;   // an IOC with discretion trades within its range at once (Rule 4703(g))
         if (order.side == Side::Buy)
             cross(order, asks_, [&](std::int64_t level) { return level <= reach; });
         else
@@ -267,7 +297,7 @@ public:
             on_eliminated_(order);
         }
         else {
-            rest(order);
+            rest(order); discern(order);
             trade_now(order.side);   // what rests unseen across from it with Trade Now, locked by it, takes it
         }
     }
@@ -331,12 +361,12 @@ public:
         return aside;
     }
 
-    // And rejoins the book once it is done, behind what rests at its price: it loses its place in
-    // time there, which Nasdaq's book would not.
+    // And rejoins the book once it is done, at the place its stamp gives it: it keeps its place in
+    // time there, as Nasdaq's book would.
     void rejoin(const std::deque<Order>& aside) {
         for (const Order& o : aside) {
-            if (o.side == Side::Buy) place(bids_[o.price], o);
-            else                     place(asks_[o.price], o);
+            if (o.side == Side::Buy) placed(bids_[o.price], o);
+            else                     placed(asks_[o.price], o);
         }
     }
 
@@ -357,6 +387,179 @@ public:
         if (taken >= order.qty) { on_canceled_(order); return; }
         order.qty -= taken;
         on_reduced_(order, taken);
+    }
+
+    // Would a post-only order arriving be repriced to post - it trades nothing as it arrives, and its
+    // limit would lock or cross an order the book shows? A port may have such an order canceled instead
+    // (Nasdaq Equity 4, Rule 4702(b)(4): "adjusted or be cancelled back to the Participant, depending on
+    // the Participant's choice"). One that never rests is not: an IOC post-only order "will be cancelled
+    // rather than posted if the Order cannot execute", as any IOC is.
+    bool slides(const Order& o) const { return o.post_only && !(o.lifetime == Lifetime::Immediate) && !trading(o) && posting(o) != o.price; }
+
+    // What a reserve order shows at a time: its floor, or - a Random Reserve's - a number of round lots
+    // drawn from its floor less its range up to that plus twice its range less one round lot. A range of
+    // none, or of no less than the floor - "any share amount less than the nominal displayed size" - draws
+    // nothing: the floor is shown. Drawn from the id it is shown under.
+    static std::uint64_t drawn(const Order& o) {
+        if (o.random == 0 || o.random >= o.floor) return o.floor;
+        constexpr std::uint64_t lot = 100;   // a normal unit of trading
+        const std::uint64_t low   = o.floor - o.random;
+        const std::uint64_t span  = 2 * o.random > lot ? 2 * o.random - lot : 0;
+        const std::uint64_t sizes = span / lot + 1;   // the round lots from the least to the most
+        std::uint64_t mixed = o.id * 0x9E3779B97F4A7C15ULL;
+        mixed ^= mixed >> 30;
+        mixed *= 0xBF58476D1CE4E5B9ULL;
+        mixed ^= mixed >> 27;
+        mixed *= 0x94D049BB133111EBULL;
+        mixed ^= mixed >> 31;
+        return low + (mixed % sizes) * lot;
+    }
+
+    // Discretion (Nasdaq Equity 4, Rule 4703(g)), as an order rests: if it carries a discretionary price,
+    // what rests within its range it takes at once; and so does every order of the other side whose range
+    // reaches it - each as the Discretionary IOC the venue generates for it, its best first.
+    void discern(const Order& rested) {
+        std::vector<std::uint64_t> discretionary;
+        if (rested.discretion != 0) discretionary.push_back(rested.id);
+        const auto reaching = [&](const auto& book) {
+            for (const auto& [level, orders] : book) {
+                for (const Order& o : orders) {
+                    if (o.discretion == 0) continue;
+                    if (o.side == Side::Buy ? o.discretion >= rested.price : o.discretion <= rested.price) discretionary.push_back(o.id);
+                }
+            }
+        };
+        if (rested.side == Side::Buy) reaching(asks_);
+        else                          reaching(bids_);
+        for (const std::uint64_t id : discretionary) within(id);
+    }
+
+    // A discretionary order takes what rests within its range: a Discretionary IOC "with a price equal to
+    // the highest price for the Order with Discretion to buy (lowest price for the Order with Discretion to
+    // sell) within the discretionary price range and a size equal to the applicable size of the available
+    // liquidity", its shares out of the order, which keeps its place with what is left.
+    void within(std::uint64_t id) {
+        const auto find = [&](auto& book) -> Order* {
+            for (auto& [level, orders] : book) {
+                for (Order& o : orders) {
+                    if (o.id == id) return &o;
+                }
+            }
+            return nullptr;
+        };
+        Order* found = find(bids_);
+        if (found == nullptr) found = find(asks_);
+        if (found == nullptr || found->discretion == 0 || found->floor > 0) return;
+        Order ioc = *found;
+        const std::int64_t reach = found->discretion;
+        const std::uint64_t had = ioc.qty;
+        discerning_ = true;   // its fills are of an order the book may show, which they take shares out of
+        if (ioc.side == Side::Buy) cross(ioc, asks_, [&](std::int64_t level) { return level <= reach; });
+        else                       cross(ioc, bids_, [&](std::int64_t level) { return level >= reach; });
+        discerning_ = false;
+        const std::uint64_t taken = had - ioc.qty;
+        if (taken == 0) return;
+        const auto lower = [&](auto& book) {
+            for (auto& [level, orders] : book) {
+                for (Order& o : orders) {
+                    if (o.id != id) continue;
+                    o.qty -= std::min(taken, o.qty);
+                    if (o.qty == 0) { Order gone{}; erase(book, id, gone); }   // all of it taken
+                    return;
+                }
+            }
+        };
+        if (ioc.side == Side::Buy) lower(bids_);
+        else                       lower(asks_);
+    }
+
+    // The imbalance-only orders for a cross, set aside while it is made: they take no part in its
+    // price, nor in the match of its own orders.
+    std::deque<Order> set_offsets(Cross cross) {
+        std::deque<Order> offsets;
+        const auto take = [&](auto& book) {
+            for (auto level = book.begin(); level != book.end(); ) {
+                auto& queue = level->second;
+                for (auto at = queue.begin(); at != queue.end(); ) {
+                    if (!at->imbalance_only || at->only != cross) { ++at; continue; }
+                    offsets.push_back(*at);
+                    at = queue.erase(at);
+                }
+                if (queue.empty()) level = book.erase(level);
+                else ++level;
+            }
+        };
+        take(bids_);
+        take(asks_);
+        return offsets;
+    }
+
+    // The best limit on each side of the book, a market order stating none.
+    struct Stood {
+        bool         has_bid = false;
+        std::int64_t bid     = 0;
+        bool         has_ask = false;
+        std::int64_t ask     = 0;
+    };
+
+    Stood stood() const {
+        Stood best{};
+        for (const auto& [level, orders] : bids_) { if (level == market(Side::Buy) || orders.empty()) continue; best.has_bid = true; best.bid = level; break; }
+        for (const auto& [level, orders] : asks_) { if (level == market(Side::Sell) || orders.empty()) continue; best.has_ask = true; best.ask = level; break; }
+        return best;
+    }
+
+    // Imbalance-only orders offset what is left of the cross's own orders - those for it alone, an
+    // MOC's or a LOC's, an MOO's or a LOO's - at the price it crossed at: an IO Order "may be executed
+    // only in the Nasdaq Closing Cross and only against MOC Orders or LOC Orders", an OIO Order only in
+    // the Opening Cross and "only against MOO Orders, LOO Orders" (Equity 4, Rule 4702(b)(13), (10)).
+    // One to buy (sell) stands at its limit, or at the best bid (offer) of the book where that is lower
+    // (higher), and offsets where that reaches the cross's price; first entered, first filled. Each
+    // fill is the cross's own order's, as aggressor, against it, as resting, at the cross's price. What
+    // is left of them is eliminated, as what is left of any order for the cross is.
+    std::uint64_t offset(std::deque<Order>& offsets, Cross cross, std::int64_t price, const Stood& standing) {
+        std::uint64_t traded = 0;
+        const auto reaches = [&](const Order& io) {
+            if (io.side == Side::Buy) return (standing.has_bid && standing.bid < io.price ? standing.bid : io.price) >= price;
+            return (standing.has_ask && standing.ask > io.price ? standing.ask : io.price) <= price;
+        };
+        const auto offsetting = [&](auto& book, Side by, auto within) {
+            for (auto level = book.begin(); level != book.end(); ) {
+                if (!within(level->first)) break;
+                auto& queue = level->second;
+                for (auto at = queue.begin(); at != queue.end(); ) {
+                    if (at->only != cross) { ++at; continue; }   // only the cross's own orders are offset
+                    for (auto io = offsets.begin(); io != offsets.end() && at->qty > 0; ) {
+                        if (io->side != by || !reaches(*io)) { ++io; continue; }
+                        const std::uint64_t fill = std::min(at->qty, io->qty);
+                        Trade t{};
+                        t.aggressor_id = at->id;   // the cross's own order
+                        t.resting_id   = io->id;   // and the imbalance-only order offsetting it
+                        t.price        = price;
+                        t.qty          = fill;
+                        t.match_id     = ++matches_;
+                        t.cross        = cross;
+                        t.offset       = true;
+                        t.resting_shown   = false;   // neither side was ever shown
+                        t.aggressor_shown = false;
+                        on_trade_(t);
+                        at->qty -= fill;
+                        io->qty -= fill;
+                        traded  += fill;
+                        if (io->qty == 0) io = offsets.erase(io);
+                        else ++io;
+                    }
+                    if (at->qty == 0) at = queue.erase(at);
+                    else ++at;
+                }
+                if (queue.empty()) level = book.erase(level);
+                else ++level;
+            }
+        };
+        offsetting(bids_, Side::Sell, [&](std::int64_t level) { return level >= price; });   // the cross's buys, by imbalance-only sells
+        offsetting(asks_, Side::Buy,  [&](std::int64_t level) { return level <= price; });   // and its sells, by imbalance-only buys
+        for (const Order& left : offsets) on_eliminated_(left);   // what is left of them, as of any order for the cross
+        return traded;
     }
 
     // The worst price a post-only order trades at as it arrives: an increment better than its limit
@@ -458,12 +661,63 @@ public:
         }
     }
 
+    // The short sales the test repriced, following a declining best bid: "To reflect declines in the
+    // national best bid, the Exchange will continue to re-price a short sale order at the lowest
+    // Permitted Price down to the order's original limit price" (Nasdaq Equity 4, Rule 4763(e)). One
+    // whose Permitted Price is now lower than it stands is repriced there, no lower than its limit - a
+    // new priority, under a new id, told as resting again. Never up: a short sale shown above the bid is
+    // left where it is shown. Done as an order arrives, as a peg follows the midpoint.
+    void reshort() {
+        if (!restricted_ || shorted_.empty()) return;
+        std::int64_t permitted = 0;
+        bool bid = false;
+        for (const auto& [level, orders] : bids_) {
+            if (level == market(Side::Buy)) continue;
+            if (std::none_of(orders.begin(), orders.end(), [](const Order& resting) { return resting.shown; })) continue;
+            permitted = ticks_.above(level + 1);
+            bid = true;
+            break;
+        }
+        if (!bid) return;   // no bid the book shows: nothing to follow
+        for (auto at = shorted_.begin(); at != shorted_.end(); ) {
+            bool there = false;
+            std::int64_t stands = 0;
+            for (const auto& [level, orders] : asks_) {
+                for (const Order& resting : orders) {
+                    if (resting.id == at->first) { there = true; stands = level; break; }
+                }
+                if (there) break;
+            }
+            if (!there) { at = shorted_.erase(at); continue; }   // traded away, canceled or expired
+            const std::int64_t to = std::max(at->second, permitted);
+            if (to >= stands) {   // no lower to go
+                if (to == at->second) at = shorted_.erase(at);
+                else ++at;
+                continue;
+            }
+            Order o{};
+            erase(asks_, at->first, o);
+            Order told = o;   // rests again under a new id, naming the one it stood under, repriced
+            told.renamed  = o.id;
+            told.id       = (std::uint64_t{1} << 62) + ++refreshes_;   // no id an order is entered under
+            told.repriced = true;
+            told.price    = to;
+            o = told;
+            o.renamed  = 0;
+            o.repriced = false;
+            place(asks_[o.price], o);
+            on_rest_(told);   // its owner told its new price and id, and the feed the order replaced
+            if (to == at->second) at = shorted_.erase(at);   // at its limit: it goes no lower
+            else { at->first = told.id; ++at; }
+        }
+    }
+
     // Reserve Size (Nasdaq Equity 4, Rule 4703(h)). An order posts showing its floor where it has
     // more than that, and without one otherwise; one the book does not show has none.
     static Order posted(Order o) {
         if (o.floor == 0) return o;
         if (!o.shown || o.qty <= o.floor) { o.floor = 0; o.display = 0; }
-        else o.display = o.floor;
+        else o.display = std::min(drawn(o), o.qty);   // its floor, or a Random Reserve's draw
         return o;
     }
 
@@ -477,7 +731,7 @@ public:
         next.renamed = o.id;
         next.id = (std::uint64_t{1} << 62) + ++refreshes_;   // no id an order is entered under
         if (next.qty <= next.floor) { next.floor = 0; next.display = 0; }
-        else next.display = next.floor;
+        else next.display = std::min(drawn(next), next.qty);   // its floor, or a Random Reserve's draw
         return next;
     }
 
@@ -508,7 +762,7 @@ public:
     // the auction holds is locked in. Returns false, and nothing changes, for one it holds.
     bool on_cancel_trading(std::uint64_t id) {
         Order removed{};
-        if (!erase(bids_, id, removed) && !erase(asks_, id, removed) && !unparked(id, removed) && !unqueued(id, removed) && !waited(id, removed)) return false;
+        if (!erase(bids_, id, removed) && !erase(asks_, id, removed) && !unparked(id, removed) && !unqueued(id, removed) && !waited(id, removed) && !lived(id, removed)) return false;
         on_canceled_(removed);
         return true;
     }
@@ -517,7 +771,11 @@ public:
     // locked in, and refused. Returns false, and nothing changes, for one it holds.
     bool take_replaced_trading(std::uint64_t id) {
         Order removed{};
-        if (!erase(bids_, id, removed) && !erase(asks_, id, removed) && !unparked(id, removed) && !unqueued(id, removed)) return false;
+        replaced_waiting_ = false;
+        if (!erase(bids_, id, removed) && !erase(asks_, id, removed) && !unparked(id, removed) && !unqueued(id, removed)) {
+            if (!waited(id, removed)) return false;   // nor waiting aside for its cross
+            replaced_waiting_ = true;
+        }
         replacing_ = id;
         expires_replaced_ = removed.expires;
         return true;
@@ -553,7 +811,7 @@ public:
     }
     bool on_cancel(std::uint64_t id) {
         Order removed{};
-        if (!erase(bids_, id, removed) && !erase(asks_, id, removed) && !erase(held_bids_, id, removed) && !erase(held_asks_, id, removed) && !unparked(id, removed) && !unqueued(id, removed) && !waited(id, removed)) return false;
+        if (!erase(bids_, id, removed) && !erase(asks_, id, removed) && !erase(held_bids_, id, removed) && !erase(held_asks_, id, removed) && !unparked(id, removed) && !unqueued(id, removed) && !waited(id, removed) && !extended_out(id, removed) && !lived(id, removed)) return false;
         on_canceled_(removed);
         return true;
     }
@@ -564,7 +822,11 @@ public:
     // such order rests.
     bool take_replaced(std::uint64_t id) {
         Order removed{};
-        if (!erase(bids_, id, removed) && !erase(asks_, id, removed) && !erase(held_bids_, id, removed) && !erase(held_asks_, id, removed) && !unparked(id, removed) && !unqueued(id, removed)) return false;
+        replaced_waiting_ = false;
+        if (!erase(bids_, id, removed) && !erase(asks_, id, removed) && !erase(held_bids_, id, removed) && !erase(held_asks_, id, removed) && !unparked(id, removed) && !unqueued(id, removed) && !extended_out(id, removed) && !lived(id, removed)) {
+            if (!waited(id, removed)) return false;   // nor waiting aside for its cross
+            replaced_waiting_ = true;
+        }
         replacing_ = id;
         expires_replaced_ = removed.expires;
         return true;
@@ -573,6 +835,19 @@ public:
     // When the order a replace took out expires: its replacement keeps it, as IEX's ExpireTime is
     // the original's on a replace (IEX FIX Specification v2.91, p. 78).
     std::int64_t expires_replaced() const { return expires_replaced_; }
+
+    // Was the order a replace took out waiting aside for its cross, its cross not collecting yet? Its
+    // replacement then waits there again, behind what waits already, and the replace is told as one:
+    // a MOC entered in the morning may be replaced before the Closing Cross collects (OUCH 5.0 refuses
+    // a replace only in a cross's late period, which a phase's guard states).
+    bool replaced_waiting() const { return replaced_waiting_; }
+    void rewait(Order order) {
+        waiting_.push_back(order);
+        replaced_waiting_ = false;
+        const std::uint64_t id = replacing_;
+        replacing_ = 0;
+        on_replaced_(id, order);
+    }
 
     // A replacement that rested nothing - it traded away as it arrived, or was never to rest - is the
     // order replaced with nothing left of it.
@@ -589,14 +864,14 @@ public:
     // order rests.
     bool reduce(std::uint64_t id, std::uint64_t qty) {
         if (qty == 0) return on_cancel(id);
-        return reduced(bids_, id, qty) || reduced(asks_, id, qty) || reduced(held_bids_, id, qty) || reduced(held_asks_, id, qty) || lowered(parked_, id, qty) || lowered(queued_pegs_, id, qty);
+        return reduced(bids_, id, qty) || reduced(asks_, id, qty) || reduced(held_bids_, id, qty) || reduced(held_asks_, id, qty) || lowered(parked_, id, qty) || lowered(queued_pegs_, id, qty) || extended_reduced(id, qty) || life_reduced(id, qty);
     }
 
     // A reduce of an order on the book that trades on, not of one an auction collects apart: what the
     // auction holds is locked in. Returns false, and nothing changes, for one it holds.
     bool reduce_trading(std::uint64_t id, std::uint64_t qty) {
         if (qty == 0) return on_cancel_trading(id);
-        return reduced(bids_, id, qty) || reduced(asks_, id, qty);
+        return reduced(bids_, id, qty) || reduced(asks_, id, qty) || life_reduced(id, qty);
     }
 
     // A pegged order lowered where it waits out of the book, as one on the book is lowered.
@@ -790,9 +1065,472 @@ public:
         return false;
     }
 
+    // A cross that will not come for the book, as its day says: every order for it alone, waiting
+    // aside or held for it, leaves the book, eliminated for the reason given, and the cross is
+    // done for the day, so an order for it arriving later is refused - an orderbook halted through
+    // the Opening Cross takes no part in it.
+    void expire_cross(Cross cross, Elimination reason = Elimination::Unstated) {
+        if (cross == Cross::Extended) { end_extended(reason); return; }   // the Extended Trading Close ends
+        if (cross == Cross::ExtendedLife) { end_lives(reason); return; }   // the Midpoint Extended Life orders' hours end
+        if (cross != Cross::Intraday) done_[static_cast<std::size_t>(cross)] = true;
+        for (auto at = waiting_.begin(); at != waiting_.end(); ) {
+            if (at->only != cross) { ++at; continue; }
+            Order gone = *at;
+            gone.eliminated = reason;
+            at = waiting_.erase(at);
+            on_eliminated_(gone);
+        }
+        forgone(bids_, cross, reason);
+        forgone(asks_, cross, reason);
+        forgone(held_bids_, cross, reason);
+        forgone(held_asks_, cross, reason);
+    }
+
+    template <typename Book>
+    void forgone(Book& book, Cross cross, Elimination reason) {
+        for (auto level = book.begin(); level != book.end(); ) {
+            auto& queue = level->second;
+            for (auto at = queue.begin(); at != queue.end(); ) {
+                if (at->only != cross) { ++at; continue; }
+                Order gone = *at;
+                gone.eliminated = reason;
+                at = queue.erase(at);
+                on_eliminated_(gone);
+            }
+            if (queue.empty()) level = book.erase(level);
+            else ++level;
+        }
+    }
+
+    // The Extended Trading Close: after a Closing Cross that traded, its orders match continuously at the
+    // Nasdaq Official Closing Price, in the order each came into it, until its end (Nasdaq Equity 4, Rule
+    // 4755). Is it running?
+    bool extending() const { return extending_; }
+
+    // It starts, at the Closing Cross's price: what the cross left of each order marked to join it, at or
+    // within its limit, joins it, in the order the cross ranked them - an ETC Eligible LOC Order (Rule
+    // 4702(b)(12)(A)).
+    void extend_from(std::int64_t price) {
+        extending_ = true;
+        extended_price_ = price;
+        extended_matched_ = 0;
+        joined(bids_, [price](const Order& o) { return o.price >= price; });
+        joined(asks_, [price](const Order& o) { return o.price <= price; });
+        resume_extended();
+    }
+
+    // What the Closing Cross left of each order marked to join it, within its limit, out of the book and into the
+    // Extended Trading Close, best price first and in time at each, as the cross ranked them.
+    template <typename Book, typename Within>
+    void joined(Book& book, Within within) {
+        for (auto level = book.begin(); level != book.end(); ) {
+            auto& queue = level->second;
+            for (auto at = queue.begin(); at != queue.end(); ) {
+                if (at->only != Cross::Closing || !at->extends || at->price == market(at->side) || !within(*at)) { ++at; continue; }
+                Order joining = *at;
+                at = queue.erase(at);
+                joining.only = Cross::Extended;
+                joining.price = extended_price_;
+                joining.lifetime = Lifetime::Session;
+                joining.shown = false;
+                extended_.push_back(joining);
+            }
+            if (queue.empty()) level = book.erase(level);
+            else ++level;
+        }
+    }
+    // An order for it, arriving while it runs: it joins behind what is there, at its price whatever price it
+    // states, and lives until it ends whatever its time in force says - an ETC Order's price "shall be the
+    // Nasdaq Official Closing price" and its "Time-in-Force is ETC" (Rule 4702(b)(17)(B)). Never shown. A
+    // replacement is told as the replace.
+    void extend(Order order) {
+        order.only = Cross::Extended;
+        order.price = extended_price_;
+        order.lifetime = Lifetime::Session;
+        order.shown = false;
+        if (replacing_ != 0) { const std::uint64_t id = replacing_; replacing_ = 0; on_replaced_(id, order); }
+        else on_accepted_(order);
+        extended_.push_back(order);
+        resume_extended();
+    }
+
+    // Its orders match what they may now, unless it is suspended: each, in the order it came in, against those
+    // before it on the other side, the earlier first, at its price. A Minimum Quantity order trades only with an
+    // order whose size meets its minimum - "each of which must have a size that satisfies the minimum quantity
+    // condition" (Rule 4702(b)(17)(B)). Asked whenever the book trading on may have changed.
+    void resume_extended() {
+        if (!extending_ || suspended()) return;
+        for (std::size_t in = 1; in < extended_.size(); ++in) {
+            for (std::size_t at = 0; at < in && extended_[in].qty > 0; ++at) {
+                Order& later = extended_[in];
+                Order& earlier = extended_[at];
+                if (earlier.qty == 0 || earlier.side == later.side) continue;
+                if (earlier.min_qty > later.qty || later.min_qty > earlier.qty) continue;   // a size short of a minimum
+                const std::uint64_t fill = std::min(later.qty, earlier.qty);
+                Trade trade{ later.id, earlier.id, extended_price_, fill, ++matches_, Cross::Extended };
+                trade.resting_shown = false;   // neither side was ever shown
+                on_trade_(trade);
+                later.qty -= fill;
+                earlier.qty -= fill;
+                extended_matched_ += fill;
+            }
+        }
+        extended_.erase(std::remove_if(extended_.begin(), extended_.end(), [](const Order& o) { return o.qty == 0; }), extended_.end());
+    }
+
+    // Is it suspended: does the book trading on hold a bid above its price, or an offer below it - "an Order in
+    // that same security resting on the Nasdaq Continuous Book in After Hours Trading with a bid (offer) price
+    // that is higher than (lower than) the Nasdaq Official Closing Price" (Rule 4755(b)(3)(i))?
+    bool suspended() const {
+        for (const auto& [level, orders] : bids_) { if (level == market(Side::Buy) || orders.empty()) continue; if (level > extended_price_) return true; break; }
+        for (const auto& [level, orders] : asks_) { if (level == market(Side::Sell) || orders.empty()) continue; if (level < extended_price_) return true; break; }
+        return false;
+    }
+
+    // What it says asked what it would cross at: the shares it has matched so far as paired, the shares left
+    // unmatched on the larger side - Minimum Quantity orders aside - as its imbalance, and its price as its Far,
+    // Near and Current Reference Price (Rule 4755(a)(8)).
+    Indicative extended_indicated() const {
+        std::uint64_t buys = 0, sells = 0;
+        for (const Order& o : extended_) {
+            if (o.min_qty > 0) continue;
+            if (o.side == Side::Buy) buys += o.qty; else sells += o.qty;
+        }
+        Indicative at{};
+        at.price   = extended_price_;
+        at.qty     = extended_matched_;
+        at.surplus = buys > sells ? buys - sells : sells - buys;
+        at.buyers  = buys > sells;
+        at.near_price = extended_price_;
+        at.far_price  = extended_price_;
+        return at;
+    }
+
+    // It ends: what is left of every order in it is eliminated, suspended or not - "any unexecuted portion of
+    // the Order will be canceled" (Rule 4702(b)(17)(A); Rule 4755(b)(3), (4)).
+    void end_extended(Elimination reason) {
+        extending_ = false;
+        for (Order gone : extended_) { gone.eliminated = reason; on_eliminated_(gone); }
+        extended_.clear();
+    }
+
+    // Take an order out of the Extended Trading Close. Returns true if it was there.
+    bool extended_out(std::uint64_t id, Order& removed) {
+        for (auto at = extended_.begin(); at != extended_.end(); ++at) {
+            if (at->id != id) continue;
+            removed = *at;
+            extended_.erase(at);
+            return true;
+        }
+        return false;
+    }
+
+    // An order of the Extended Trading Close lowered where it stands, keeping its time. Returns true if it was there.
+    bool extended_reduced(std::uint64_t id, std::uint64_t qty) {
+        for (auto& o : extended_) {
+            if (o.id != id) continue;
+            if (qty >= o.qty) return true;
+            const std::uint64_t taken = o.qty - qty;
+            o.qty = qty;
+            on_reduced_(o, taken);
+            return true;
+        }
+        return false;
+    }
+    // The Midpoint Extended Life orders (Nasdaq Equity 4, Rule 4702(b)(14), (15)): never shown, priced at the
+    // midpoint of the best bid and offer the book shows - its own, standing in for the NBBO, of which the
+    // simulator has no source - and each eligible to trade only once its holding period has passed, then
+    // only with the others of its kind, and a M-ELO+CB also with the continuous book's Trade Now
+    // midpoint pegs. They trade in Regular Market Hours alone, matched each time the day's clock
+    // is handed, so a holding period ends up to a tick of that clock late.
+
+    // An order for it, accepted: its holding period begun where the book's hours have started them and the
+    // midpoint is within its limit, and held otherwise - pre-market, halted, or priced away. An IOC one that
+    // cannot begin it now is eliminated: "if the Order is ineligible to begin the Holding Period upon entry,
+    // then the System will cancel it immediately" (Rule 4702(b)(14)(B)). A replacement is told as the replace,
+    // and begins a holding period anew: a modification "other than to decrease the size of the Order" restarts
+    // it (Rule 4702(b)(14)(A)).
+    void live(Order order, std::int64_t now) {
+        order.only = Cross::ExtendedLife;
+        order.shown = false;
+        order.life_due = 0;
+        if (replacing_ != 0) { const std::uint64_t id = replacing_; replacing_ = 0; on_replaced_(id, order); }
+        else on_accepted_(order);
+        if (lives_active_) {
+            const auto twice = life_midpoint();
+            if (twice && life_within(order, *twice)) order.life_due = now + life_holding_;
+        }
+        if (order.lifetime == Lifetime::Immediate && order.life_due == 0) { on_eliminated_(order); return; }
+        lives_.push_back(order);
+    }
+
+    // The book's hours start them: from the open, each held order begins its holding period where the
+    // midpoint is within its limit; as a halt is lifted, each whose period had not passed begins the resumed
+    // one, "running from the time when trading resumes", and one already eligible stays so (Rule
+    // 4702(b)(14)(A)).
+    void start_lives(std::int64_t now, bool resumed) {
+        lives_active_ = true;
+        const auto twice = life_midpoint();
+        for (Order& o : lives_) {
+            if (resumed && o.life_due != 0 && o.life_due <= now) continue;   // eligible already
+            o.life_due = twice && life_within(o, *twice) ? now + (resumed ? life_resumed_ : life_holding_) : 0;
+        }
+    }
+
+    // A halt stops them: "Midpoint Extended Life Orders in existence at the time a halt is initiated will be
+    // ineligible to execute and held by the System until trading has resumed" (Rule 4702(b)(14)(A)).
+    void stop_lives() { lives_active_ = false; }
+
+    // Their hours end: "A Midpoint Extended Life Order remaining unexecuted after 4:00 p.m. ET will be
+    // cancelled by the System" (Rule 4702(b)(14)(B)). What is left of each is eliminated.
+    void end_lives(Elimination reason) {
+        lives_active_ = false;
+        for (Order gone : lives_) { gone.eliminated = reason; on_eliminated_(gone); }
+        lives_.clear();
+    }
+
+    // The day's clock handed: each held order whose limit the midpoint is now within begins its holding
+    // period; then, unless an order resting unseen is priced beyond the midpoint, those eligible trade at it,
+    // ranked by when each became eligible, a later one taking from those before it on the other side, the
+    // earlier first, and what is left of a M-ELO+CB then with the continuous book's
+    // Trade Now midpoint pegs; and what is left of an eligible IOC one is eliminated, "if no such
+    // resting interest is available, or shares of the Order remain unexecuted" (Rule 4702(b)(14)(B)).
+    void lives(std::int64_t now) {
+        if (!lives_active_) return;
+        const auto twice = life_midpoint();
+        if (!twice) return;   // no midpoint: nothing begins, and nothing trades
+        life_rested(bids_, *twice, now);
+        life_rested(asks_, *twice, now);
+        for (Order& o : lives_) {
+            if (o.life_due == 0 && life_within(o, *twice)) o.life_due = now + life_holding_;
+        }
+        if (!life_blocked(*twice)) {
+            const std::int64_t price = *twice / 2;   // a midpoint between two prices taken at the lower
+            std::vector<std::size_t> ranked;
+            for (std::size_t at = 0; at < lives_.size(); ++at) {
+                if (life_eligible(lives_[at], *twice, now)) ranked.push_back(at);
+            }
+            std::stable_sort(ranked.begin(), ranked.end(), [this](std::size_t a, std::size_t b) { return lives_[a].life_due < lives_[b].life_due; });
+            for (std::size_t in = 1; in < ranked.size(); ++in) {
+                for (std::size_t at = 0; at < in && lives_[ranked[in]].qty > 0; ++at) {
+                    Order& later = lives_[ranked[in]];
+                    Order& earlier = lives_[ranked[at]];
+                    if (earlier.qty == 0 || earlier.side == later.side) continue;
+                    if (earlier.min_qty > later.qty || later.min_qty > earlier.qty) continue;   // a size short of a minimum
+                    const std::uint64_t fill = std::min(later.qty, earlier.qty);
+                    Trade trade{ later.id, earlier.id, price, fill, ++matches_, Cross::ExtendedLife };
+                    trade.resting_shown = false;   // neither side was ever shown
+                    on_trade_(trade);
+                    later.qty -= fill;
+                    earlier.qty -= fill;
+                }
+            }
+            for (const std::size_t at : ranked) {
+                if (lives_[at].qty > 0 && lives_[at].life_continuous) life_pegs(lives_[at], price, *twice, now);
+            }
+        }
+        for (auto at = lives_.begin(); at != lives_.end(); ) {
+            const bool spent = at->lifetime == Lifetime::Immediate && at->life_due != 0 && at->life_due <= now;   // an IOC one, its period passed
+            if (at->qty > 0 && !spent) { ++at; continue; }
+            if (at->qty > 0) on_eliminated_(*at);
+            at = lives_.erase(at);
+        }
+    }
+
+    // Twice the midpoint of the best bid and offer the book shows, so that half a price is kept; none where a
+    // side shows nothing.
+    std::optional<std::int64_t> life_midpoint() const {
+        const auto best = [](const auto& book) -> std::optional<std::int64_t> {
+            for (const auto& [level, orders] : book) {
+                if (level == market(Side::Buy) || level == market(Side::Sell)) continue;   // a market order shows no price
+                for (const Order& o : orders) if (o.shown) return level;
+            }
+            return std::nullopt;
+        };
+        const auto bid = best(bids_);
+        const auto ask = best(asks_);
+        if (!bid || !ask) return std::nullopt;
+        return *bid + *ask;
+    }
+
+    // Is the midpoint within an order's limit - a buy's at or below it, a sell's at or above it? One with no
+    // limit takes any.
+    static bool life_within(const Order& o, std::int64_t twice) {
+        if (o.price == market(o.side)) return true;
+        return o.side == Side::Buy ? twice <= 2 * o.price : twice >= 2 * o.price;
+    }
+
+    // May an order trade now: its holding period passed, and the midpoint within its limit? One that passed
+    // it keeps its rank while the midpoint is away from its limit (Rule 4702(b)(14)(A)).
+    static bool life_eligible(const Order& o, std::int64_t twice, std::int64_t now) {
+        return o.qty > 0 && o.life_due != 0 && o.life_due <= now && life_within(o, twice);
+    }
+
+    // Is an order resting unseen priced beyond the midpoint - a hidden bid above it, or a hidden offer below?
+    // Then none trades: they "will not execute if there is a resting non-displayed Order priced more
+    // aggressively than the midpoint between the NBBO" (Rule 4702(b)(14)(A)).
+    bool life_blocked(std::int64_t twice) const {
+        for (const auto& [level, orders] : bids_) {
+            if (level == market(Side::Buy)) continue;
+            if (2 * level <= twice) break;
+            for (const Order& o : orders) if (!o.shown) return true;
+        }
+        for (const auto& [level, orders] : asks_) {
+            if (level == market(Side::Sell)) continue;
+            if (2 * level >= twice) break;
+            for (const Order& o : orders) if (!o.shown) return true;
+        }
+        return false;
+    }
+
+    // Take an order out of the Midpoint Extended Life book. Returns true if it was there.
+    bool lived(std::uint64_t id, Order& removed) {
+        for (auto at = lives_.begin(); at != lives_.end(); ++at) {
+            if (at->id != id) continue;
+            removed = *at;
+            lives_.erase(at);
+            return true;
+        }
+        return false;
+    }
+
+    // A Midpoint Extended Life order lowered where it stands, keeping its holding period and its rank: a
+    // modification restarts it "other than to decrease the size of the Order" (Rule 4702(b)(14)(A)). Returns
+    // true if it was there.
+    bool life_reduced(std::uint64_t id, std::uint64_t qty) {
+        for (auto& o : lives_) {
+            if (o.id != id) continue;
+            if (qty >= o.qty) return true;
+            const std::uint64_t taken = o.qty - qty;
+            o.qty = qty;
+            on_reduced_(o, taken);
+            return true;
+        }
+        return false;
+    }
+
+    // What is left of an eligible M-ELO+CB, once the others of its kind have traded with it: the Trade Now
+    // midpoint pegs on the other side resting at the midpoint, in the order the book ranks them there, each
+    // that has rested at it a holding period and whose size meets its minimum - "(i) the Midpoint Pegging
+    // Order has the Trade Now Attribute enabled; (ii) no other order is resting on the Continuous Book that
+    // has a more aggressive price than the current midpoint of the NBBO; (iii) the Midpoint Pegging Order has
+    // rested on the Exchange's Continuous Book for a minimum of the duration of the Holding Period ... ; and
+    // (iv) the Midpoint Pegging Order satisfies any minimum quantity requirement of the M-ELO+CB" (Rule
+    // 4702(b)(15)). It takes them as the one arriving.
+    void life_pegs(Order& taker, std::int64_t price, std::int64_t twice, std::int64_t now) {
+        if (2 * price != twice) return;   // a midpoint between two prices, at which no peg stands
+        if (taker.side == Side::Buy) life_pegged(taker, asks_, price, now);
+        else                         life_pegged(taker, bids_, price, now);
+    }
+
+    template <typename Book>
+    void life_pegged(Order& taker, Book& book, std::int64_t price, std::int64_t now) {
+        const auto level = book.find(price);
+        if (level == book.end()) return;
+        auto& queue = level->second;
+        for (auto at = queue.begin(); at != queue.end() && taker.qty > 0; ) {
+            const bool rested = at->at_midpoint != 0 && now - at->at_midpoint >= life_holding_;
+            if (at->peg != Peg::Midpoint || !at->trade_now || at->shown || !rested || at->qty < taker.min_qty || at->min_qty > taker.qty) { ++at; continue; }
+            const std::uint64_t fill = std::min(taker.qty, at->qty);
+            Trade trade{ taker.id, at->id, price, fill, ++matches_, Cross::ExtendedLife };
+            trade.resting_shown = false;   // neither side was ever shown
+            trade.resting_midpoint = true;   // the resting side followed the midpoint
+            on_trade_(trade);
+            taker.qty -= fill;
+            at->qty -= fill;
+            at->min_qty = std::min(at->min_qty, at->qty);   // fewer left than its minimum: what is left is its minimum
+            if (at->qty == 0) at = queue.erase(at);
+            else ++at;
+        }
+        if (queue.empty()) book.erase(level);
+    }
+
+    // Since when each Trade Now midpoint peg has rested at the midpoint: stamped as the day's clock finds it
+    // there, and cleared where its limit holds it away from it - it must have rested "after the NBBO midpoint
+    // falls within the limit set by the participant" (Rule 4702(b)(15)(iii)).
+    template <typename Book>
+    static void life_rested(Book& book, std::int64_t twice, std::int64_t now) {
+        for (auto& [level, orders] : book) {
+            for (Order& o : orders) {
+                if (o.peg != Peg::Midpoint || !o.trade_now) continue;
+                if (2 * level != twice) o.at_midpoint = 0;
+                else if (o.at_midpoint == 0) o.at_midpoint = now;
+            }
+        }
+    }
+    // The best limit price the book trading on has on a side, of what it shows where it hides some, its
+    // market orders aside; none where it has none - what a cross's benchmark or price test measures from:
+    // Nasdaq's "Nasdaq best bid ... or Nasdaq best offer" (Equity 4, Rule 4752(d)(2)(F)(iii)).
+    std::optional<std::int64_t> quoted(Side side) const {
+        if (side == Side::Buy) {
+            for (const auto& [level, orders] : bids_) { if (level != market(Side::Buy) && std::any_of(orders.begin(), orders.end(), [](const Order& o) { return o.shown; })) return level; }
+            return std::nullopt;
+        }
+        for (const auto& [level, orders] : asks_) { if (level != market(Side::Sell) && std::any_of(orders.begin(), orders.end(), [](const Order& o) { return o.shown; })) return level; }
+        return std::nullopt;
+    }
+
+    // The last price the book traded at, as an order arrived or in a cross, 0 before it has.
+    std::int64_t traded() const { return traded_; }
+
+    // The shares of market orders on a side that a cross would leave unexecuted at what it would cross
+    // at: a market order comes before every price on its side, so those beyond the shares the cross
+    // would match - all of them where nothing would cross. Nasdaq's "all market orders would not be
+    // executed in the cross" (Equity 4, Rule 4120(b)(4)(A)(i)a.5.b) and its Market Order Imbalance, "the
+    // number of shares of Eligible Interest entered through market orders that would not be matched with
+    // other order shares" (Rule 4753(a)(2)).
+    std::uint64_t market_left(Side side, const Indicative& at) const {
+        std::uint64_t shares = 0;
+        if (side == Side::Buy) {
+            for (const auto* book : { &bids_, &held_bids_ }) { const auto level = book->find(market(Side::Buy)); if (level == book->end()) continue; for (const auto& o : level->second) shares += (o.min_qty > 0 ? 0 : o.qty); }
+        } else {
+            for (const auto* book : { &asks_, &held_asks_ }) { const auto level = book->find(market(Side::Sell)); if (level == book->end()) continue; for (const auto& o : level->second) shares += (o.min_qty > 0 ? 0 : o.qty); }
+        }
+        return shares > at.qty ? shares - at.qty : 0;
+    }
+
+    // A cross that does not take place, though it collected: every order it collected - held for it, or
+    // for it alone and waiting aside - is canceled back to its owner for the reason given, and the cross
+    // is done for the day; the book trades on with what it held apart. Nasdaq's Opening Cross that passes
+    // none of its Opening Cross Price Tests (Equity 4, Rule 4752(d)(2)(F)).
+    void abandon(Cross cross, Elimination reason) {
+        if (cross != Cross::Intraday) done_[static_cast<std::size_t>(cross)] = true;
+        for (auto at = waiting_.begin(); at != waiting_.end(); ) {
+            if (at->only != cross) { ++at; continue; }
+            Order gone = *at;
+            gone.eliminated = reason;
+            at = waiting_.erase(at);
+            on_canceled_(gone);
+        }
+        const auto cancel = [&](auto& book) {
+            for (const auto& [level, orders] : book) {
+                for (Order gone : orders) {
+                    gone.eliminated = reason;
+                    on_canceled_(gone);
+                }
+            }
+            book.clear();
+        };
+        cancel(held_bids_);
+        cancel(held_asks_);
+        if (cross == Cross::Opening) open_pegs();   // the book trades on: what was queued until the open follows the midpoint
+    }
+
     // The ticks this book's prices step by - its instrument's tick table - which an auction's
     // average is rounded to and a market order sweeps through. A book handed none steps by one.
     void ticked(Ticks ticks) { ticks_ = std::move(ticks); }
+
+    // A price on its tick: the tick at or above it (toward above zero), at or below it (below zero),
+    // or the nearer of the two, a midpoint up (zero) - as Nasdaq rounds a reference price a late LOO
+    // or LOC is repriced to (Equity 4, Rule 4702(b)(9)(A), (12)(A)). A price on its tick is itself.
+    std::int64_t on_tick(std::int64_t price, int toward) const {
+        const std::int64_t below = ticks_.below(price);
+        if (below == price) return price;
+        const std::int64_t above = ticks_.above(price);
+        if (toward > 0) return above;
+        if (toward < 0) return below;
+        return price - below < above - price ? below : above;
+    }
 
     // An order held without crossing: an auction collects, and nothing trades until it uncrosses.
     // The book may stand crossed while it does.
@@ -804,6 +1542,170 @@ public:
     // order is limited to - one beyond the band at the limit it is willing at, a buy above the
     // ceiling at the ceiling and a sell below the floor at the floor; a market order has no price
     // of its own:
+    // A state check's: an order the venue showed, placed in the book as the engine places a shown order
+    // and not matched - a captured day's book is the venue's, and stood as it stood.
+    void place_shown(const Order& o) {
+        if (o.side == Side::Buy) { place(bids_[o.price], o); }
+        else                     { place(asks_[o.price], o); }
+    }
+
+    // A state check's: shares the venue took of an order, found where it stands - its side and its
+    // price - and gone from the book once none are left. False for an order not there.
+    bool take_shown(Side side, std::int64_t price, std::uint64_t id, std::uint64_t shares) {
+        return side == Side::Buy ? taken_shown(bids_, price, id, shares) : taken_shown(asks_, price, id, shares);
+    }
+
+    // The order an arriving order on the other side would meet first: the first at the best price on
+    // this side, as cross() takes them. Null for a side with nothing on it.
+    const Order* front(Side side) const {
+        if (side == Side::Buy) { return bids_.empty() ? nullptr : &bids_.begin()->second.front(); }
+        return asks_.empty() ? nullptr : &asks_.begin()->second.front();
+    }
+
+    // The best price on a side, and how many orders stand ahead of one at its own price; the order's
+    // own place where it stands, and its count of orders where it is not there.
+    std::optional<std::int64_t> best(Side side) const {
+        if (side == Side::Buy) { return bids_.empty() ? std::nullopt : std::optional<std::int64_t>(bids_.begin()->first); }
+        return asks_.empty() ? std::nullopt : std::optional<std::int64_t>(asks_.begin()->first);
+    }
+    std::size_t ahead(Side side, std::int64_t price, std::uint64_t id) const {
+        return side == Side::Buy ? before(bids_, price, id) : before(asks_, price, id);
+    }
+
+private:
+    template <typename Book>
+    static bool taken_shown(Book& book, std::int64_t price, std::uint64_t id, std::uint64_t shares) {
+        const auto level = book.find(price);
+        if (level == book.end()) { return false; }
+        auto& queue = level->second;
+        for (auto at = queue.begin(); at != queue.end(); ++at) {
+            if (at->id != id) { continue; }
+            if (at->qty <= shares) { queue.erase(at); }
+            else                   { at->qty -= shares; }
+            if (queue.empty()) { book.erase(level); }
+            return true;
+        }
+        return false;
+    }
+
+    template <typename Book>
+    static std::size_t before(const Book& book, std::int64_t price, std::uint64_t id) {
+        const auto level = book.find(price);
+        if (level == book.end()) { return 0; }
+        std::size_t count = 0;
+        for (const Order& o : level->second) {
+            if (o.id == id) { break; }
+            ++count;
+        }
+        return count;
+    }
+
+public:
+    // An auction's indication in the three prices of an Order Imbalance Indicator (Nasdaq Equity 4, Rule
+    // 4752(a)(3); Rule 4754(a)(7)): the Near, what the cross would clear at over its own orders and the
+    // book trading on together - the indicative; the Far, over its own orders alone; and the Current
+    // Reference Price, over its own orders alone among the prices at or within the best bid and offer
+    // of the book trading on, drawn to their midpoint, whose shares paired and left over it states.
+    // A Halt Cross's three are its one indicative: its Far and Near "shall be the same as the Current
+    // Reference Price" (Rule 4753(a)(3)(E)), which keeps within no bid and offer. Asked for early, it
+    // states no Far and no Near: the early indicator "will exclude information about indicative
+    // prices" (Rule 4752(a)(1)). A side of the book with no limit order leaves its bound open; with
+    // not both, the price is drawn to the reference.
+    // The Near and the Far are drawn as their cross is drawn (drawn()); the Current Reference Price
+    // to its midpoint.
+    Indicative indicated(Cross cross, bool early, std::int64_t reference,
+                         std::int64_t floor   = std::numeric_limits<std::int64_t>::min(),
+                         std::int64_t ceiling = std::numeric_limits<std::int64_t>::max()) const {
+        const Indicative whole = indicative(reference, floor, ceiling, drawn(cross, reference));   // the Near: over the cross's own orders and the book
+        Indicative at = whole;
+        Indicative own = whole;   // the Far: over the cross's own orders alone
+        if (cross != Cross::Intraday) {
+            bool has_bid = false, has_ask = false;
+            std::int64_t bid = 0, ask = 0;
+            for (const auto& [level, orders] : bids_) { if (level == market(Side::Buy) || orders.empty()) continue; has_bid = true; bid = level; break; }
+            for (const auto& [level, orders] : asks_) { if (level == market(Side::Sell) || orders.empty()) continue; has_ask = true; ask = level; break; }
+            own = collected(floor, ceiling, drawn(cross, reference));
+            at = collected(has_bid ? std::max(floor, bid) : floor, has_ask ? std::min(ceiling, ask) : ceiling,
+                           has_bid && has_ask ? bid + ask : 2 * reference);
+        }
+        if (cross == Cross::Intraday) {   // a Market Order Imbalance: no Current Reference Price, and the shares of market orders it would leave its imbalance
+            const std::uint64_t bought = market_left(Side::Buy, whole), sold = market_left(Side::Sell, whole);
+            if (bought > 0 || sold > 0) {
+                at.price = 0;
+                at.surplus = std::max(bought, sold);
+                at.buyers = bought > sold;
+                at.near_price = 0;
+                at.far_price = 0;
+                at.early = early;
+                return at;
+            }
+        }
+        at.near_price = early ? 0 : whole.price;
+        at.far_price  = early ? 0 : own.price;
+        at.early      = early;
+        return at;
+    }
+
+    // What the cross's own orders alone would cross at - those it collected, apart from the book
+    // trading on - among the prices from low to high, by the uncross's steps, drawn to `toward`, which
+    // is given at twice the price so a midpoint between two ticks is one. Nothing where low is above
+    // high: a bid and offer standing crossed leave no price within them.
+    Indicative collected(std::int64_t low, std::int64_t high, std::int64_t toward) const {
+        Indicative best{};
+        if (low > high) return best;
+        auto take = [&](std::int64_t price) {
+            std::uint64_t bought = 0, sold = 0;
+            for (const auto& [level, orders] : held_bids_) { if (level < price) break; for (const auto& o : orders) bought += (o.min_qty > 0 ? 0 : o.qty); }
+            for (const auto& [level, orders] : held_asks_) { if (level > price) break; for (const auto& o : orders) sold += (o.min_qty > 0 ? 0 : o.qty); }
+            const std::uint64_t qty = std::min(bought, sold);
+            if (qty == 0) return;
+            const std::uint64_t surplus = bought > sold ? bought - sold : sold - bought;
+            const bool buyers = bought > sold;
+            const auto distance = [&](std::int64_t p) { return 2 * p > toward ? 2 * p - toward : toward - 2 * p; };
+            const bool better =
+                qty != best.qty         ? qty > best.qty :
+                surplus != best.surplus ? surplus < best.surplus :
+                surplus != 0 && buyers == best.buyers && price != best.price ? (buyers ? price > best.price : price < best.price) :
+                distance(price) != distance(best.price) ? distance(price) < distance(best.price) :
+                                          price > best.price;
+            if (best.qty == 0 || better) best = Indicative{ price, qty, surplus, buyers };
+        };
+        for (const auto& level : held_bids_) {
+            if (level.first != market(Side::Buy) && level.first >= low) take(std::min(level.first, high));
+        }
+        for (const auto& level : held_asks_) {
+            if (level.first != market(Side::Sell) && level.first <= high) take(std::max(level.first, low));
+        }
+        return best;
+    }
+    // What a cross is drawn to where the steps before leave prices equal, at twice the price so a
+    // midpoint between two ticks is one - indicative() takes it as toward, 0 drawing to the reference:
+    //   the Opening cross, the nearest the midpoint of the best bid and offer of the book
+    //   trading on - its reference where that book has not both,
+    //   the Intraday cross, the nearest the last price the book traded at from its Opening
+    //   Cross until its Closing Cross - its reference where it has not traded since,
+    //   the Closing cross, the nearest the midpoint of the best bid and offer of the book
+    //   trading on - its reference where that book has not both,
+    //   any other, the nearest the reference price.
+    std::int64_t drawn(Cross cross, std::int64_t reference) const {
+        if (cross == Cross::Intraday) return 2 * (last_sale_ != 0 ? last_sale_ : reference);
+        if (cross == Cross::Opening || cross == Cross::Closing) {
+            bool has_bid = false, has_ask = false;
+            std::int64_t bid = 0, ask = 0;
+            for (const auto& [level, orders] : bids_) { if (level == market(Side::Buy) || orders.empty()) continue; has_bid = true; bid = level; break; }
+            for (const auto& [level, orders] : asks_) { if (level == market(Side::Sell) || orders.empty()) continue; has_ask = true; ask = level; break; }
+            if (has_bid && has_ask) return bid + ask;
+        }
+        return 2 * reference;
+    }
+
+    // What a cross would cross at, drawn as that cross is.
+    Indicative indicative(Cross cross, std::int64_t reference,
+                          std::int64_t floor   = std::numeric_limits<std::int64_t>::min(),
+                          std::int64_t ceiling = std::numeric_limits<std::int64_t>::max()) const {
+        return indicative(reference, floor, ceiling, drawn(cross, reference));
+    }
+
     //   the most quantity executable,
     //   then the least surplus left on the heavier side,
     //   then the market's pressure: the higher price when buyers are left over, the lower when
@@ -818,7 +1720,8 @@ public:
     // was not enough to say more.
     Indicative indicative(std::int64_t reference,
                           std::int64_t floor   = std::numeric_limits<std::int64_t>::min(),
-                          std::int64_t ceiling = std::numeric_limits<std::int64_t>::max()) const {
+                          std::int64_t ceiling = std::numeric_limits<std::int64_t>::max(),
+                          std::int64_t toward  = 0) const {
         Indicative best{};
         auto take = [&](std::int64_t price) {
             std::uint64_t bought = 0, sold = 0;
@@ -828,7 +1731,8 @@ public:
             if (qty == 0) return;
             const std::uint64_t surplus = bought > sold ? bought - sold : sold - bought;
             const bool buyers = bought > sold;
-            const auto distance = [&](std::int64_t p) { return p > reference ? p - reference : reference - p; };
+            const std::int64_t twice = toward != 0 ? toward : 2 * reference;   // what it is drawn to, at twice the price
+            const auto distance = [&](std::int64_t p) { return 2 * p > twice ? 2 * p - twice : twice - 2 * p; };
             const bool better =
                 qty != best.qty         ? qty > best.qty :
                 surplus != best.surplus ? surplus < best.surplus :
@@ -855,9 +1759,12 @@ public:
     Indicative uncross(Cross cross, std::int64_t reference,
                        std::int64_t floor   = std::numeric_limits<std::int64_t>::min(),
                        std::int64_t ceiling = std::numeric_limits<std::int64_t>::max()) {
+        const std::int64_t toward = drawn(cross, reference);   // what it is drawn to, of the book as it stands before the cross
         release();   // the auction consolidates what it collected with the book
         std::deque<Order> aside = set_aside();   // a Minimum Quantity order takes no part in a cross
-        const auto at = indicative(reference, floor, ceiling);
+        std::deque<Order> offsets = set_offsets(cross);   // an imbalance-only order takes no part in the cross's price, nor in its match
+        const Stood standing = stood();   // the book's best limits before it crosses, which one is priced to
+        const auto at = indicative(reference, floor, ceiling, toward);
         std::uint64_t left = at.qty;
 
         while (left > 0 && !bids_.empty() && !asks_.empty()) {
@@ -882,6 +1789,8 @@ public:
                 if (sold && sell.floor > 0)   sell.display -= part;
                 done += part;
             }
+            if (cross == Cross::Opening || (done(Cross::Opening) && !done(Cross::Closing))) last_sale_ = at.price;   // a trade in its regular hours: the last sale a cross may be drawn to
+            traded_ = at.price;   // the last price it traded at, which a cross's price may be tested against
             buy.qty  -= fill;
             sell.qty -= fill;
             left     -= fill;
@@ -894,8 +1803,11 @@ public:
             if (ask->second.empty()) asks_.erase(ask);
         }
         if (cross == Cross::Opening) open_pegs();   // the book trades on: what was queued until the open follows the midpoint
+        Indicative crossed = at;
+        if (at.qty > 0) crossed.qty += offset(offsets, cross, at.price, standing);   // what is left of the cross's own orders, offset
+        else for (const Order& left : offsets) on_eliminated_(left);   // nothing crossed: nothing to offset
         rejoin(aside);   // and rejoins the book once it is done
-        return at;
+        return crossed;
     }
 
     // An order that may trade only at one price - trade at last, at the closing auction's: it
@@ -914,7 +1826,7 @@ public:
             on_eliminated_(order);
         }
         else {
-            rest(order);
+            rest(order); discern(order);
             trade_now(order.side);   // what rests unseen across from it with Trade Now, locked by it, takes it
         }
     }
@@ -955,8 +1867,11 @@ private:
                 std::uint64_t fill = std::min(in.qty, showing(resting));
                 Trade trade{ in.id, resting.id, best->first, fill, ++matches_ };
                 trade.resting_shown = resting.shown;   // the aggressor was never shown: it had not rested
+                trade.aggressor_shown = discerning_ && in.shown;   // a discretionary order's, which the book may show, takes shares out of it
                 trade.resting_midpoint = resting.peg == Peg::Midpoint;   // it added its liquidity at the midpoint
                 on_trade_(trade);
+                if (done(Cross::Opening) && !done(Cross::Closing)) last_sale_ = best->first;   // a trade in its regular hours: the last sale a cross may be drawn to
+                traded_ = best->first;   // the last price it traded at, which a cross's price may be tested against
                 in.qty -= fill;
                 resting.qty -= fill;
                 if (resting.floor > 0) resting.display -= std::min(resting.display, fill);
@@ -993,13 +1908,11 @@ private:
         on_replaced_(id, o);
     }
 
-    // The auction matches: what it collected joins the book, each order behind those resting at its
-    // price. IEX releases queued orders to the book in time priority (IEX FIX Specification v2.91,
-    // p. 3), and an order here carries no time to rank it by against one that rested as it arrived:
-    // the simulator's reading.
+    // The auction matches: what it collected joins the book, each order at the place its stamp gives
+    // it among those resting at its price, as the engine ranks every order by when it took its place.
     void release() {
-        for (const auto& [level, orders] : held_bids_) for (const Order& o : orders) place(bids_[o.price], o);
-        for (const auto& [level, orders] : held_asks_) for (const Order& o : orders) place(asks_[o.price], o);
+        for (const auto& [level, orders] : held_bids_) for (const Order& o : orders) placed(bids_[o.price], o);
+        for (const auto& [level, orders] : held_asks_) for (const Order& o : orders) placed(asks_[o.price], o);
         held_bids_.clear();
         held_asks_.clear();
     }
@@ -1073,8 +1986,17 @@ private:
             if (o.side == Side::Buy) cross(o, asks_, [&](std::int64_t level) { return level <= o.price; });
             else                     cross(o, bids_, [&](std::int64_t level) { return level >= o.price; });
             if (o.qty == 0) { at = pegged_.erase(at); continue; }
+            Order told = o;   // rests again under a new id, naming the one it stood under, repriced
+            told.renamed = o.id;
+            told.id = (std::uint64_t{1} << 62) + ++refreshes_;   // no id an order is entered under
+            told.repriced = true;
+            *at = told.id;
+            o = told;
+            o.renamed = 0;
+            o.repriced = false;
             if (o.side == Side::Buy) place(bids_[o.price], o);
             else                     place(asks_[o.price], o);
+            on_rest_(told);   // its owner told its new price and id
             ++at;
         }
     }
@@ -1135,10 +2057,22 @@ private:
     // Attribute will be ranked in time priority", ahead of those without, which rank in time among
     // themselves (Nasdaq Rule 4757(a)(1), its price/display/time algorithm). A shown order goes in
     // after the last shown one at its price, ahead of every hidden one; a hidden one goes at the back.
+    // Each is stamped as it takes its place: it ranks in time from now.
     template <typename Queue>
-    static void place(Queue& queue, const Order& o) {
+    void place(Queue& queue, Order o) {
+        o.entered = ++entries_;
         if (!o.shown) { queue.push_back(o); return; }
         queue.insert(std::find_if(queue.begin(), queue.end(), [](const Order& resting) { return !resting.shown; }), o);
+    }
+
+    // An order moving back to the book - released from an auction, rejoining from aside - at the place
+    // its stamp gives it: ahead of the orders of its kind, shown or hidden, that took their place after
+    // it, and behind those that took theirs before.
+    template <typename Queue>
+    static void placed(Queue& queue, const Order& o) {
+        queue.insert(std::find_if(queue.begin(), queue.end(), [&o](const Order& resting) {
+            return o.shown ? (!resting.shown || resting.entered > o.entered) : (!resting.shown && resting.entered > o.entered);
+        }), o);
     }
 
     template <typename Book>
@@ -1166,9 +2100,21 @@ private:
     std::uint64_t replacing_ = 0;   // the order a replace takes the place of, while its replacement is given; 0 when none is
     OnReduced    on_reduced_;
     std::deque<Order> waiting_;               // orders for one cross alone, until it collects
-    std::array<bool, 4> done_{};              // the crosses done for the day, by Cross
+    std::array<bool, 6> done_{};              // the crosses done for the day, by Cross
+    std::deque<Order> extended_;              // the Extended Trading Close's orders, in the order each came into it
+    bool          extending_ = false;   // is the Extended Trading Close running
+    std::int64_t  extended_price_ = 0;   // the price it trades at: the Closing Cross's
+    std::uint64_t extended_matched_ = 0;   // the shares it has matched so far
+    std::deque<Order> lives_;                 // the Midpoint Extended Life orders, in the order each was accepted
+    bool          lives_active_ = false;   // may they trade: in Regular Market Hours, with no halt
+    std::int64_t  life_holding_ = 1250000;   // how long one waits before it may trade, in nanoseconds, as the venue declares it
+    std::int64_t  life_resumed_ = 12000000;   // and as a halt is lifted, for one whose period had not passed
+    bool          replaced_waiting_ = false;   // did the order a replace took out wait aside for its cross
     bool          restricted_ = false;   // is the security under the short sale price test
+    bool          discerning_ = false;   // is the book crossing a discretionary order as its Discretionary IOC
+    std::deque<std::pair<std::uint64_t, std::int64_t>> shorted_;   // the short sales the test repriced, by id, with the limit each was entered at
     std::uint64_t refreshes_ = 0;   // the reserve orders shown again, each numbering the id it is shown under
+    std::uint64_t entries_ = 0;   // the places orders have taken: each order taking one is numbered by it
     std::uint64_t matches_ = 0;
     std::map<std::int64_t, std::deque<Order>, std::greater<std::int64_t>> bids_;  // best = highest
     std::map<std::int64_t, std::deque<Order>>                            asks_;  // best = lowest
@@ -1180,4 +2126,6 @@ private:
     Ticks ticks_;                                                        // the prices it steps by, an average rounded to them
     std::int64_t  expires_replaced_ = 0;   // when the order a replace took out expires, which its replacement keeps
     std::deque<std::uint64_t> pending_;   // the cancels held back until the cross is done, of orders the auction holds
+    std::int64_t  last_sale_ = 0;   // the last price it traded at from its Opening Cross until its Closing Cross, 0 before it has
+    std::int64_t  traded_ = 0;   // the last price it traded at, 0 before it has
 };}

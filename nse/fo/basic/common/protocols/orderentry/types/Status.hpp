@@ -1,0 +1,79 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <algorithm>
+#include <array>
+#include <optional>
+#include <string_view>
+#include <type_traits>
+#include "../cache/Required.hpp"
+
+namespace nse::nsefo::orderentry::nnf::v9_50 {
+
+// status
+struct status {
+
+    enum class enum_type : std::int16_t {
+        end_of_outage = 0,
+        start_of_outage = 1
+    };
+
+    static constexpr std::array<std::pair<std::string_view, enum_type>, 2> from_string_map = {{
+        {"End Of Outage", enum_type::end_of_outage},
+        {"Start Of Outage", enum_type::start_of_outage}
+    }};
+
+    static constexpr std::string_view to_string(enum_type value) {
+        switch (value) {
+            case enum_type::end_of_outage: return "End Of Outage";
+            case enum_type::start_of_outage: return "Start Of Outage";
+            default: return "unknown";
+        }
+    }
+
+    static constexpr std::optional<enum_type> from_string(std::string_view str) {
+        auto it = std::lower_bound(
+            from_string_map.begin(),
+            from_string_map.end(),
+            str,
+            [](const auto& pair, std::string_view s) { return pair.first < s; }
+        );
+        if (it != from_string_map.end() && it->first == str) {
+            return it->second;
+        }
+        return std::nullopt;
+    }
+
+    static constexpr const char* name = "status";
+    static constexpr std::size_t size = 2;
+    static constexpr bool is_optional = false;
+
+    using result_type = required<status::enum_type>;
+    using storage_type = result_type;
+
+    status()
+     : value{ enum_type{} } {}
+
+    status(enum_type v)
+     : value{ static_cast<enum_type>(__builtin_bswap16(static_cast<std::underlying_type_t<enum_type>>(v))) } {}
+
+    [[nodiscard]] result_type get() const {
+        return result_type{static_cast<enum_type>(__builtin_bswap16(static_cast<std::underlying_type_t<enum_type>>(value)))};
+    }
+
+    void set(enum_type v) {
+        value = static_cast<enum_type>(__builtin_bswap16(static_cast<std::underlying_type_t<enum_type>>(v)));
+    }
+
+    void set(result_type value) {
+        if (value.has_value())
+            set(value.value());
+        else
+            set(enum_type::start_of_outage);
+    }
+
+  protected:
+    enum_type value;
+};
+}

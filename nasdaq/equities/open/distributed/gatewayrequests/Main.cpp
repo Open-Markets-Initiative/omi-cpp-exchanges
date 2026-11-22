@@ -50,10 +50,10 @@ int main(int argc, char** argv) {
             sim::write_blocking(to_sequencer_gatewayrequests, b, n);
         };
         sim::orderentry::Gateway<decltype(gatewayrequests_emit)> gatewayrequests(gatewayrequests_emit, 4, 4);
-        gatewayrequests.allow("ALICE1", "alice00001");
-        gatewayrequests.allow("BOB001", "bob0000001");
-        gatewayrequests.allow("CAROL1", "carol00001");
-        gatewayrequests.allow("DAVE01", "dave000001");
+        gatewayrequests.allow("MAKER1", "maker10000");
+        gatewayrequests.allow("TAKER1", "taker10000");
+        gatewayrequests.allow("REPLAY", "replay0000");
+        gatewayrequests.allow("ASKER1", "asker10000");
 
         // The engine events the gateway answers, on the gateway's own thread.
         sim::IpcEventServer gatewayrequests_events(
@@ -86,16 +86,13 @@ int main(int argc, char** argv) {
             worked = to_clients_gatewayrequests.read([&](std::string_view message) { gatewayrequests_events.on_message(message); }) || worked;
             worked = from_requests.read([&](std::string_view bytes) { gatewayrequests.on_bytes(requests_client, bytes.data(), bytes.size()); }) || worked;
             worked = order_entry.poll([&](int fd, std::string_view bytes) {
-                auto session = sessions.find(fd);
-                if (session == sessions.end())
-                    session = sessions.emplace(fd, gatewayrequests.connect([&order_entry, fd](const char* b, std::size_t n) { order_entry.send(fd, b, n); })).first;
-                gatewayrequests.on_bytes(session->second, bytes.data(), bytes.size());
+                gatewayrequests.on_bytes(sessions.at(fd), bytes.data(), bytes.size());
             }, [&](int fd) {
                 if (const auto gone = sessions.find(fd); gone != sessions.end()) {
                     gatewayrequests.disconnect(gone->second);
                     sessions.erase(gone);
                 }
-            }) || worked;
+            }, [&](int fd) { sessions.emplace(fd, gatewayrequests.connect([&order_entry, fd](const char* b, std::size_t n) { order_entry.send(fd, b, n); })); }) || worked;
             gatewayrequests.tick();
             if (gatewayrequests.ended(requests_client)) {
                 gatewayrequests.disconnect(requests_client);

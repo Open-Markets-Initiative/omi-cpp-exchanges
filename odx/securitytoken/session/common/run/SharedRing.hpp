@@ -5,6 +5,8 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <stdexcept>
 #include <string>
@@ -193,5 +195,21 @@ private:
 // The same two link kinds the single-process venue has, between processes instead.
 using IpcRing     = SharedRing<ipc_slot_bytes, 4096>;
 using MessageRing = SharedRing<512, 4096>;
+
+// A component says it has begun reading its links, as it enters its loop: launch.sh starts the next
+// component only then, because a writer whose reader is still getting ready waits unanswered, and a
+// trader's session gives up for good on a logon nobody answered. Said by making the file launch.sh
+// names in SIM_READING; nothing is said when nothing asked.
+inline void reading() {
+    const char* const said = std::getenv("SIM_READING");
+
+    if (said == nullptr) {
+        return;
+    }
+
+    if (std::FILE* const file = std::fopen(said, "w")) {
+        std::fclose(file);
+    }
+}
 
 }

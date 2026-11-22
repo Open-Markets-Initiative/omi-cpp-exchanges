@@ -49,11 +49,29 @@ int main(int argc, char** argv) {
             ipc_msgs.fetch_add(1, std::memory_order_relaxed);
             sim::write_blocking(to_sequencer_gatewayrequests, b, n);
         };
-        sim::orderentry::Gateway<decltype(gatewayrequests_emit)> gatewayrequests(gatewayrequests_emit, 4, 4);
-        gatewayrequests.allow("ALICE1", "alice00001");
-        gatewayrequests.allow("BOB001", "bob0000001");
-        gatewayrequests.allow("CAROL1", "carol00001");
-        gatewayrequests.allow("DAVE01", "dave000001");
+        sim::orderentry::Gateway<decltype(gatewayrequests_emit)> gatewayrequests(gatewayrequests_emit, 4, 8);
+        gatewayrequests.allow("MAKER1", "maker10000");
+        gatewayrequests.allow("TAKER1", "taker10000");
+        gatewayrequests.allow("REPLAY", "replay0000");
+        gatewayrequests.allow("ASKER1", "asker10000");
+        gatewayrequests.allow("MAKER2", "maker20000");
+        gatewayrequests.allow("TAKER2", "taker20000");
+        gatewayrequests.allow("FIXMKR", "fixmkr0000");
+        gatewayrequests.allow("FIXTKR", "fixtkr0000");
+        gatewayrequests.allow("RISKST", "riskst0000");
+        gatewayrequests.allow("RSTRCT", "rstrct0000");
+        gatewayrequests.allow("RATEDP", "ratedp0000");
+        gatewayrequests.allow("KILLSW", "killsw0000");
+        gatewayrequests.allow("GROSSX", "grossx0000");
+        gatewayrequests.allow("FATFNG", "fatfng0000");
+        gatewayrequests.allow("OUCETC", "oucetc0000");
+        gatewayrequests.allow("HALTCX", "haltcx0000");
+        gatewayrequests.allow("MELOBY", "meloby0000");
+        gatewayrequests.allow("MELOSL", "melosl0000");
+        gatewayrequests.allow("MELOPG", "melopg0000");
+        gatewayrequests.allow("FIXETC", "fixetc0000");
+        gatewayrequests.allow("FIXOPT", "fixopt0000");
+        gatewayrequests.allow("FIXRSK", "fixrsk0000");
 
         // The engine events the gateway answers, on the gateway's own thread.
         sim::IpcEventServer gatewayrequests_events(
@@ -69,7 +87,8 @@ int main(int argc, char** argv) {
             [&](const sim::ipc_ns::order_replaced_message& w) { gatewayrequests.on_event(w); },
             [&](const sim::ipc_ns::order_reduced_message& y) { gatewayrequests.on_event(y); },
             [&](const sim::ipc_ns::cancel_pending_message& g) { gatewayrequests.on_event(g); },
-            [&](const sim::ipc_ns::reduce_refused_message& z) { gatewayrequests.on_event(z); });
+            [&](const sim::ipc_ns::reduce_refused_message& z) { gatewayrequests.on_event(z); },
+            [&](const sim::ipc_ns::trade_broken_message& x) { gatewayrequests.on_event(x); });
 
         // A session per trader process, against the link that carries it. To the gateway a
         // trader on a link is what a client on a socket is: somewhere to write bytes.
@@ -84,21 +103,19 @@ int main(int argc, char** argv) {
                     cfg.order_entry.host.c_str(), (unsigned)cfg.gatewayrequests_port);
 
         // Nothing to do means nothing to do: back off rather than spin a core.
+        sim::reading();   // launch.sh starts the next component once this one reads its links
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
             worked = to_clients_gatewayrequests.read([&](std::string_view message) { gatewayrequests_events.on_message(message); }) || worked;
             worked = from_requests.read([&](std::string_view bytes) { gatewayrequests.on_bytes(requests_client, bytes.data(), bytes.size()); }) || worked;
             worked = order_entry.poll([&](int fd, std::string_view bytes) {
-                auto session = sessions.find(fd);
-                if (session == sessions.end())
-                    session = sessions.emplace(fd, gatewayrequests.connect([&order_entry, fd](const char* b, std::size_t n) { order_entry.send(fd, b, n); })).first;
-                gatewayrequests.on_bytes(session->second, bytes.data(), bytes.size());
+                gatewayrequests.on_bytes(sessions.at(fd), bytes.data(), bytes.size());
             }, [&](int fd) {
                 if (const auto gone = sessions.find(fd); gone != sessions.end()) {
                     gatewayrequests.disconnect(gone->second);
                     sessions.erase(gone);
                 }
-            }) || worked;
+            }, [&](int fd) { sessions.emplace(fd, gatewayrequests.connect([&order_entry, fd](const char* b, std::size_t n) { order_entry.send(fd, b, n); })); }) || worked;
             gatewayrequests.tick();
             if (gatewayrequests.ended(requests_client)) {
                 gatewayrequests.disconnect(requests_client);

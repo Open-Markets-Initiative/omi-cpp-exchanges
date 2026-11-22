@@ -54,6 +54,12 @@ int main(int argc, char** argv) {
                     sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_executed), sizeof totalview_order_executed);
                     sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_executed), sizeof totalview_order_executed);
                 }
+                if (static_cast<char>(t.aggressor_display.get().value()) != 'N') {
+                    auto totalview_discretion_taken = sim::to_totalview_discretion_taken(t);
+                    totalview.publish_message(reinterpret_cast<const char*>(&totalview_discretion_taken), sizeof totalview_discretion_taken);
+                    sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_discretion_taken), sizeof totalview_discretion_taken);
+                    sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_discretion_taken), sizeof totalview_discretion_taken);
+                }
                 if (static_cast<char>(t.resting_display.get().value()) != 'Y') {
                     auto totalview_hidden_executed = sim::to_totalview_hidden_executed(t);
                     totalview.publish_message(reinterpret_cast<const char*>(&totalview_hidden_executed), sizeof totalview_hidden_executed);
@@ -64,17 +70,23 @@ int main(int argc, char** argv) {
             },
             [&](const sim::ipc_ns::order_rested_message& o) {
                 // order_rested_message -> the feeds its transforms declare (NsmEquities.Ipc.Transforms.xml).
-                if (static_cast<char>(o.display.get().value()) == 'Y') {
+                if (static_cast<char>(o.display.get().value()) == 'Y' && static_cast<char>(o.repriced.get().value()) != 'Y') {
                     auto totalview_add_order = sim::to_totalview_add_order(o);
                     totalview.publish_message(reinterpret_cast<const char*>(&totalview_add_order), sizeof totalview_add_order);
                     sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_add_order), sizeof totalview_add_order);
                     sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_add_order), sizeof totalview_add_order);
                 }
-                if (static_cast<char>(o.display.get().value()) == 'A') {
+                if (static_cast<char>(o.display.get().value()) == 'A' && static_cast<char>(o.repriced.get().value()) != 'Y') {
                     auto totalview_add_order_attributed = sim::to_totalview_add_order_attributed(o);
                     totalview.publish_message(reinterpret_cast<const char*>(&totalview_add_order_attributed), sizeof totalview_add_order_attributed);
                     sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_add_order_attributed), sizeof totalview_add_order_attributed);
                     sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_add_order_attributed), sizeof totalview_add_order_attributed);
+                }
+                if (static_cast<char>(o.repriced.get().value()) == 'Y' && static_cast<char>(o.display.get().value()) != 'N') {
+                    auto totalview_order_repriced = sim::to_totalview_order_repriced(o);
+                    totalview.publish_message(reinterpret_cast<const char*>(&totalview_order_repriced), sizeof totalview_order_repriced);
+                    sim::write_blocking(to_glimpse, reinterpret_cast<const char*>(&totalview_order_repriced), sizeof totalview_order_repriced);
+                    sim::write_blocking(to_totalviewtcp, reinterpret_cast<const char*>(&totalview_order_repriced), sizeof totalview_order_repriced);
                 }
                 totalview.flush();
             },
@@ -133,6 +145,7 @@ int main(int argc, char** argv) {
 
         std::uint64_t handled = 0;
         // Nothing to do means nothing to do: back off rather than spin a core.
+        sim::reading();   // launch.sh starts the next component once this one reads its links
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
             worked = to_totalview.read([&](std::string_view message) { if (const auto asked = sim::book_end_of(message)) totalview_rec.mark(*asked); totalview_events.on_message(message); ++handled; }) || worked;

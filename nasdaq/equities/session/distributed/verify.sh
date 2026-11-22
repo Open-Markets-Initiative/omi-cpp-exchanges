@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generated check of the Nasdaq Stock Market Session venue as 14 separate processes, joined by sockets.
+# Generated check of the Nasdaq Stock Market Session venue as 22 separate processes, joined by sockets.
 #
 # Usage: bash verify.sh [build-directory] [seconds]
 #
@@ -32,17 +32,23 @@ atleast() { if [ -n "$2" ] && [ "$2" -ge "$3" ] 2>/dev/null; then ok "$1 ($2)"; 
 # component whose own name has a digit in it does not count as one.
 number() { grep -m1 -- "$1" "$out" | sed "s/.*$1//" | grep -oE '[0-9]+' | sed -n "$2p"; }
 
-echo "verify: Nasdaq Stock Market Session — distributed, 14 components, ${seconds}s"
+echo "verify: Nasdaq Stock Market Session — distributed, 22 components, ${seconds}s"
 
 # The venue runs on a copy of its simulator.ini made for the check.
 # Its trading day is the startup run's, a second a turn, so a check of seconds sees it open: the
 # seconds simulator.ini gives each change are a real day's minutes.
 scratch="$(mktemp -d)"
 sed -e '/^\[day\]/,/^\[/ s|^preopen = .*|preopen = 0|' \
+    -e '/^\[day\]/,/^\[/ s|^halt-zxzzt = .*|halt-zxzzt = 0|' \
     -e '/^\[day\]/,/^\[/ s|^openinglockin = .*|openinglockin = 2|' \
     -e '/^\[day\]/,/^\[/ s|^openinglockout = .*|openinglockout = 3|' \
     -e '/^\[day\]/,/^\[/ s|^openinglate = .*|openinglate = 4|' \
     -e '/^\[day\]/,/^\[/ s|^open = .*|open = 4|' \
+    -e '/^\[day\]/,/^\[/ s|^postpone-zxzzt = .*|postpone-zxzzt = 5|' \
+    -e '/^\[day\]/,/^\[/ s|^halt-zwzzt = .*|halt-zwzzt = 5|' \
+    -e '/^\[day\]/,/^\[/ s|^resume-zwzzt = .*|resume-zwzzt = 7|' \
+    -e '/^\[day\]/,/^\[/ s|^quote-zxzzt = .*|quote-zxzzt = 7|' \
+    -e '/^\[day\]/,/^\[/ s|^resume-zxzzt = .*|resume-zxzzt = 8|' \
     -e '/^\[day\]/,/^\[/ s|^halt = .*|halt = 8|' \
     -e '/^\[day\]/,/^\[/ s|^quote = .*|quote = 9|' \
     -e '/^\[day\]/,/^\[/ s|^resume = .*|resume = 10|' \
@@ -50,6 +56,7 @@ sed -e '/^\[day\]/,/^\[/ s|^preopen = .*|preopen = 0|' \
     -e '/^\[day\]/,/^\[/ s|^closinglockout = .*|closinglockout = 16|' \
     -e '/^\[day\]/,/^\[/ s|^closingfreeze = .*|closingfreeze = 17|' \
     -e '/^\[day\]/,/^\[/ s|^close = .*|close = 18|' \
+    -e '/^\[day\]/,/^\[/ s|^extendedtradingcloseend = .*|extendedtradingcloseend = 19|' \
     -e '/^\[day\]/,/^\[/ s|^end = .*|end = 20|' \
     "$here/../simulator.ini" > "$scratch/simulator.ini"
 
@@ -85,13 +92,21 @@ glimpse_held=$(number "nasdaq-glimpse: stopped" 1)
 totalviewtcp_held=$(number "nasdaq-totalviewtcp: stopped" 1)
 makerbasic_entered=$(number "nasdaq-makerbasic: stopped" 1)
 takerbasic_entered=$(number "nasdaq-takerbasic: stopped" 1)
+makersecond_entered=$(number "nasdaq-makersecond: stopped" 1)
+takersecond_entered=$(number "nasdaq-takersecond: stopped" 1)
+fixmaker_entered=$(number "nasdaq-fixmaker: stopped" 1)
+fixtaker_entered=$(number "nasdaq-fixtaker: stopped" 1)
 echo "verify: what the venue did"
-same "components up while it ran" "$up" 14
+same "components up while it ran" "$up" 22
 said "launch: down" "the launcher brought it down in order"
 said "nasdaq-gatewaymakerbasic: stopped" "gatewaymakerbasic ran and stopped cleanly"
 said "nasdaq-gatewaytakerbasic: stopped" "gatewaytakerbasic ran and stopped cleanly"
 said "nasdaq-gatewayreplay: stopped" "gatewayreplay ran and stopped cleanly"
 said "nasdaq-gatewayrequests: stopped" "gatewayrequests ran and stopped cleanly"
+said "nasdaq-gatewaymakersecond: stopped" "gatewaymakersecond ran and stopped cleanly"
+said "nasdaq-gatewaytakersecond: stopped" "gatewaytakersecond ran and stopped cleanly"
+said "nasdaq-gatewayfixmaker: stopped" "gatewayfixmaker ran and stopped cleanly"
+said "nasdaq-gatewayfixtaker: stopped" "gatewayfixtaker ran and stopped cleanly"
 said "nasdaq-engine: stopped" "engine ran and stopped cleanly"
 said "nasdaq-sequencer: stopped" "sequencer ran and stopped cleanly"
 said "nasdaq-day: stopped" "day ran and stopped cleanly"
@@ -102,6 +117,10 @@ said "nasdaq-makerbasic: stopped" "makerbasic ran and stopped cleanly"
 said "nasdaq-takerbasic: stopped" "takerbasic ran and stopped cleanly"
 said "nasdaq-replay: stopped" "replay ran and stopped cleanly"
 said "nasdaq-requests: stopped" "requests ran and stopped cleanly"
+said "nasdaq-makersecond: stopped" "makersecond ran and stopped cleanly"
+said "nasdaq-takersecond: stopped" "takersecond ran and stopped cleanly"
+said "nasdaq-fixmaker: stopped" "fixmaker ran and stopped cleanly"
+said "nasdaq-fixtaker: stopped" "fixtaker ran and stopped cleanly"
 echo "verify: what it carried"
 atleast "the engine matched trades" "$trades" 1
 atleast "the engine emitted events" "$events" 1
@@ -110,6 +129,10 @@ same "glimpse holds what totalview published" "$glimpse_held" "$totalview_publis
 same "totalviewtcp holds what totalview published" "$totalviewtcp_held" "$totalview_published"
 atleast "makerbasic entered orders" "$makerbasic_entered" 1
 atleast "takerbasic entered orders" "$takerbasic_entered" 1
+atleast "makersecond entered orders" "$makersecond_entered" 1
+atleast "takersecond entered orders" "$takersecond_entered" 1
+atleast "fixmaker entered orders" "$fixmaker_entered" 1
+atleast "fixtaker entered orders" "$fixtaker_entered" 1
 
 echo "verify: what it did not lose"
 quiet "gap(s) on" "no link reported a gap"

@@ -68,12 +68,12 @@ constexpr std::size_t fixed_size() {
 }
 
 // An order the gateway admitted: its id, the client's reference to it, the shares still open,
-// and the client that owns it.
+// and the Account that owns it - its port's, whichever connection entered it.
 struct Order {
     std::uint64_t id = 0;
     std::uint64_t reference = 0;
     std::uint64_t remaining = 0;
-    std::size_t client = 0;
+    std::size_t account = 0;
     protocol::enter_order_message::fields_type entered{};   // what the client entered it with, which a response restates
     protocol::enter_order_message request{};   // the request that admitted it, answered once the engine has it
     char side = 0;   // the side the engine was told it is on, as the Ipc says it
@@ -282,16 +282,17 @@ public:
     // give one number, and none has to ask another what it gave. The simulator's own scheme:
     // Nasdaq's feeds show orders numbered by the engine as they arrive, not by any gateway.
     // A gateway on its own - a test's - numbers from one, as the one gateway does.
-    explicit Gateway(Emit emit, std::uint64_t first = 1, std::uint64_t step = 1) : emit_(emit), next_id_(first), step_(step) {}
+    // Its place in that interleave is its port's too, and so names the Account the port is bound to.
+    explicit Gateway(Emit emit, std::uint64_t first = 1, std::uint64_t step = 1) : emit_(emit), account_(first), next_id_(first), step_(step) {}
 
     // A login the gateway accepts; with none registered, any login is accepted.
     void allow(std::string username, std::string password) { credentials_[std::move(username)] = std::move(password); }
 
     // A new client connection, writing through `send`; returns the session's own number.
     // 
-    // Numbered once and never again: an order carries the number of the session that entered
-    // it, and so does the reference it was entered under. A number handed out twice would
-    // make one client's reference name another client's order.
+    // Numbered once and never again: the loop knows a connection by it, and a number handed out
+    // twice would close one client's connection for another's. Its orders are not the
+    // connection's: every connection on the port is the port's one Account.
     std::size_t connect(Send send) {
         const auto client = next_client_++;
         clients_.emplace(client, std::make_unique<Client>(*this, client, std::move(send)));
@@ -300,7 +301,8 @@ public:
 
     // A client that has gone: its session is over, and what it held is let go. Whatever it
     // left resting stays in the book - a venue does not cancel an order because a line
-    // dropped - and answers about those orders find nobody, which is what has happened.
+    // dropped - and stays the Account's: answers about it reach whichever connections are
+    // logged in on the port, none while none is, and a client that logs in again finds it.
     void disconnect(std::size_t client) { clients_.erase(client); }
 
     void on_bytes(std::size_t client, const char* data, std::size_t length) {
@@ -324,14 +326,14 @@ public:
 
     // The engine's phase_announced_message: answered to the client owning each order it names.
     void on_event(const ipc_ns::phase_announced_message& m) {
-        if (static_cast<char>(m.announcement.get().value()) == 'S') for (const auto& held : clients_) respond(held.first, to_ouch_start_of_day(m));
-        if (static_cast<char>(m.announcement.get().value()) == 'E') for (const auto& held : clients_) respond(held.first, to_ouch_end_of_day(m));
+        if (static_cast<char>(m.announcement.get().value()) == 'S') respond(to_ouch_start_of_day(m));
+        if (static_cast<char>(m.announcement.get().value()) == 'E') respond(to_ouch_end_of_day(m));
     }
 
     // The engine's trade_message: answered to the client owning each order it names.
     void on_event(const ipc_ns::trade_message& m) {
-        if (auto found = orders_.find(m.resting_order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_executed_resting(m, found->second));
-        if (auto found = orders_.find(m.aggressor_order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_executed_aggressor(m, found->second));
+        if (auto found = orders_.find(m.resting_order_id.get().value()); found != orders_.end()) respond(to_ouch_executed_resting(m, found->second));
+        if (auto found = orders_.find(m.aggressor_order_id.get().value()); found != orders_.end()) respond(to_ouch_executed_aggressor(m, found->second));
         if (auto found = orders_.find(m.resting_order_id.get().value()); found != orders_.end()) found->second.executed += m.quantity.get().value();
         fill(m.resting_order_id.get().value(), m.quantity.get().value());
         if (auto found = orders_.find(m.aggressor_order_id.get().value()); found != orders_.end()) found->second.executed += m.quantity.get().value();
@@ -340,30 +342,30 @@ public:
 
     // The engine's order_canceled_message: answered to the client owning each order it names.
     void on_event(const ipc_ns::order_canceled_message& m) {
-        if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_canceled(m, found->second));
+        if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(to_ouch_canceled(m, found->second));
         close(m.order_id.get().value());
     }
 
     // The engine's order_eliminated_message: answered to the client owning each order it names.
     void on_event(const ipc_ns::order_eliminated_message& m) {
-        if (static_cast<long long>(m.time_in_force.get().value()) == 0) if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_eliminated(m, found->second));
+        if (static_cast<long long>(m.time_in_force.get().value()) == 0) if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(to_ouch_eliminated(m, found->second));
         fill(m.order_id.get().value(), m.quantity.get().value());
     }
 
     // The engine's order_refused_message: answered to the client owning each order it names.
     void on_event(const ipc_ns::order_refused_message& m) {
-        if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_rejected(m, found->second));
+        if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(to_ouch_rejected(m, found->second));
         close(m.order_id.get().value());
     }
 
     // The engine's order_accepted_message: answered to the client owning each order it names.
     void on_event(const ipc_ns::order_accepted_message& m) {
-        if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_order_accepted(found->second.request, found->second));
+        if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(to_ouch_order_accepted(found->second.request, found->second));
     }
 
     // The engine's order_replaced_message: answered to the client owning each order it names.
     void on_event(const ipc_ns::order_replaced_message& m) {
-        if (auto found = orders_.find(m.replacement_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_order_replaced(found->second.replace, found->second));
+        if (auto found = orders_.find(m.replacement_id.get().value()); found != orders_.end()) respond(to_ouch_order_replaced(found->second.replace, found->second));
         if (auto found = orders_.find(m.replacement_id.get().value()); found != orders_.end()) found->second.remaining = m.quantity.get().value();
         if (m.order_id.get().value() != m.replacement_id.get().value()) close(m.order_id.get().value());
     }
@@ -401,6 +403,7 @@ private:
 
     // One unsequenced data packet from a client, dispatched by its message's code.
     void message(std::size_t client, std::string_view packet) {
+        (void)client;   // every connection on the port is the one Account
         if (packet.size() <= sizeof(protocol::client_packet_header)) return;
         const auto* bytes = reinterpret_cast<const std::byte*>(packet.data());
         auto selector = protocol::unsequenced_data_packet::parse(bytes)->fields.unsequenced_message_type.get().value();
@@ -408,21 +411,21 @@ private:
             case static_cast<decltype(selector)>('O'): {
                 if (packet.size() < fixed_size<protocol::enter_order_message>()) return;
                 const auto& m = *protocol::enter_order_message::parse(bytes);
-                Order order{ numbered(), static_cast<std::uint64_t>(m.fields.order_token.get().value()), 0, client };
+                Order order{ numbered(), static_cast<std::uint64_t>(m.fields.order_token.get().value()), 0, account_ };
                 auto ipc = to_ouch_enter_order(m, order);
                 order.remaining = ipc.quantity.get().value();
                 order.side = static_cast<char>(ipc.side.get().value());   // the side the engine was told
                 order.entered = m.fields;
                 std::memcpy(&order.request, packet.data(), std::min(packet.size(), sizeof order.request));   // as much of it as arrived
                 orders_[order.id] = order;
-                references_[{ client, order.reference }] = order.id;
+                references_[order.reference] = order.id;
                 detail_ipc::emit_framed(emit_, 'N', ipc);
                 return;
             }
             case static_cast<decltype(selector)>('X'): {
                 if (packet.size() < fixed_size<protocol::cancel_order_message>()) return;
                 const auto& m = *protocol::cancel_order_message::parse(bytes);
-                const auto key = std::make_pair(client, static_cast<std::uint64_t>(m.fields.order_token.get().value()));
+                const auto key = static_cast<std::uint64_t>(m.fields.order_token.get().value());
                 const auto found = references_.find(key);
                 if (found == references_.end()) return;
                 const Order& order = orders_.at(found->second);
@@ -433,7 +436,7 @@ private:
             case static_cast<decltype(selector)>('U'): {
                 if (packet.size() < fixed_size<protocol::replace_order_message>()) return;
                 const auto& m = *protocol::replace_order_message::parse(bytes);
-                const auto key = std::make_pair(client, static_cast<std::uint64_t>(m.fields.existing_order_token.get().value()));
+                const auto key = static_cast<std::uint64_t>(m.fields.existing_order_token.get().value());
                 const auto found = references_.find(key);
                 if (found == references_.end()) return;
                 const Order& replaced = orders_.at(found->second);
@@ -446,7 +449,7 @@ private:
                 auto ipc = to_ouch_replace_order(m, order);
                 order.remaining = ipc.quantity.get().value();
                 orders_[order.id] = order;
-                references_[{ client, order.reference }] = order.id;
+                references_[order.reference] = order.id;
                 detail_ipc::emit_framed(emit_, 'M', ipc);
                 return;
             }
@@ -455,16 +458,13 @@ private:
         }
     }
 
-    // A response to a client, as the body of the message its session publishes.
+    // A response to the port's Account, as the body of the message each session publishes.
+    // Every connection logged in on the port is told it, mirroring the Account (OUCH 5.0, 1.3); one
+    // that has gone is not, and what the venue tells the Account while none is logged in goes nowhere.
     template <typename Response>
-    void respond(std::size_t client, const Response& response) {
+    void respond(const Response& response) {
         const auto* bytes = reinterpret_cast<const char*>(&response) + sizeof(protocol::server_packet_header);
-        // A client that has gone is not written to: the order it left may still trade, and what
-        // the venue would have told it goes nowhere.
-        const auto held = clients_.find(client);
-        if (held == clients_.end()) { return; }
-
-        held->second->session.sequenced(bytes, response.header.packet_length.get().value() + 2 - sizeof(protocol::server_packet_header));
+        for (const auto& held : clients_) held.second->session.sequenced(bytes, response.header.packet_length.get().value() + 2 - sizeof(protocol::server_packet_header));
     }
 
     // Shares executed on an order; a filled order is no longer open.
@@ -478,7 +478,7 @@ private:
     void close(std::uint64_t id) {
         auto found = orders_.find(id);
         if (found == orders_.end()) return;
-        references_.erase({ found->second.client, found->second.reference });
+        references_.erase(found->second.reference);
         orders_.erase(found);
     }
 
@@ -493,8 +493,9 @@ private:
     std::map<std::size_t, std::unique_ptr<Client>> clients_;
     std::size_t next_client_ = 0;   // session numbers, never reused
     std::map<std::string, std::string, std::less<>> credentials_;
+    std::size_t account_;   // the Account its port is bound to: the gateway's place among the venue's gateways
     std::map<std::uint64_t, Order> orders_;
-    std::map<std::pair<std::size_t, std::uint64_t>, std::uint64_t> references_;
+    std::map<std::uint64_t, std::uint64_t> references_;   // each open order, by the reference the Account entered it under
     std::uint64_t next_id_;   // the number the next order admitted is given
     std::uint64_t step_;      // how many gateways number in turn
 };

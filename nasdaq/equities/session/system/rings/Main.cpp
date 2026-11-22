@@ -28,6 +28,14 @@ int main(int argc, char** argv) {
         else        sim::IpcRing::discard("gatewayreplay -> sequencer");
         if (create) sim::IpcRing::create("gatewayrequests -> sequencer");
         else        sim::IpcRing::discard("gatewayrequests -> sequencer");
+        if (create) sim::IpcRing::create("gatewaymakersecond -> sequencer");
+        else        sim::IpcRing::discard("gatewaymakersecond -> sequencer");
+        if (create) sim::IpcRing::create("gatewaytakersecond -> sequencer");
+        else        sim::IpcRing::discard("gatewaytakersecond -> sequencer");
+        if (create) sim::IpcRing::create("gatewayfixmaker -> sequencer");
+        else        sim::IpcRing::discard("gatewayfixmaker -> sequencer");
+        if (create) sim::IpcRing::create("gatewayfixtaker -> sequencer");
+        else        sim::IpcRing::discard("gatewayfixtaker -> sequencer");
         if (create) sim::IpcRing::create("day -> sequencer");
         else        sim::IpcRing::discard("day -> sequencer");
         if (create) sim::IpcRing::create("sequencer -> engine");
@@ -40,6 +48,14 @@ int main(int argc, char** argv) {
         else        sim::IpcRing::discard("engine -> gatewayreplay");
         if (create) sim::IpcRing::create("engine -> gatewayrequests");
         else        sim::IpcRing::discard("engine -> gatewayrequests");
+        if (create) sim::IpcRing::create("engine -> gatewaymakersecond");
+        else        sim::IpcRing::discard("engine -> gatewaymakersecond");
+        if (create) sim::IpcRing::create("engine -> gatewaytakersecond");
+        else        sim::IpcRing::discard("engine -> gatewaytakersecond");
+        if (create) sim::IpcRing::create("engine -> gatewayfixmaker");
+        else        sim::IpcRing::discard("engine -> gatewayfixmaker");
+        if (create) sim::IpcRing::create("engine -> gatewayfixtaker");
+        else        sim::IpcRing::discard("engine -> gatewayfixtaker");
         if (create) sim::IpcRing::create("engine -> totalview");
         else        sim::IpcRing::discard("engine -> totalview");
         if (create) sim::MessageRing::create("totalview -> glimpse");
@@ -62,11 +78,27 @@ int main(int argc, char** argv) {
         else        sim::MessageRing::discard("gatewayrequests -> requests");
         if (create) sim::MessageRing::create("requests -> gatewayrequests");
         else        sim::MessageRing::discard("requests -> gatewayrequests");
+        if (create) sim::MessageRing::create("gatewaymakersecond -> makersecond");
+        else        sim::MessageRing::discard("gatewaymakersecond -> makersecond");
+        if (create) sim::MessageRing::create("makersecond -> gatewaymakersecond");
+        else        sim::MessageRing::discard("makersecond -> gatewaymakersecond");
+        if (create) sim::MessageRing::create("gatewaytakersecond -> takersecond");
+        else        sim::MessageRing::discard("gatewaytakersecond -> takersecond");
+        if (create) sim::MessageRing::create("takersecond -> gatewaytakersecond");
+        else        sim::MessageRing::discard("takersecond -> gatewaytakersecond");
+        if (create) sim::MessageRing::create("gatewayfixmaker -> fixmaker");
+        else        sim::MessageRing::discard("gatewayfixmaker -> fixmaker");
+        if (create) sim::MessageRing::create("fixmaker -> gatewayfixmaker");
+        else        sim::MessageRing::discard("fixmaker -> gatewayfixmaker");
+        if (create) sim::MessageRing::create("gatewayfixtaker -> fixtaker");
+        else        sim::MessageRing::discard("gatewayfixtaker -> fixtaker");
+        if (create) sim::MessageRing::create("fixtaker -> gatewayfixtaker");
+        else        sim::MessageRing::discard("fixtaker -> gatewayfixtaker");
     } catch (const std::exception& problem) {
         std::fprintf(stderr, "nasdaq-rings: %s\n", problem.what());
         return 1;
     }
 
-    std::printf("nasdaq-rings: %s 21 links\n", create ? "created" : "discarded");
+    std::printf("nasdaq-rings: %s 37 links\n", create ? "created" : "discarded");
     return 0;
 }

@@ -51,9 +51,10 @@ struct participant_type {
 
     static constexpr const char* name = "participant_type";
     static constexpr std::size_t size = 1;
-    static constexpr bool is_optional = false;
+    static constexpr bool is_optional = true;
+    static constexpr enum_type null_value = static_cast<enum_type>(' ');
 
-    using result_type = required<participant_type::enum_type>;
+    using result_type = std::optional<participant_type::enum_type>;
     using storage_type = result_type;
 
     constexpr participant_type()
@@ -63,7 +64,8 @@ struct participant_type {
      : value{ v } {}
 
     [[nodiscard]] constexpr result_type get() const {
-        return result_type{value};
+        const enum_type held = value;
+        return held == null_value ? std::nullopt : result_type{held};
     }
 
     constexpr void set(enum_type v) {
@@ -74,7 +76,11 @@ struct participant_type {
         if (value.has_value())
             set(value.value());
         else
-            set(static_cast<enum_type>(' '));
+            set(null_value);
+    }
+
+    constexpr void set_null() {
+        set(null_value);
     }
 
   protected:

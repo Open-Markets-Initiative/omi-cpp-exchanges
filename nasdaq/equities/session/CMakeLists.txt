@@ -37,6 +37,12 @@ target_include_directories(simulator_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/c
 target_link_libraries(simulator_tests PRIVATE Boost::headers Threads::Threads)
 add_test(NAME simulator_tests COMMAND simulator_tests)
 
+# The Fix order entry's own suite: its wire and its session.
+add_executable(simulator_tests_fix common/tests/FixSimulatorTests.cpp)
+target_include_directories(simulator_tests_fix PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(simulator_tests_fix PRIVATE Boost::headers Threads::Threads)
+add_test(NAME simulator_tests_fix COMMAND simulator_tests_fix)
+
 # The per-component version (system/): every component is its own process, and the links between
 # them are rings in shared memory rather than queues in one process's own. The rings have to exist
 # before any component attaches - the links are a cycle, so there is no start order that would let
@@ -64,6 +70,22 @@ target_link_libraries(nasdaq_system_gatewayreplay PRIVATE Boost::program_options
 add_executable(nasdaq_system_gatewayrequests system/gatewayrequests/Main.cpp)
 target_include_directories(nasdaq_system_gatewayrequests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
 target_link_libraries(nasdaq_system_gatewayrequests PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_system_gatewaymakersecond system/gatewaymakersecond/Main.cpp)
+target_include_directories(nasdaq_system_gatewaymakersecond PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_system_gatewaymakersecond PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_system_gatewaytakersecond system/gatewaytakersecond/Main.cpp)
+target_include_directories(nasdaq_system_gatewaytakersecond PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_system_gatewaytakersecond PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_system_gatewayfixmaker system/gatewayfixmaker/Main.cpp)
+target_include_directories(nasdaq_system_gatewayfixmaker PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_system_gatewayfixmaker PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_system_gatewayfixtaker system/gatewayfixtaker/Main.cpp)
+target_include_directories(nasdaq_system_gatewayfixtaker PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_system_gatewayfixtaker PRIVATE Boost::program_options Threads::Threads)
 
 add_executable(nasdaq_system_engine system/engine/Main.cpp)
 target_include_directories(nasdaq_system_engine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
@@ -105,6 +127,22 @@ add_executable(nasdaq_system_requests system/requests/Main.cpp)
 target_include_directories(nasdaq_system_requests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
 target_link_libraries(nasdaq_system_requests PRIVATE Boost::program_options Threads::Threads)
 
+add_executable(nasdaq_system_makersecond system/makersecond/Main.cpp)
+target_include_directories(nasdaq_system_makersecond PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_system_makersecond PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_system_takersecond system/takersecond/Main.cpp)
+target_include_directories(nasdaq_system_takersecond PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_system_takersecond PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_system_fixmaker system/fixmaker/Main.cpp)
+target_include_directories(nasdaq_system_fixmaker PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_system_fixmaker PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_system_fixtaker system/fixtaker/Main.cpp)
+target_include_directories(nasdaq_system_fixtaker PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_system_fixtaker PRIVATE Boost::program_options Threads::Threads)
+
 add_executable(nasdaq_distributed_gatewaymakerbasic distributed/gatewaymakerbasic/Main.cpp)
 target_include_directories(nasdaq_distributed_gatewaymakerbasic PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
 target_link_libraries(nasdaq_distributed_gatewaymakerbasic PRIVATE Boost::program_options Threads::Threads)
@@ -120,6 +158,22 @@ target_link_libraries(nasdaq_distributed_gatewayreplay PRIVATE Boost::program_op
 add_executable(nasdaq_distributed_gatewayrequests distributed/gatewayrequests/Main.cpp)
 target_include_directories(nasdaq_distributed_gatewayrequests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
 target_link_libraries(nasdaq_distributed_gatewayrequests PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_distributed_gatewaymakersecond distributed/gatewaymakersecond/Main.cpp)
+target_include_directories(nasdaq_distributed_gatewaymakersecond PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_distributed_gatewaymakersecond PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_distributed_gatewaytakersecond distributed/gatewaytakersecond/Main.cpp)
+target_include_directories(nasdaq_distributed_gatewaytakersecond PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_distributed_gatewaytakersecond PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_distributed_gatewayfixmaker distributed/gatewayfixmaker/Main.cpp)
+target_include_directories(nasdaq_distributed_gatewayfixmaker PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_distributed_gatewayfixmaker PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_distributed_gatewayfixtaker distributed/gatewayfixtaker/Main.cpp)
+target_include_directories(nasdaq_distributed_gatewayfixtaker PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_distributed_gatewayfixtaker PRIVATE Boost::program_options Threads::Threads)
 
 add_executable(nasdaq_distributed_engine distributed/engine/Main.cpp)
 target_include_directories(nasdaq_distributed_engine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
@@ -160,6 +214,26 @@ target_link_libraries(nasdaq_distributed_replay PRIVATE Boost::program_options T
 add_executable(nasdaq_distributed_requests distributed/requests/Main.cpp)
 target_include_directories(nasdaq_distributed_requests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
 target_link_libraries(nasdaq_distributed_requests PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_distributed_makersecond distributed/makersecond/Main.cpp)
+target_include_directories(nasdaq_distributed_makersecond PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_distributed_makersecond PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_distributed_takersecond distributed/takersecond/Main.cpp)
+target_include_directories(nasdaq_distributed_takersecond PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_distributed_takersecond PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_distributed_fixmaker distributed/fixmaker/Main.cpp)
+target_include_directories(nasdaq_distributed_fixmaker PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_distributed_fixmaker PRIVATE Boost::program_options Threads::Threads)
+
+add_executable(nasdaq_distributed_fixtaker distributed/fixtaker/Main.cpp)
+target_include_directories(nasdaq_distributed_fixtaker PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
+target_link_libraries(nasdaq_distributed_fixtaker PRIVATE Boost::program_options Threads::Threads)
+
+# The priority check: captures of the venue's feed, each order it showed held in the engine's book, and each execution set beside the order the engine would have traded first.
+add_executable(nasdaq_state_check common/state_check/Main.cpp)
+target_include_directories(nasdaq_state_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common ${SIM_INCLUDE_DIRS})
 
 # The book check: the book the venue's book model states, built from a recording of its feed, held against the engine's own.
 add_executable(nasdaq_book common/book/Check.cpp)

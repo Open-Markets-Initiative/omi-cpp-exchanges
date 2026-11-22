@@ -14,18 +14,21 @@ struct post_only {
 
     enum class enum_type : char {
         no = 'N',
-        post_only = 'P'
+        post_only = 'P',
+        post_only_canceling = 'C'
     };
 
-    static constexpr std::array<std::pair<std::string_view, enum_type>, 2> from_string_map = {{
+    static constexpr std::array<std::pair<std::string_view, enum_type>, 3> from_string_map = {{
         {"No", enum_type::no},
-        {"Post Only", enum_type::post_only}
+        {"Post Only", enum_type::post_only},
+        {"Post Only Canceling", enum_type::post_only_canceling}
     }};
 
     static constexpr std::string_view to_string(enum_type value) {
         switch (value) {
             case enum_type::no: return "No";
             case enum_type::post_only: return "Post Only";
+            case enum_type::post_only_canceling: return "Post Only Canceling";
             default: return "unknown";
         }
     }
@@ -68,7 +71,7 @@ struct post_only {
         if (value.has_value())
             set(value.value());
         else
-            set(enum_type::post_only);
+            set(enum_type::post_only_canceling);
     }
 
   protected:

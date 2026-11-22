@@ -24,6 +24,7 @@ carries it.
 | Investors Exchange Equities Basic | [iex/equities/basic](iex/equities/basic) | Always open | process |
 | Investors Exchange Equities Open | [iex/equities/open](iex/equities/open) | Always open | process, system, distributed |
 | Investors Exchange Equities Session | [iex/equities/session](iex/equities/session) | Trading day | process, system, distributed |
+| Nse Futures and Options Basic | [nse/fo/basic](nse/fo/basic) | Always open | process |
 | Nse Futures and Options | [nse/fo](nse/fo) | Always open | process, system, distributed |
 | Nasdaq Stock Market Basic | [nasdaq/equities/basic](nasdaq/equities/basic) | Always open | process |
 | Nasdaq Stock Market Open | [nasdaq/equities/open](nasdaq/equities/open) | Always open | process, system, distributed |
@@ -80,6 +81,16 @@ carries it.
 | Trading Day | Iex.IexEquities.Equities.Session.TradingSession |
 | Internal Messaging | Iex.IexEquities.MatchingEngine.Ipc.v2026 |
 
+### Nse Futures and Options Basic
+
+| Role | Model |
+| --- | --- |
+| Order Entry | Nse.NseFo.OrderEntry.Nnf.v9.50 |
+| Order Entry Session | Nse.Nnf |
+| Market Data (Mtbt) | Nse.NseFo.Mtbt.Tbt.v7.1 |
+| Always Open | Nse.NseFo.FuturesAndOptions.Basic.TradingSession |
+| Internal Messaging | Nse.NseFo.BasicMatchingEngine.Ipc.v2026 |
+
 ### Nse Futures and Options
 
 | Role | Model |
@@ -120,6 +131,8 @@ carries it.
 | --- | --- |
 | Order Entry | Nasdaq.NsmEquities.Orders.Ouch.v5.0 |
 | Order Entry Session | Nasdaq.SoupBinTcp |
+| Order Entry (Fix) | Nasdaq.NsmEquities.OrderEntry.Fix.v4.2 |
+| Order Entry Session (Fix) | Nasdaq.NsmEquities.Fix |
 | Market Data (TotalView) | Nasdaq.NsmEquities.TotalView.Itch.v5.0.2026 |
 | Snapshot of TotalView (Glimpse) | Nasdaq.NsmEquities.TotalView.Glimpse.v5.0.2026 |
 | Stream of TotalView (TotalViewTcp) | Nasdaq.NsmEquities.TotalView.Itch.v5.0.2026 |
@@ -183,6 +196,8 @@ cmake -S iex/equities/open -B build/iex/equities/open -DCMAKE_BUILD_TYPE=Release
 cmake --build build/iex/equities/open --parallel
 cmake -S iex/equities/session -B build/iex/equities/session -DCMAKE_BUILD_TYPE=Release
 cmake --build build/iex/equities/session --parallel
+cmake -S nse/fo/basic -B build/nse/fo/basic -DCMAKE_BUILD_TYPE=Release
+cmake --build build/nse/fo/basic --parallel
 cmake -S nse/fo -B build/nse/fo -DCMAKE_BUILD_TYPE=Release
 cmake --build build/nse/fo --parallel
 cmake -S nasdaq/equities/basic -B build/nasdaq/equities/basic -DCMAKE_BUILD_TYPE=Release
@@ -210,6 +225,8 @@ cmake --build build/odx/securitytoken/session --parallel
 ./build/iex/equities/open/simulator_tests    # Boost.Test suite
 ./build/iex/equities/session/iex_simulator    # endpoints from iex/equities/session/simulator.ini (--config <file> to override)
 ./build/iex/equities/session/simulator_tests    # Boost.Test suite
+./build/nse/fo/basic/nse_simulator    # endpoints from nse/fo/basic/simulator.ini (--config <file> to override)
+./build/nse/fo/basic/simulator_tests    # Boost.Test suite
 ./build/nse/fo/nse_simulator    # endpoints from nse/fo/simulator.ini (--config <file> to override)
 ./build/nse/fo/simulator_tests    # Boost.Test suite
 ./build/nasdaq/equities/basic/nasdaq_simulator    # endpoints from nasdaq/equities/basic/simulator.ini (--config <file> to override)

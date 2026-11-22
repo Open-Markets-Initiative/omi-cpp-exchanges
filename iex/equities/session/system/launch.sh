@@ -27,6 +27,9 @@ cd "$build" || exit 1
 # are a cycle, so there is no start order that would let each component make its own.
 "./iex_rings" create || exit 1
 
+# Where each component says it has begun reading its links: one file each, named for it.
+reading="$(mktemp -d)" || exit 1
+
 # One moment the venue's day began, for every component: what a simulated day counts its time from,
 # so the processes' clocks agree. One already set - a restart carrying the day on - is kept.
 export SIM_CLOCK_ANCHOR="${SIM_CLOCK_ANCHOR:-$(date +%s%N)}"
@@ -36,9 +39,17 @@ names=()
 
 start() {
     echo "launch: starting $1"
-    "./iex_system_$1" "${@:2}" &
+    SIM_READING="$reading/$1" "./iex_system_$1" "${@:2}" &
     pids+=($!)
     names+=("$1")
+
+    # It reads its links before the next one starts.
+    for _ in $(seq 1 1200); do
+        [ -e "$reading/$1" ] && return 0
+        kill -0 "${pids[-1]}" 2>/dev/null || return 0
+        sleep 0.1
+    done
+    echo "launch: $1 is not reading its links after 120 s - starting the rest anyway" >&2
 }
 
 # Consumers before producers, so nothing writes to a link nobody is reading yet.
@@ -76,6 +87,10 @@ down() {
 
     # The rings go last, once nothing is holding them.
     "./iex_rings" discard
+
+    # What the components said, each file by its own name, then the directory made for them.
+    for name in "${names[@]}"; do rm -f -- "$reading/$name"; done
+    rmdir -- "$reading" 2>/dev/null
     echo "launch: down"
     exit 0
 }

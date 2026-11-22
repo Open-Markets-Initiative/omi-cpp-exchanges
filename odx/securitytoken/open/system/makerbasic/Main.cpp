@@ -47,6 +47,7 @@ int main(int argc, char** argv) {
         // A step a trader does not take is a step it had nothing to do: it reads what the
         // venue said, and acts only once it is admitted.
         auto paced = std::chrono::steady_clock::now();   // when it next orders
+        sim::reading();   // launch.sh starts the next component once this one reads its links
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
             worked = to_makerbasic.read([&](std::string_view bytes) { makerbasic.on_bytes(bytes.data(), bytes.size()); }) || worked;

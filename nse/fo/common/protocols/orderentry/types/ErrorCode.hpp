@@ -785,9 +785,10 @@ struct error_code {
 
     static constexpr const char* name = "error_code";
     static constexpr std::size_t size = 2;
-    static constexpr bool is_optional = false;
+    static constexpr bool is_optional = true;
+    static constexpr enum_type null_value = static_cast<enum_type>(0);
 
-    using result_type = required<error_code::enum_type>;
+    using result_type = std::optional<error_code::enum_type>;
     using storage_type = result_type;
 
     error_code()
@@ -797,7 +798,8 @@ struct error_code {
      : value{ static_cast<enum_type>(__builtin_bswap16(static_cast<std::underlying_type_t<enum_type>>(v))) } {}
 
     [[nodiscard]] result_type get() const {
-        return result_type{static_cast<enum_type>(__builtin_bswap16(static_cast<std::underlying_type_t<enum_type>>(value)))};
+        const enum_type held = static_cast<enum_type>(__builtin_bswap16(static_cast<std::underlying_type_t<enum_type>>(value)));
+        return held == null_value ? std::nullopt : result_type{held};
     }
 
     void set(enum_type v) {
@@ -808,7 +810,11 @@ struct error_code {
         if (value.has_value())
             set(value.value());
         else
-            set(static_cast<enum_type>(0));
+            set(null_value);
+    }
+
+    void set_null() {
+        set(null_value);
     }
 
   protected:

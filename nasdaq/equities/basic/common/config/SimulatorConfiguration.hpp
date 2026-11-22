@@ -54,8 +54,8 @@ inline RuntimeConfig load_config(int argc, char** argv) {
         ("replay-totalviewtcp.port", po::value<unsigned short>(&c.totalviewtcp_replay_port)->default_value(15003))
         ("recording.directory", po::value<std::string>(&c.recording_directory)->default_value("recordings"))
         ("clock.mode", po::value<std::string>(&c.clock_mode)->default_value("Elapsed"))
-        ("clock.start", po::value<std::string>(&c.clock_start)->default_value("00:00:00"))
-        ("clock.zone", po::value<std::string>(&c.clock_zone)->default_value("UTC"));
+        ("clock.start", po::value<std::string>(&c.clock_start)->default_value("09:30"))
+        ("clock.zone", po::value<std::string>(&c.clock_zone)->default_value("America/New_York"));
 
     std::string path = "simulator.ini";
     for (int i = 1; i + 1 < argc; ++i)

@@ -8,6 +8,10 @@
 #include "../types/Side.hpp"
 #include "../types/Price.hpp"
 #include "../types/Quantity.hpp"
+#include "../types/RefreshedFrom.hpp"
+#include "../types/Repriced.hpp"
+#include "../types/Display.hpp"
+#include "../types/Attribution.hpp"
 
 namespace nasdaq::nsmequities::matchingengine::ipc::v2026 {
 
@@ -25,6 +29,10 @@ struct order_rested_message {
         ipc_matchingengine::side side;
         ipc_matchingengine::price price;
         ipc_matchingengine::quantity quantity;
+        ipc_matchingengine::refreshed_from refreshed_from;
+        ipc_matchingengine::repriced repriced;
+        ipc_matchingengine::display display;
+        ipc_matchingengine::attribution attribution;
     };
 
     ipc_matchingengine::message_header header = {std::uint16_t(sizeof(ipc_matchingengine::message_header) + sizeof(fields_type) - 2), {}};
@@ -50,8 +58,12 @@ static_assert(offsetof(order_rested_message::fields_type, symbol) == 16, "unexpe
 static_assert(offsetof(order_rested_message::fields_type, side) == 24, "unexpected offset of order_rested_message::fields_type::side");
 static_assert(offsetof(order_rested_message::fields_type, price) == 25, "unexpected offset of order_rested_message::fields_type::price");
 static_assert(offsetof(order_rested_message::fields_type, quantity) == 33, "unexpected offset of order_rested_message::fields_type::quantity");
-static_assert(sizeof(order_rested_message::fields_type) == 37, "unexpected sizeof order_rested_message::fields_type");
-static_assert(sizeof(order_rested_message) == sizeof(ipc_matchingengine::message_header) + 37, "unexpected sizeof order_rested_message");
+static_assert(offsetof(order_rested_message::fields_type, refreshed_from) == 37, "unexpected offset of order_rested_message::fields_type::refreshed_from");
+static_assert(offsetof(order_rested_message::fields_type, repriced) == 45, "unexpected offset of order_rested_message::fields_type::repriced");
+static_assert(offsetof(order_rested_message::fields_type, display) == 46, "unexpected offset of order_rested_message::fields_type::display");
+static_assert(offsetof(order_rested_message::fields_type, attribution) == 47, "unexpected offset of order_rested_message::fields_type::attribution");
+static_assert(sizeof(order_rested_message::fields_type) == 51, "unexpected sizeof order_rested_message::fields_type");
+static_assert(sizeof(order_rested_message) == sizeof(ipc_matchingengine::message_header) + 51, "unexpected sizeof order_rested_message");
 
 #pragma pack(pop)
 }

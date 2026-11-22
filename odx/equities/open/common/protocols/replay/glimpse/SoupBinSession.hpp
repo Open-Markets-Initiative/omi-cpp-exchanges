@@ -36,6 +36,7 @@ using code = typename wire_code<std::remove_cvref_t<decltype(std::declval<const 
 // code called "received" would be reading the server's word for what it sends.
 struct Code {
     static constexpr code login_request = static_cast<code>('L');
+    static constexpr code session_debug = static_cast<code>('+');
     static constexpr code login_rejected = static_cast<code>('J');
     static constexpr code login_accepted = static_cast<code>('A');
     static constexpr code payload_application = static_cast<code>('U');
@@ -64,15 +65,18 @@ struct SessionClock {
 // Send:    callable(const char*, std::size_t) writing to the other end
 // Clock:   callable() telling the time in nanoseconds, which its timers wait by
 // Handler: answers what the session cannot decide itself, and receives what it does not interpret:
+// silent()
 // login(username, password, session_id, requested_sequence_number)
 // logout()
 // message(packet)
-// silent()
 template <typename Send, typename Handler, typename Clock = SessionClock>
 class Session {
 public:
     Session(std::string_view session_id, Send send, Handler& handler, Clock clock = {})
-        : session_id_(session_id), send_(send), handler_(handler), clock_(clock) {}
+        : session_id_(session_id), send_(send), handler_(handler), clock_(clock) {
+        now_ns_ = clock_();   // the time it opens at, which what its opening state starts waits from
+        login_due_ = due(login_interval_ * 1'000'000'000);
+    }
 
     bool logged_in() const { return state_ == State::LoggedIn; }
     std::uint64_t next_sequence() const { return next_sequence_; }
@@ -125,12 +129,13 @@ public:
         now_ns_ = clock_();
         for (;;) {
             std::int64_t* due = nullptr;
-            for (std::int64_t* timer : {&beat_due_, &silence_due_}) {
+            for (std::int64_t* timer : {&login_due_, &beat_due_, &silence_due_}) {
                 if (*timer != 0 && *timer <= now_ns_ && (due == nullptr || *timer < *due)) due = timer;
             }
             if (due == nullptr) return;
             *due = 0;
-            if (due == &beat_due_) fire_heartbeat();
+            if (due == &login_due_) fire_login();
+            else if (due == &beat_due_) fire_heartbeat();
             else if (due == &silence_due_) fire_silence();
         }
     }
@@ -146,6 +151,8 @@ private:
                     case Code::login_request:
                         if (length >= sizeof(protocol::login_request_packet)) authenticating(*protocol::login_request_packet::parse(reinterpret_cast<const std::byte*>(packet)));
                         break;
+                    case Code::session_debug:
+                        break;
                     default:
                         break;   // the chart answers nothing else here
                 }
@@ -156,7 +163,11 @@ private:
                 switch (value) {
                     case Code::session_logout:
                         handler_.logout();
+                        login_due_ = due(login_interval_ * 1'000'000'000);
                         state_ = State::NotLoggedIn;
+                        break;
+                    case Code::session_debug:
+                        silence_due_ = due(silence_interval_ * 1'000'000'000);
                         break;
                     case Code::session_heartbeat_received:
                         silence_due_ = due(silence_interval_ * 1'000'000'000);
@@ -200,8 +211,21 @@ private:
             reply.fields.reject_reason_code.set(*refused);
             send_(reinterpret_cast<const char*>(&reply), sizeof reply);
             handler_.logout();
+            login_due_ = due(login_interval_ * 1'000'000'000);
             state_ = State::NotLoggedIn;
             return;
+        }
+    }
+
+    // Timer.Login, in whichever state answers it; dropped in any other.
+    void fire_login() {
+        switch (state_) {
+            case State::NotLoggedIn: {
+                handler_.silent();
+                break;
+            }
+            default:
+                break;
         }
     }
 
@@ -223,6 +247,7 @@ private:
         switch (state_) {
             case State::LoggedIn: {
                 handler_.silent();
+                login_due_ = due(login_interval_ * 1'000'000'000);
                 state_ = State::NotLoggedIn;
                 break;
             }
@@ -247,10 +272,12 @@ private:
     std::uint64_t next_sequence_ = 1;
     std::int64_t heartbeat_interval_ = 1;
     std::int64_t silence_interval_ = 15;
+    std::int64_t login_interval_ = 30;
     Send send_;
     Handler& handler_;
     Clock clock_;
     std::int64_t now_ns_ = 0;   // the time the session last read its clock at
+    std::int64_t login_due_ = 0;   // when the timer Login is due; 0 when it is not running
     std::int64_t beat_due_ = 0;   // when the timer Beat is due; 0 when it is not running
     std::int64_t silence_due_ = 0;   // when the timer Silence is due; 0 when it is not running
     std::string buffer_;

@@ -42,6 +42,7 @@ int main() {
         std::printf("nasdaq-sequencer: sequencing, 4 in, 1 out\n");
 
         // A message off each producer in turn; nothing to do means back off rather than spin a core.
+        sim::reading();   // launch.sh starts the next component once this one reads its links
         while (running.load(std::memory_order_acquire)) {
             const bool worked = sequencer.step(to_sequencer_gatewaymakerbasic, to_sequencer_gatewaytakerbasic, to_sequencer_gatewayreplay, to_sequencer_gatewayrequests);
             sequenced.deliver();

@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
         sim::MessageSocket from_makerbasic("makerbasic -> gatewaymakerbasic", sim::MessageSocket::End::Writes, cfg.from_makerbasic_link.host, cfg.from_makerbasic_link.port);
 
         auto makerbasic_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_makerbasic, b, n); };
-        sim::traders::Trader<decltype(makerbasic_send)> makerbasic("MakerBasic", "ALICE1", "alice00001", makerbasic_send);
+        sim::traders::Trader<decltype(makerbasic_send)> makerbasic("MakerBasic", "MAKER1", "maker10000", makerbasic_send);
         sim::traders::MakerBasic<std::remove_reference_t<decltype(makerbasic.orders())>> makerbasic_strategy(/*mid*/10000, /*spread*/10, /*size*/100, /*levels*/3, /*tick*/1);
         int makerbasic_ticks = 0;
         std::chrono::steady_clock::time_point makerbasic_paced{};   // when a served trader next orders

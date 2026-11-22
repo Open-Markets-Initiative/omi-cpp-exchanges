@@ -33,6 +33,10 @@ int main(int argc, char** argv) {
         sim::IpcSocket to_sequencer_gatewaytakerbasic("gatewaytakerbasic -> sequencer", sim::IpcSocket::End::Reads, cfg.to_sequencer_gatewaytakerbasic_link.host, cfg.to_sequencer_gatewaytakerbasic_link.port);
         sim::IpcSocket to_sequencer_gatewayreplay("gatewayreplay -> sequencer", sim::IpcSocket::End::Reads, cfg.to_sequencer_gatewayreplay_link.host, cfg.to_sequencer_gatewayreplay_link.port);
         sim::IpcSocket to_sequencer_gatewayrequests("gatewayrequests -> sequencer", sim::IpcSocket::End::Reads, cfg.to_sequencer_gatewayrequests_link.host, cfg.to_sequencer_gatewayrequests_link.port);
+        sim::IpcSocket to_sequencer_gatewaymakersecond("gatewaymakersecond -> sequencer", sim::IpcSocket::End::Reads, cfg.to_sequencer_gatewaymakersecond_link.host, cfg.to_sequencer_gatewaymakersecond_link.port);
+        sim::IpcSocket to_sequencer_gatewaytakersecond("gatewaytakersecond -> sequencer", sim::IpcSocket::End::Reads, cfg.to_sequencer_gatewaytakersecond_link.host, cfg.to_sequencer_gatewaytakersecond_link.port);
+        sim::IpcSocket to_sequencer_gatewayfixmaker("gatewayfixmaker -> sequencer", sim::IpcSocket::End::Reads, cfg.to_sequencer_gatewayfixmaker_link.host, cfg.to_sequencer_gatewayfixmaker_link.port);
+        sim::IpcSocket to_sequencer_gatewayfixtaker("gatewayfixtaker -> sequencer", sim::IpcSocket::End::Reads, cfg.to_sequencer_gatewayfixtaker_link.host, cfg.to_sequencer_gatewayfixtaker_link.port);
         sim::IpcSocket from_day("day -> sequencer", sim::IpcSocket::End::Reads, cfg.from_day_link.host, cfg.from_day_link.port);
         sim::IpcSocket sequenced("sequencer -> engine", sim::IpcSocket::End::Writes, cfg.sequenced_link.host, cfg.sequenced_link.port);
 
@@ -43,11 +47,11 @@ int main(int argc, char** argv) {
 
         sim::components::Sequencer<decltype(emit)> sequencer(emit);
 
-        std::printf("nasdaq-sequencer: sequencing, 5 in, 1 out\n");
+        std::printf("nasdaq-sequencer: sequencing, 9 in, 1 out\n");
 
         // A message off each producer in turn; nothing to do means back off rather than spin a core.
         while (running.load(std::memory_order_acquire)) {
-            const bool worked = sequencer.step(to_sequencer_gatewaymakerbasic, to_sequencer_gatewaytakerbasic, to_sequencer_gatewayreplay, to_sequencer_gatewayrequests, from_day);
+            const bool worked = sequencer.step(to_sequencer_gatewaymakerbasic, to_sequencer_gatewaytakerbasic, to_sequencer_gatewayreplay, to_sequencer_gatewayrequests, to_sequencer_gatewaymakersecond, to_sequencer_gatewaytakersecond, to_sequencer_gatewayfixmaker, to_sequencer_gatewayfixtaker, from_day);
             sequenced.deliver();
             if (!worked) std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
@@ -56,6 +60,10 @@ int main(int argc, char** argv) {
         if (to_sequencer_gatewaytakerbasic.gaps() > 0) std::printf("nasdaq-sequencer: %llu gap(s) on gatewaytakerbasic -> sequencer — messages were lost\n", (unsigned long long)to_sequencer_gatewaytakerbasic.gaps());
         if (to_sequencer_gatewayreplay.gaps() > 0) std::printf("nasdaq-sequencer: %llu gap(s) on gatewayreplay -> sequencer — messages were lost\n", (unsigned long long)to_sequencer_gatewayreplay.gaps());
         if (to_sequencer_gatewayrequests.gaps() > 0) std::printf("nasdaq-sequencer: %llu gap(s) on gatewayrequests -> sequencer — messages were lost\n", (unsigned long long)to_sequencer_gatewayrequests.gaps());
+        if (to_sequencer_gatewaymakersecond.gaps() > 0) std::printf("nasdaq-sequencer: %llu gap(s) on gatewaymakersecond -> sequencer — messages were lost\n", (unsigned long long)to_sequencer_gatewaymakersecond.gaps());
+        if (to_sequencer_gatewaytakersecond.gaps() > 0) std::printf("nasdaq-sequencer: %llu gap(s) on gatewaytakersecond -> sequencer — messages were lost\n", (unsigned long long)to_sequencer_gatewaytakersecond.gaps());
+        if (to_sequencer_gatewayfixmaker.gaps() > 0) std::printf("nasdaq-sequencer: %llu gap(s) on gatewayfixmaker -> sequencer — messages were lost\n", (unsigned long long)to_sequencer_gatewayfixmaker.gaps());
+        if (to_sequencer_gatewayfixtaker.gaps() > 0) std::printf("nasdaq-sequencer: %llu gap(s) on gatewayfixtaker -> sequencer — messages were lost\n", (unsigned long long)to_sequencer_gatewayfixtaker.gaps());
         if (from_day.gaps() > 0) std::printf("nasdaq-sequencer: %llu gap(s) on day -> sequencer — messages were lost\n", (unsigned long long)from_day.gaps());
         std::printf("nasdaq-sequencer: stopped — %llu sequenced\n", (unsigned long long)sequencer.sequenced());
     } catch (const std::exception& problem) {

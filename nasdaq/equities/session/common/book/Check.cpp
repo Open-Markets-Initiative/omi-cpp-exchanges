@@ -39,7 +39,7 @@ namespace feed = ::nasdaq::nsmequities::totalview::itch::v5_0_2026;
 
 // The key the feed names each of the venue's orderbooks by, in the order the venue declares them,
 // which is how the engine numbers its books.
-constexpr std::array<book::Key, 1> listed{ { 1 } };
+constexpr std::array<book::Key, 3> listed{ { 1, 2, 3 } };
 
 // The engine's prices are integers of 4 decimals; the book's are its own.
 constexpr book::Price engine_scale = book::price_scale(4);

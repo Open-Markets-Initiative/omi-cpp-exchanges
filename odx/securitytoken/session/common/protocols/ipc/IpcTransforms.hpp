@@ -127,7 +127,12 @@ inline odx::odxsecuritytoken::pts::itch::v1_2::order_added_message to_itch_order
     out.fields.buy_sell_indicator.set(static_cast<value_of<decltype(out.fields.buy_sell_indicator)>>(static_cast<char>(m.side.get().value())));
     out.fields.quantity.set(m.quantity.get().value());
     out.fields.orderbook_id.set(m.orderbook.get().value());
-    out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>(m.price.get().value()));
+    if (const auto stated = m.price.get()) {
+        out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>((*stated)));
+    }
+    else {
+        out.fields.price.set(std::nullopt);
+    }
     return out;
 }
 
@@ -188,7 +193,12 @@ inline odx::odxsecuritytoken::pts::itch::v1_2::equilibrium_price_update_message 
     odx::odxsecuritytoken::pts::itch::v1_2::equilibrium_price_update_message out{};
     out.fields.nanoseconds.set(static_cast<value_of<decltype(out.fields.nanoseconds)>>(((m.timestamp.get().value()) % 1000000000ULL)));
     out.fields.orderbook_id.set(m.orderbook.get().value());
-    out.fields.equilibrium_price.set(static_cast<value_of<decltype(out.fields.equilibrium_price)>>(m.price.get().value()));
+    if (const auto stated = m.price.get()) {
+        out.fields.equilibrium_price.set(static_cast<value_of<decltype(out.fields.equilibrium_price)>>((*stated)));
+    }
+    else {
+        out.fields.equilibrium_price.set(std::nullopt);
+    }
     return out;
 }
 

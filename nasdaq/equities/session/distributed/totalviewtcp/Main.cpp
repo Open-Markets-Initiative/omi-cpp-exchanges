@@ -40,10 +40,28 @@ int main(int argc, char** argv) {
         sim::MessageSocket to_totalviewtcp("totalview -> totalviewtcp", sim::MessageSocket::End::Reads, cfg.to_totalviewtcp_link.host, cfg.to_totalviewtcp_link.port);
 
         sim::replay::totalviewtcp::Server<std::function<void(const char*, std::size_t)>> totalviewtcp("NSMTV00001");
-        totalviewtcp.allow("ALICE1", "alice00001");
-        totalviewtcp.allow("BOB001", "bob0000001");
-        totalviewtcp.allow("CAROL1", "carol00001");
-        totalviewtcp.allow("DAVE01", "dave000001");
+        totalviewtcp.allow("MAKER1", "maker10000");
+        totalviewtcp.allow("TAKER1", "taker10000");
+        totalviewtcp.allow("REPLAY", "replay0000");
+        totalviewtcp.allow("ASKER1", "asker10000");
+        totalviewtcp.allow("MAKER2", "maker20000");
+        totalviewtcp.allow("TAKER2", "taker20000");
+        totalviewtcp.allow("FIXMKR", "fixmkr0000");
+        totalviewtcp.allow("FIXTKR", "fixtkr0000");
+        totalviewtcp.allow("RISKST", "riskst0000");
+        totalviewtcp.allow("RSTRCT", "rstrct0000");
+        totalviewtcp.allow("RATEDP", "ratedp0000");
+        totalviewtcp.allow("KILLSW", "killsw0000");
+        totalviewtcp.allow("GROSSX", "grossx0000");
+        totalviewtcp.allow("FATFNG", "fatfng0000");
+        totalviewtcp.allow("OUCETC", "oucetc0000");
+        totalviewtcp.allow("HALTCX", "haltcx0000");
+        totalviewtcp.allow("MELOBY", "meloby0000");
+        totalviewtcp.allow("MELOSL", "melosl0000");
+        totalviewtcp.allow("MELOPG", "melopg0000");
+        totalviewtcp.allow("FIXETC", "fixetc0000");
+        totalviewtcp.allow("FIXOPT", "fixopt0000");
+        totalviewtcp.allow("FIXRSK", "fixrsk0000");
 
         // Its own socket: the clients that ask it for a replay dial this, not the gateway.
         net::TcpServer totalviewtcp_server(cfg.totalviewtcp_replay_host, cfg.totalviewtcp_replay_port);   // where its settings say: every interface in a container
@@ -56,16 +74,13 @@ int main(int argc, char** argv) {
             bool worked = false;
             worked = to_totalviewtcp.read([&](std::string_view message) { totalviewtcp.on_message(message.data(), message.size()); }) || worked;
             worked = totalviewtcp_server.poll([&](int fd, std::string_view bytes) {
-                auto session = totalviewtcp_sessions.find(fd);
-                if (session == totalviewtcp_sessions.end())
-                    session = totalviewtcp_sessions.emplace(fd, totalviewtcp.connect([&server = totalviewtcp_server, fd](const char* b, std::size_t n) { server.send(fd, b, n); })).first;
-                totalviewtcp.on_bytes(session->second, bytes.data(), bytes.size());
+                totalviewtcp.on_bytes(totalviewtcp_sessions.at(fd), bytes.data(), bytes.size());
             }, [&](int fd) {
                 if (const auto gone = totalviewtcp_sessions.find(fd); gone != totalviewtcp_sessions.end()) {
                     totalviewtcp.disconnect(gone->second);
                     totalviewtcp_sessions.erase(gone);
                 }
-            }) || worked;
+            }, [&](int fd) { totalviewtcp_sessions.emplace(fd, totalviewtcp.connect([&server = totalviewtcp_server, fd](const char* b, std::size_t n) { server.send(fd, b, n); })); }) || worked;
             totalviewtcp.tick();
             for (auto session = totalviewtcp_sessions.begin(); session != totalviewtcp_sessions.end(); ) {
                 if (!totalviewtcp.ended(session->second)) { ++session; continue; }

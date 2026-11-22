@@ -30,6 +30,10 @@ COPY --from=build /build/nasdaq_distributed_gatewaymakerbasic ./
 COPY --from=build /build/nasdaq_distributed_gatewaytakerbasic ./
 COPY --from=build /build/nasdaq_distributed_gatewayreplay ./
 COPY --from=build /build/nasdaq_distributed_gatewayrequests ./
+COPY --from=build /build/nasdaq_distributed_gatewaymakersecond ./
+COPY --from=build /build/nasdaq_distributed_gatewaytakersecond ./
+COPY --from=build /build/nasdaq_distributed_gatewayfixmaker ./
+COPY --from=build /build/nasdaq_distributed_gatewayfixtaker ./
 COPY --from=build /build/nasdaq_distributed_engine ./
 COPY --from=build /build/nasdaq_distributed_sequencer ./
 COPY --from=build /build/nasdaq_distributed_day ./
@@ -40,6 +44,10 @@ COPY --from=build /build/nasdaq_distributed_makerbasic ./
 COPY --from=build /build/nasdaq_distributed_takerbasic ./
 COPY --from=build /build/nasdaq_distributed_replay ./
 COPY --from=build /build/nasdaq_distributed_requests ./
+COPY --from=build /build/nasdaq_distributed_makersecond ./
+COPY --from=build /build/nasdaq_distributed_takersecond ./
+COPY --from=build /build/nasdaq_distributed_fixmaker ./
+COPY --from=build /build/nasdaq_distributed_fixtaker ./
 
 # The endpoints it serves on in a container, which is the one thing that differs from
 # serving on a desktop: it listens on every interface rather than on loopback.
@@ -49,6 +57,9 @@ RUN mkdir -p recordings
 
 # Order entry, and the replay services a client logs in to.
 EXPOSE 15101
+# The Fix order entry
+EXPOSE 15117
+EXPOSE 15118
 # Glimpse
 EXPOSE 15102
 # TotalViewTcp

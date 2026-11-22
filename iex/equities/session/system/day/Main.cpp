@@ -40,6 +40,7 @@ int main(int argc, char** argv) {
         std::printf("iex-day: serving the day, %zu change(s)\n", day.schedule.size());
 
         // A pass with nothing due is a pass the day had nothing to ask; it waits a moment rather than spin.
+        sim::reading();   // launch.sh starts the next component once this one reads its links
         while (running.load(std::memory_order_acquire)) {
             const bool worked = day.step();
             from_day.deliver();

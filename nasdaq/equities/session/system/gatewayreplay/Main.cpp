@@ -49,11 +49,29 @@ int main(int argc, char** argv) {
             ipc_msgs.fetch_add(1, std::memory_order_relaxed);
             sim::write_blocking(to_sequencer_gatewayreplay, b, n);
         };
-        sim::orderentry::Gateway<decltype(gatewayreplay_emit)> gatewayreplay(gatewayreplay_emit, 3, 4);
-        gatewayreplay.allow("ALICE1", "alice00001");
-        gatewayreplay.allow("BOB001", "bob0000001");
-        gatewayreplay.allow("CAROL1", "carol00001");
-        gatewayreplay.allow("DAVE01", "dave000001");
+        sim::orderentry::Gateway<decltype(gatewayreplay_emit)> gatewayreplay(gatewayreplay_emit, 3, 8);
+        gatewayreplay.allow("MAKER1", "maker10000");
+        gatewayreplay.allow("TAKER1", "taker10000");
+        gatewayreplay.allow("REPLAY", "replay0000");
+        gatewayreplay.allow("ASKER1", "asker10000");
+        gatewayreplay.allow("MAKER2", "maker20000");
+        gatewayreplay.allow("TAKER2", "taker20000");
+        gatewayreplay.allow("FIXMKR", "fixmkr0000");
+        gatewayreplay.allow("FIXTKR", "fixtkr0000");
+        gatewayreplay.allow("RISKST", "riskst0000");
+        gatewayreplay.allow("RSTRCT", "rstrct0000");
+        gatewayreplay.allow("RATEDP", "ratedp0000");
+        gatewayreplay.allow("KILLSW", "killsw0000");
+        gatewayreplay.allow("GROSSX", "grossx0000");
+        gatewayreplay.allow("FATFNG", "fatfng0000");
+        gatewayreplay.allow("OUCETC", "oucetc0000");
+        gatewayreplay.allow("HALTCX", "haltcx0000");
+        gatewayreplay.allow("MELOBY", "meloby0000");
+        gatewayreplay.allow("MELOSL", "melosl0000");
+        gatewayreplay.allow("MELOPG", "melopg0000");
+        gatewayreplay.allow("FIXETC", "fixetc0000");
+        gatewayreplay.allow("FIXOPT", "fixopt0000");
+        gatewayreplay.allow("FIXRSK", "fixrsk0000");
 
         // The engine events the gateway answers, on the gateway's own thread.
         sim::IpcEventServer gatewayreplay_events(
@@ -69,7 +87,8 @@ int main(int argc, char** argv) {
             [&](const sim::ipc_ns::order_replaced_message& w) { gatewayreplay.on_event(w); },
             [&](const sim::ipc_ns::order_reduced_message& y) { gatewayreplay.on_event(y); },
             [&](const sim::ipc_ns::cancel_pending_message& g) { gatewayreplay.on_event(g); },
-            [&](const sim::ipc_ns::reduce_refused_message& z) { gatewayreplay.on_event(z); });
+            [&](const sim::ipc_ns::reduce_refused_message& z) { gatewayreplay.on_event(z); },
+            [&](const sim::ipc_ns::trade_broken_message& x) { gatewayreplay.on_event(x); });
 
         // A session per trader process, against the link that carries it. To the gateway a
         // trader on a link is what a client on a socket is: somewhere to write bytes.
@@ -84,21 +103,19 @@ int main(int argc, char** argv) {
                     cfg.order_entry.host.c_str(), (unsigned)cfg.gatewayreplay_port);
 
         // Nothing to do means nothing to do: back off rather than spin a core.
+        sim::reading();   // launch.sh starts the next component once this one reads its links
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
             worked = to_clients_gatewayreplay.read([&](std::string_view message) { gatewayreplay_events.on_message(message); }) || worked;
             worked = from_replay.read([&](std::string_view bytes) { gatewayreplay.on_bytes(replay_client, bytes.data(), bytes.size()); }) || worked;
             worked = order_entry.poll([&](int fd, std::string_view bytes) {
-                auto session = sessions.find(fd);
-                if (session == sessions.end())
-                    session = sessions.emplace(fd, gatewayreplay.connect([&order_entry, fd](const char* b, std::size_t n) { order_entry.send(fd, b, n); })).first;
-                gatewayreplay.on_bytes(session->second, bytes.data(), bytes.size());
+                gatewayreplay.on_bytes(sessions.at(fd), bytes.data(), bytes.size());
             }, [&](int fd) {
                 if (const auto gone = sessions.find(fd); gone != sessions.end()) {
                     gatewayreplay.disconnect(gone->second);
                     sessions.erase(gone);
                 }
-            }) || worked;
+            }, [&](int fd) { sessions.emplace(fd, gatewayreplay.connect([&order_entry, fd](const char* b, std::size_t n) { order_entry.send(fd, b, n); })); }) || worked;
             gatewayreplay.tick();
             if (gatewayreplay.ended(replay_client)) {
                 gatewayreplay.disconnect(replay_client);

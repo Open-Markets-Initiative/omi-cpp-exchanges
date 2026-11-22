@@ -52,20 +52,18 @@ int main(int argc, char** argv) {
         std::printf("odx-glimpse: serving snapshot of Itch on port %u\n", (unsigned)cfg.glimpse_replay_port);
 
         // Nothing to do means nothing to do: back off rather than spin a core.
+        sim::reading();   // launch.sh starts the next component once this one reads its links
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
             worked = to_glimpse.read([&](std::string_view message) { glimpse.on_message(message.data(), message.size()); }) || worked;
             worked = glimpse_server.poll([&](int fd, std::string_view bytes) {
-                auto session = glimpse_sessions.find(fd);
-                if (session == glimpse_sessions.end())
-                    session = glimpse_sessions.emplace(fd, glimpse.connect([&server = glimpse_server, fd](const char* b, std::size_t n) { server.send(fd, b, n); })).first;
-                glimpse.on_bytes(session->second, bytes.data(), bytes.size());
+                glimpse.on_bytes(glimpse_sessions.at(fd), bytes.data(), bytes.size());
             }, [&](int fd) {
                 if (const auto gone = glimpse_sessions.find(fd); gone != glimpse_sessions.end()) {
                     glimpse.disconnect(gone->second);
                     glimpse_sessions.erase(gone);
                 }
-            }) || worked;
+            }, [&](int fd) { glimpse_sessions.emplace(fd, glimpse.connect([&server = glimpse_server, fd](const char* b, std::size_t n) { server.send(fd, b, n); })); }) || worked;
             glimpse.tick();
             for (auto session = glimpse_sessions.begin(); session != glimpse_sessions.end(); ) {
                 if (!glimpse.ended(session->second)) { ++session; continue; }

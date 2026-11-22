@@ -20,10 +20,18 @@
 #include "../types/TradeNow.hpp"
 #include "../types/ShortSale.hpp"
 #include "../types/MaxFloor.hpp"
+#include "../types/RandomReserve.hpp"
+#include "../types/DiscretionPrice.hpp"
+#include "../types/DiscretionType.hpp"
 #include "../types/SelfMatchGroup.hpp"
 #include "../types/SelfMatchLevel.hpp"
 #include "../types/SelfMatchStrategy.hpp"
 #include "../types/AiqStrategy.hpp"
+#include "../types/ImbalanceOnly.hpp"
+#include "../types/ProtectionPercent.hpp"
+#include "../types/ProtectionAmount.hpp"
+#include "../types/ExtendedClose.hpp"
+#include "../types/ExtendedLifeBook.hpp"
 
 namespace nasdaq::nsmequities::matchingengine::ipc::v2026 {
 
@@ -52,10 +60,18 @@ struct replace_order_message {
     ipc_matchingengine::trade_now trade_now;
     ipc_matchingengine::short_sale short_sale;
     ipc_matchingengine::max_floor max_floor;
+    ipc_matchingengine::random_reserve random_reserve;
+    ipc_matchingengine::discretion_price discretion_price;
+    ipc_matchingengine::discretion_type discretion_type;
     ipc_matchingengine::self_match_group self_match_group;
     ipc_matchingengine::self_match_level self_match_level;
     ipc_matchingengine::self_match_strategy self_match_strategy;
     ipc_matchingengine::aiq_strategy aiq_strategy;
+    ipc_matchingengine::imbalance_only imbalance_only;
+    ipc_matchingengine::protection_percent protection_percent;
+    ipc_matchingengine::protection_amount protection_amount;
+    ipc_matchingengine::extended_close extended_close;
+    ipc_matchingengine::extended_life_book extended_life_book;
 
     // parse method
     static replace_order_message* parse(std::byte* buffer) {
@@ -88,11 +104,19 @@ static_assert(offsetof(replace_order_message, post_only) == 69, "unexpected offs
 static_assert(offsetof(replace_order_message, trade_now) == 70, "unexpected offset of replace_order_message::trade_now");
 static_assert(offsetof(replace_order_message, short_sale) == 71, "unexpected offset of replace_order_message::short_sale");
 static_assert(offsetof(replace_order_message, max_floor) == 72, "unexpected offset of replace_order_message::max_floor");
-static_assert(offsetof(replace_order_message, self_match_group) == 76, "unexpected offset of replace_order_message::self_match_group");
-static_assert(offsetof(replace_order_message, self_match_level) == 84, "unexpected offset of replace_order_message::self_match_level");
-static_assert(offsetof(replace_order_message, self_match_strategy) == 85, "unexpected offset of replace_order_message::self_match_strategy");
-static_assert(offsetof(replace_order_message, aiq_strategy) == 86, "unexpected offset of replace_order_message::aiq_strategy");
-static_assert(sizeof(replace_order_message) == 87, "unexpected sizeof replace_order_message");
+static_assert(offsetof(replace_order_message, random_reserve) == 76, "unexpected offset of replace_order_message::random_reserve");
+static_assert(offsetof(replace_order_message, discretion_price) == 80, "unexpected offset of replace_order_message::discretion_price");
+static_assert(offsetof(replace_order_message, discretion_type) == 88, "unexpected offset of replace_order_message::discretion_type");
+static_assert(offsetof(replace_order_message, self_match_group) == 89, "unexpected offset of replace_order_message::self_match_group");
+static_assert(offsetof(replace_order_message, self_match_level) == 97, "unexpected offset of replace_order_message::self_match_level");
+static_assert(offsetof(replace_order_message, self_match_strategy) == 98, "unexpected offset of replace_order_message::self_match_strategy");
+static_assert(offsetof(replace_order_message, aiq_strategy) == 99, "unexpected offset of replace_order_message::aiq_strategy");
+static_assert(offsetof(replace_order_message, imbalance_only) == 100, "unexpected offset of replace_order_message::imbalance_only");
+static_assert(offsetof(replace_order_message, protection_percent) == 101, "unexpected offset of replace_order_message::protection_percent");
+static_assert(offsetof(replace_order_message, protection_amount) == 105, "unexpected offset of replace_order_message::protection_amount");
+static_assert(offsetof(replace_order_message, extended_close) == 113, "unexpected offset of replace_order_message::extended_close");
+static_assert(offsetof(replace_order_message, extended_life_book) == 114, "unexpected offset of replace_order_message::extended_life_book");
+static_assert(sizeof(replace_order_message) == 115, "unexpected sizeof replace_order_message");
 
 #pragma pack(pop)
 }

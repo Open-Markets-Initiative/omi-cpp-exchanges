@@ -30,6 +30,10 @@ int main() {
         sim::IpcRing to_sequencer_gatewaytakerbasic("gatewaytakerbasic -> sequencer", sim::IpcRing::End::Reads);
         sim::IpcRing to_sequencer_gatewayreplay("gatewayreplay -> sequencer", sim::IpcRing::End::Reads);
         sim::IpcRing to_sequencer_gatewayrequests("gatewayrequests -> sequencer", sim::IpcRing::End::Reads);
+        sim::IpcRing to_sequencer_gatewaymakersecond("gatewaymakersecond -> sequencer", sim::IpcRing::End::Reads);
+        sim::IpcRing to_sequencer_gatewaytakersecond("gatewaytakersecond -> sequencer", sim::IpcRing::End::Reads);
+        sim::IpcRing to_sequencer_gatewayfixmaker("gatewayfixmaker -> sequencer", sim::IpcRing::End::Reads);
+        sim::IpcRing to_sequencer_gatewayfixtaker("gatewayfixtaker -> sequencer", sim::IpcRing::End::Reads);
         sim::IpcRing from_day("day -> sequencer", sim::IpcRing::End::Reads);
         sim::IpcRing sequenced("sequencer -> engine", sim::IpcRing::End::Writes);
 
@@ -40,11 +44,12 @@ int main() {
 
         sim::components::Sequencer<decltype(emit)> sequencer(emit);
 
-        std::printf("nasdaq-sequencer: sequencing, 5 in, 1 out\n");
+        std::printf("nasdaq-sequencer: sequencing, 9 in, 1 out\n");
 
         // A message off each producer in turn; nothing to do means back off rather than spin a core.
+        sim::reading();   // launch.sh starts the next component once this one reads its links
         while (running.load(std::memory_order_acquire)) {
-            const bool worked = sequencer.step(to_sequencer_gatewaymakerbasic, to_sequencer_gatewaytakerbasic, to_sequencer_gatewayreplay, to_sequencer_gatewayrequests, from_day);
+            const bool worked = sequencer.step(to_sequencer_gatewaymakerbasic, to_sequencer_gatewaytakerbasic, to_sequencer_gatewayreplay, to_sequencer_gatewayrequests, to_sequencer_gatewaymakersecond, to_sequencer_gatewaytakersecond, to_sequencer_gatewayfixmaker, to_sequencer_gatewayfixtaker, from_day);
             sequenced.deliver();
             if (!worked) std::this_thread::sleep_for(std::chrono::microseconds(50));
         }

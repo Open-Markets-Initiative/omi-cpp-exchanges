@@ -16,14 +16,22 @@ struct auction {
         none = 'N',
         opening = 'O',
         intraday = 'I',
-        closing = 'C'
+        closing = 'C',
+        extended = 'A',
+        extended_life = 'E',
+        opening_imbalance_only = 'M',
+        closing_imbalance_only = 'L'
     };
 
-    static constexpr std::array<std::pair<std::string_view, enum_type>, 4> from_string_map = {{
+    static constexpr std::array<std::pair<std::string_view, enum_type>, 8> from_string_map = {{
         {"Closing", enum_type::closing},
+        {"Closing Imbalance Only", enum_type::closing_imbalance_only},
+        {"Extended", enum_type::extended},
+        {"Extended Life", enum_type::extended_life},
         {"Intraday", enum_type::intraday},
         {"None", enum_type::none},
-        {"Opening", enum_type::opening}
+        {"Opening", enum_type::opening},
+        {"Opening Imbalance Only", enum_type::opening_imbalance_only}
     }};
 
     static constexpr std::string_view to_string(enum_type value) {
@@ -32,6 +40,10 @@ struct auction {
             case enum_type::opening: return "Opening";
             case enum_type::intraday: return "Intraday";
             case enum_type::closing: return "Closing";
+            case enum_type::extended: return "Extended";
+            case enum_type::extended_life: return "Extended Life";
+            case enum_type::opening_imbalance_only: return "Opening Imbalance Only";
+            case enum_type::closing_imbalance_only: return "Closing Imbalance Only";
             default: return "unknown";
         }
     }
@@ -74,7 +86,7 @@ struct auction {
         if (value.has_value())
             set(value.value());
         else
-            set(enum_type::closing);
+            set(enum_type::closing_imbalance_only);
     }
 
   protected:

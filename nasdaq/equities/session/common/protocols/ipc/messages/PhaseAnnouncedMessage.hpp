@@ -5,6 +5,12 @@
 #include "../types/Timestamp.hpp"
 #include "../types/Symbol.hpp"
 #include "../types/Announcement.hpp"
+#include "../types/Reason.hpp"
+#include "../types/Release.hpp"
+#include "../types/CollarReference.hpp"
+#include "../types/CollarUpper.hpp"
+#include "../types/CollarLower.hpp"
+#include "../types/CollarExtension.hpp"
 
 namespace nasdaq::nsmequities::matchingengine::ipc::v2026 {
 
@@ -19,6 +25,12 @@ struct phase_announced_message {
         ipc_matchingengine::timestamp timestamp;
         ipc_matchingengine::symbol symbol;
         ipc_matchingengine::announcement announcement;
+        ipc_matchingengine::reason reason;
+        ipc_matchingengine::release release;
+        ipc_matchingengine::collar_reference collar_reference;
+        ipc_matchingengine::collar_upper collar_upper;
+        ipc_matchingengine::collar_lower collar_lower;
+        ipc_matchingengine::collar_extension collar_extension;
     };
 
     ipc_matchingengine::message_header header = {std::uint16_t(sizeof(ipc_matchingengine::message_header) + sizeof(fields_type) - 2), {}};
@@ -41,8 +53,14 @@ struct phase_announced_message {
 static_assert(offsetof(phase_announced_message::fields_type, timestamp) == 0, "unexpected offset of phase_announced_message::fields_type::timestamp");
 static_assert(offsetof(phase_announced_message::fields_type, symbol) == 8, "unexpected offset of phase_announced_message::fields_type::symbol");
 static_assert(offsetof(phase_announced_message::fields_type, announcement) == 16, "unexpected offset of phase_announced_message::fields_type::announcement");
-static_assert(sizeof(phase_announced_message::fields_type) == 17, "unexpected sizeof phase_announced_message::fields_type");
-static_assert(sizeof(phase_announced_message) == sizeof(ipc_matchingengine::message_header) + 17, "unexpected sizeof phase_announced_message");
+static_assert(offsetof(phase_announced_message::fields_type, reason) == 17, "unexpected offset of phase_announced_message::fields_type::reason");
+static_assert(offsetof(phase_announced_message::fields_type, release) == 21, "unexpected offset of phase_announced_message::fields_type::release");
+static_assert(offsetof(phase_announced_message::fields_type, collar_reference) == 29, "unexpected offset of phase_announced_message::fields_type::collar_reference");
+static_assert(offsetof(phase_announced_message::fields_type, collar_upper) == 37, "unexpected offset of phase_announced_message::fields_type::collar_upper");
+static_assert(offsetof(phase_announced_message::fields_type, collar_lower) == 45, "unexpected offset of phase_announced_message::fields_type::collar_lower");
+static_assert(offsetof(phase_announced_message::fields_type, collar_extension) == 53, "unexpected offset of phase_announced_message::fields_type::collar_extension");
+static_assert(sizeof(phase_announced_message::fields_type) == 57, "unexpected sizeof phase_announced_message::fields_type");
+static_assert(sizeof(phase_announced_message) == sizeof(ipc_matchingengine::message_header) + 57, "unexpected sizeof phase_announced_message");
 
 #pragma pack(pop)
 }

@@ -57,7 +57,7 @@ public:
     // replacement as the phase it arrives in gives an order: what of it rests is the replace,
     // and one that rests nothing is the replace with nothing left. A refusal leaves the order
     // as it rests.
-    void on_replace(Order order, std::uint64_t replaced) {
+    void on_replace(Order order, [[maybe_unused]] std::uint64_t replaced) {
         switch (phase_) {
             case Phase::Closed: on_refused_(order); return;
             case Phase::Continuous: if (!engine_.take_replaced(replaced)) { on_refused_(order); return; } engine_.on_new_order(order); engine_.replaced(order); return;

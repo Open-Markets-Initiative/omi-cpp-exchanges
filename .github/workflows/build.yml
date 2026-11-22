@@ -90,6 +90,19 @@ jobs:
           IEX_SIMULATOR: ../../../build/iex/equities/session/iex_simulator
         run: python3 common/tests/Connections.py
 
+      - name: Configure Nse Futures and Options Basic Simulator
+        run: cmake -S nse/fo/basic -B build/nse/fo/basic -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build Nse Futures and Options Basic Simulator
+        run: cmake --build build/nse/fo/basic --parallel $(nproc)
+
+      - name: Test Nse Futures and Options Basic Simulator
+        run: ./build/nse/fo/basic/simulator_tests
+
+      - name: Run Nse Futures and Options Basic Simulator
+        working-directory: nse/fo/basic
+        run: ../../../build/nse/fo/basic/nse_simulator
+
       - name: Configure Nse Futures and Options Simulator
         run: cmake -S nse/fo -B build/nse/fo -DCMAKE_BUILD_TYPE=Release
 
@@ -153,6 +166,9 @@ jobs:
 
       - name: Test Nasdaq Stock Market Session Simulator
         run: ./build/nasdaq/equities/session/simulator_tests
+
+      - name: Test Nasdaq Stock Market Session Fix Order Entry
+        run: ./build/nasdaq/equities/session/simulator_tests_fix
 
       - name: Run Nasdaq Stock Market Session Simulator
         working-directory: nasdaq/equities/session

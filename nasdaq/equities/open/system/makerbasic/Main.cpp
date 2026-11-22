@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
         sim::MessageRing from_makerbasic("makerbasic -> gatewaymakerbasic", sim::MessageRing::End::Writes);
 
         auto makerbasic_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_makerbasic, b, n); };
-        sim::traders::Trader<decltype(makerbasic_send)> makerbasic("MakerBasic", "ALICE1", "alice00001", makerbasic_send);
+        sim::traders::Trader<decltype(makerbasic_send)> makerbasic("MakerBasic", "MAKER1", "maker10000", makerbasic_send);
         sim::traders::MakerBasic<std::remove_reference_t<decltype(makerbasic.orders())>> makerbasic_strategy(/*mid*/10000, /*spread*/10, /*size*/100, /*levels*/3, /*tick*/1);
         int makerbasic_ticks = 0;
         std::chrono::steady_clock::time_point makerbasic_paced{};   // when a served trader next orders
@@ -47,6 +47,7 @@ int main(int argc, char** argv) {
         // A step a trader does not take is a step it had nothing to do: it reads what the
         // venue said, and acts only once it is admitted.
         auto paced = std::chrono::steady_clock::now();   // when it next orders
+        sim::reading();   // launch.sh starts the next component once this one reads its links
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
             worked = to_makerbasic.read([&](std::string_view bytes) { makerbasic.on_bytes(bytes.data(), bytes.size()); }) || worked;

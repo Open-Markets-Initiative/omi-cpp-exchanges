@@ -61,7 +61,7 @@ BOOST_AUTO_TEST_CASE(gateway_admits_fills_and_cancels_an_order) {
     std::function<void(const char*, std::size_t)> to_engine;
     auto emit = [&](const char* b, std::size_t n) { to_engine(b, n); };
     sim::orderentry::Gateway<decltype(emit)> gateway(emit);
-    gateway.allow("ALICE1", "alice00001");
+    gateway.allow("MAKER1", "maker10000");
 
     sim::IpcEventServer events(
         [&](const sim::ipc_ns::trade_message& t) { gateway.on_event(t); },
@@ -76,7 +76,8 @@ BOOST_AUTO_TEST_CASE(gateway_admits_fills_and_cancels_an_order) {
         [](const sim::ipc_ns::order_replaced_message&) {},
         [](const sim::ipc_ns::order_reduced_message&) {},
         [](const sim::ipc_ns::cancel_pending_message&) {},
-        [](const sim::ipc_ns::reduce_refused_message&) {});
+        [](const sim::ipc_ns::reduce_refused_message&) {},
+        [](const sim::ipc_ns::trade_broken_message&) {});
     auto event_emit = [&](const char* b, std::size_t n) { events.on_message(std::string_view(b, n)); };
     matching::MatchingEngine engine(
         [&](const matching::Trade& t)  { sim::emit_trade(event_emit, t); },
@@ -96,8 +97,8 @@ BOOST_AUTO_TEST_CASE(gateway_admits_fills_and_cancels_an_order) {
 
     // Login, presenting what this protocol's own login carries.
     entry::login_request_packet login{};
-    login.fields.username.set("ALICE1");
-    login.fields.password.set("alice00001");
+    login.fields.username.set("MAKER1");
+    login.fields.password.set("maker10000");
     login.fields.requested_session.set("");
     login.fields.requested_sequence_number.set("0");
     gateway.on_bytes(client, whole(login).data(), whole(login).size());
@@ -146,14 +147,32 @@ BOOST_AUTO_TEST_CASE(VerifyEachTradersGatewayAnswersOnlyItsOwnOrders) {
     // The two orders' numbers, as the trade the engine makes carries them.
     std::uint64_t resting = 0, aggressor = 0;
 
-    // MakerBasic's gateway, gateway 1 of 4: it numbers 1, 5, 9 ...
+    // MakerBasic's gateway, gateway 1 of 8: it numbers 1, 9, 17 ...
     std::vector<std::string> makerbasic_sent;
     auto gatewaymakerbasic_emit = [&](const char* b, std::size_t n) { to_engine(b, n); };
-    sim::orderentry::Gateway<decltype(gatewaymakerbasic_emit)> gatewaymakerbasic(gatewaymakerbasic_emit, 1, 4);
-    gatewaymakerbasic.allow("ALICE1", "alice00001");
-    gatewaymakerbasic.allow("BOB001", "bob0000001");
-    gatewaymakerbasic.allow("CAROL1", "carol00001");
-    gatewaymakerbasic.allow("DAVE01", "dave000001");
+    sim::orderentry::Gateway<decltype(gatewaymakerbasic_emit)> gatewaymakerbasic(gatewaymakerbasic_emit, 1, 8);
+    gatewaymakerbasic.allow("MAKER1", "maker10000");
+    gatewaymakerbasic.allow("TAKER1", "taker10000");
+    gatewaymakerbasic.allow("REPLAY", "replay0000");
+    gatewaymakerbasic.allow("ASKER1", "asker10000");
+    gatewaymakerbasic.allow("MAKER2", "maker20000");
+    gatewaymakerbasic.allow("TAKER2", "taker20000");
+    gatewaymakerbasic.allow("FIXMKR", "fixmkr0000");
+    gatewaymakerbasic.allow("FIXTKR", "fixtkr0000");
+    gatewaymakerbasic.allow("RISKST", "riskst0000");
+    gatewaymakerbasic.allow("RSTRCT", "rstrct0000");
+    gatewaymakerbasic.allow("RATEDP", "ratedp0000");
+    gatewaymakerbasic.allow("KILLSW", "killsw0000");
+    gatewaymakerbasic.allow("GROSSX", "grossx0000");
+    gatewaymakerbasic.allow("FATFNG", "fatfng0000");
+    gatewaymakerbasic.allow("OUCETC", "oucetc0000");
+    gatewaymakerbasic.allow("HALTCX", "haltcx0000");
+    gatewaymakerbasic.allow("MELOBY", "meloby0000");
+    gatewaymakerbasic.allow("MELOSL", "melosl0000");
+    gatewaymakerbasic.allow("MELOPG", "melopg0000");
+    gatewaymakerbasic.allow("FIXETC", "fixetc0000");
+    gatewaymakerbasic.allow("FIXOPT", "fixopt0000");
+    gatewaymakerbasic.allow("FIXRSK", "fixrsk0000");
     sim::IpcEventServer gatewaymakerbasic_events(
         [&](const sim::ipc_ns::trade_message& t) { resting = t.resting_order_id.get().value(); aggressor = t.aggressor_order_id.get().value(); gatewaymakerbasic.on_event(t); },
         [](const sim::ipc_ns::order_rested_message&) {},
@@ -167,16 +186,35 @@ BOOST_AUTO_TEST_CASE(VerifyEachTradersGatewayAnswersOnlyItsOwnOrders) {
         [](const sim::ipc_ns::order_replaced_message&) {},
         [](const sim::ipc_ns::order_reduced_message&) {},
         [](const sim::ipc_ns::cancel_pending_message&) {},
-        [](const sim::ipc_ns::reduce_refused_message&) {});
+        [](const sim::ipc_ns::reduce_refused_message&) {},
+        [](const sim::ipc_ns::trade_broken_message&) {});
 
-    // TakerBasic's gateway, gateway 2 of 4: it numbers 2, 6, 10 ...
+    // TakerBasic's gateway, gateway 2 of 8: it numbers 2, 10, 18 ...
     std::vector<std::string> takerbasic_sent;
     auto gatewaytakerbasic_emit = [&](const char* b, std::size_t n) { to_engine(b, n); };
-    sim::orderentry::Gateway<decltype(gatewaytakerbasic_emit)> gatewaytakerbasic(gatewaytakerbasic_emit, 2, 4);
-    gatewaytakerbasic.allow("ALICE1", "alice00001");
-    gatewaytakerbasic.allow("BOB001", "bob0000001");
-    gatewaytakerbasic.allow("CAROL1", "carol00001");
-    gatewaytakerbasic.allow("DAVE01", "dave000001");
+    sim::orderentry::Gateway<decltype(gatewaytakerbasic_emit)> gatewaytakerbasic(gatewaytakerbasic_emit, 2, 8);
+    gatewaytakerbasic.allow("MAKER1", "maker10000");
+    gatewaytakerbasic.allow("TAKER1", "taker10000");
+    gatewaytakerbasic.allow("REPLAY", "replay0000");
+    gatewaytakerbasic.allow("ASKER1", "asker10000");
+    gatewaytakerbasic.allow("MAKER2", "maker20000");
+    gatewaytakerbasic.allow("TAKER2", "taker20000");
+    gatewaytakerbasic.allow("FIXMKR", "fixmkr0000");
+    gatewaytakerbasic.allow("FIXTKR", "fixtkr0000");
+    gatewaytakerbasic.allow("RISKST", "riskst0000");
+    gatewaytakerbasic.allow("RSTRCT", "rstrct0000");
+    gatewaytakerbasic.allow("RATEDP", "ratedp0000");
+    gatewaytakerbasic.allow("KILLSW", "killsw0000");
+    gatewaytakerbasic.allow("GROSSX", "grossx0000");
+    gatewaytakerbasic.allow("FATFNG", "fatfng0000");
+    gatewaytakerbasic.allow("OUCETC", "oucetc0000");
+    gatewaytakerbasic.allow("HALTCX", "haltcx0000");
+    gatewaytakerbasic.allow("MELOBY", "meloby0000");
+    gatewaytakerbasic.allow("MELOSL", "melosl0000");
+    gatewaytakerbasic.allow("MELOPG", "melopg0000");
+    gatewaytakerbasic.allow("FIXETC", "fixetc0000");
+    gatewaytakerbasic.allow("FIXOPT", "fixopt0000");
+    gatewaytakerbasic.allow("FIXRSK", "fixrsk0000");
     sim::IpcEventServer gatewaytakerbasic_events(
         [&](const sim::ipc_ns::trade_message& t) { gatewaytakerbasic.on_event(t); },
         [](const sim::ipc_ns::order_rested_message&) {},
@@ -190,7 +228,8 @@ BOOST_AUTO_TEST_CASE(VerifyEachTradersGatewayAnswersOnlyItsOwnOrders) {
         [](const sim::ipc_ns::order_replaced_message&) {},
         [](const sim::ipc_ns::order_reduced_message&) {},
         [](const sim::ipc_ns::cancel_pending_message&) {},
-        [](const sim::ipc_ns::reduce_refused_message&) {});
+        [](const sim::ipc_ns::reduce_refused_message&) {},
+        [](const sim::ipc_ns::trade_broken_message&) {});
 
     // The engine's events, told to every gateway.
     auto event_emit = [&](const char* b, std::size_t n) {
@@ -215,8 +254,8 @@ BOOST_AUTO_TEST_CASE(VerifyEachTradersGatewayAnswersOnlyItsOwnOrders) {
 
     // Login, presenting what this protocol's own login carries.
     entry::login_request_packet makerbasic_login{};
-    makerbasic_login.fields.username.set("ALICE1");
-    makerbasic_login.fields.password.set("alice00001");
+    makerbasic_login.fields.username.set("MAKER1");
+    makerbasic_login.fields.password.set("maker10000");
     makerbasic_login.fields.requested_session.set("");
     makerbasic_login.fields.requested_sequence_number.set("0");
     gatewaymakerbasic.on_bytes(makerbasic_client, whole(makerbasic_login).data(), whole(makerbasic_login).size());
@@ -230,8 +269,8 @@ BOOST_AUTO_TEST_CASE(VerifyEachTradersGatewayAnswersOnlyItsOwnOrders) {
 
     // Login, presenting what this protocol's own login carries.
     entry::login_request_packet takerbasic_login{};
-    takerbasic_login.fields.username.set("BOB001");
-    takerbasic_login.fields.password.set("bob0000001");
+    takerbasic_login.fields.username.set("TAKER1");
+    takerbasic_login.fields.password.set("taker10000");
     takerbasic_login.fields.requested_session.set("");
     takerbasic_login.fields.requested_sequence_number.set("0");
     gatewaytakerbasic.on_bytes(takerbasic_client, whole(takerbasic_login).data(), whole(takerbasic_login).size());
@@ -291,7 +330,7 @@ BOOST_AUTO_TEST_CASE(VerifyRefusedOrderIsCanceledClosed) {
     std::function<void(const char*, std::size_t)> to_engine;
     auto emit = [&](const char* b, std::size_t n) { to_engine(b, n); };
     sim::orderentry::Gateway<decltype(emit)> gateway(emit);
-    gateway.allow("ALICE1", "alice00001");
+    gateway.allow("MAKER1", "maker10000");
 
     std::size_t traded = 0, rested = 0;
     sim::IpcEventServer events(
@@ -307,10 +346,11 @@ BOOST_AUTO_TEST_CASE(VerifyRefusedOrderIsCanceledClosed) {
         [](const sim::ipc_ns::order_replaced_message&) {},
         [](const sim::ipc_ns::order_reduced_message&) {},
         [](const sim::ipc_ns::cancel_pending_message&) {},
-        [](const sim::ipc_ns::reduce_refused_message&) {});
+        [](const sim::ipc_ns::reduce_refused_message&) {},
+        [](const sim::ipc_ns::trade_broken_message&) {});
     auto event_emit = [&](const char* b, std::size_t n) { events.on_message(std::string_view(b, n)); };
     std::atomic<std::uint64_t> trades{0};
-    sim::components::Engine<decltype(event_emit)> engine(event_emit, trades);
+    sim::components::Engine<decltype(event_emit), sim::instruments> engine(event_emit, trades);
     sim::IpcEngineServer ipc_server(engine.day());
     to_engine = [&](const char* b, std::size_t n) { ipc_server.on_message(std::string_view(b, n)); };
 
@@ -327,6 +367,7 @@ BOOST_AUTO_TEST_CASE(VerifyRefusedOrderIsCanceledClosed) {
     BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::ClosingLockOut));
     BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::ClosingFreeze));
     BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::Close));
+    BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::ExtendedTradingCloseEnd));
     BOOST_REQUIRE(sim::change_phase(engine.day(), sim::PhaseChange::End));
 
     const auto client = gateway.connect([&](const char* b, std::size_t n) { sent.emplace_back(b, n); });
@@ -338,8 +379,8 @@ BOOST_AUTO_TEST_CASE(VerifyRefusedOrderIsCanceledClosed) {
 
     // Login, presenting what this protocol's own login carries.
     entry::login_request_packet login{};
-    login.fields.username.set("ALICE1");
-    login.fields.password.set("alice00001");
+    login.fields.username.set("MAKER1");
+    login.fields.password.set("maker10000");
     login.fields.requested_session.set("");
     login.fields.requested_sequence_number.set("0");
     gateway.on_bytes(client, whole(login).data(), whole(login).size());
@@ -376,7 +417,7 @@ BOOST_AUTO_TEST_CASE(VerifyCrossFillIsFlaggedWithItsCross) {
     std::function<void(const char*, std::size_t)> to_engine;
     auto emit = [&](const char* b, std::size_t n) { to_engine(b, n); };
     sim::orderentry::Gateway<decltype(emit)> gateway(emit);
-    gateway.allow("ALICE1", "alice00001");
+    gateway.allow("MAKER1", "maker10000");
 
     sim::IpcEventServer events(
         [&](const sim::ipc_ns::trade_message& t) { gateway.on_event(t); },
@@ -391,10 +432,11 @@ BOOST_AUTO_TEST_CASE(VerifyCrossFillIsFlaggedWithItsCross) {
         [](const sim::ipc_ns::order_replaced_message&) {},
         [](const sim::ipc_ns::order_reduced_message&) {},
         [](const sim::ipc_ns::cancel_pending_message&) {},
-        [](const sim::ipc_ns::reduce_refused_message&) {});
+        [](const sim::ipc_ns::reduce_refused_message&) {},
+        [](const sim::ipc_ns::trade_broken_message&) {});
     auto event_emit = [&](const char* b, std::size_t n) { events.on_message(std::string_view(b, n)); };
     std::atomic<std::uint64_t> trades{0};
-    sim::components::Engine<decltype(event_emit)> engine(event_emit, trades);
+    sim::components::Engine<decltype(event_emit), sim::instruments> engine(event_emit, trades);
     sim::IpcEngineServer ipc_server(engine.day());
     to_engine = [&](const char* b, std::size_t n) { ipc_server.on_message(std::string_view(b, n)); };
 
@@ -413,8 +455,8 @@ BOOST_AUTO_TEST_CASE(VerifyCrossFillIsFlaggedWithItsCross) {
 
     // Login, presenting what this protocol's own login carries.
     entry::login_request_packet login{};
-    login.fields.username.set("ALICE1");
-    login.fields.password.set("alice00001");
+    login.fields.username.set("MAKER1");
+    login.fields.password.set("maker10000");
     login.fields.requested_session.set("");
     login.fields.requested_sequence_number.set("0");
     gateway.on_bytes(client, whole(login).data(), whole(login).size());
@@ -457,14 +499,15 @@ BOOST_AUTO_TEST_CASE(VerifyCollectingAuctionIndicatesItsImbalance) {
         [](const sim::ipc_ns::order_refused_message&) {},
         [](const sim::ipc_ns::phase_announced_message&) {},
         [](const sim::ipc_ns::cross_completed_message&) {},
-        [&](const sim::ipc_ns::imbalance_indicated_message& i) { indicated.push_back(i); },
+        [&](const sim::ipc_ns::imbalance_indicated_message& i) { if (i.symbol.get_trimmed().value() != "ZVZZT") return; indicated.push_back(i); },
         [](const sim::ipc_ns::order_replaced_message&) {},
         [](const sim::ipc_ns::order_reduced_message&) {},
         [](const sim::ipc_ns::cancel_pending_message&) {},
-        [](const sim::ipc_ns::reduce_refused_message&) {});
+        [](const sim::ipc_ns::reduce_refused_message&) {},
+        [](const sim::ipc_ns::trade_broken_message&) {});
     auto event_emit = [&](const char* b, std::size_t n) { events.on_message(std::string_view(b, n)); };
     std::atomic<std::uint64_t> trades{0};
-    sim::components::Engine<decltype(event_emit)> engine(event_emit, trades);
+    sim::components::Engine<decltype(event_emit), sim::instruments> engine(event_emit, trades);
     sim::IpcEngineServer ipc_server(engine.day());
     // The day's question, framed onto the Ipc and served by the engine.
     const auto ask = [&] {

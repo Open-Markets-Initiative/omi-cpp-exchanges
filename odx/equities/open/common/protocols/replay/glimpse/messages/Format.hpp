@@ -144,7 +144,7 @@ inline std::ostream& operator<<(std::ostream& os, const order_added_message& msg
        << ",quantity=" << msg.fields.quantity.get().value()
        << ",orderbook_id=\"" << msg.fields.orderbook_id.get_trimmed().value() << '"'
        << ",group=\"" << msg.fields.group.get_trimmed().value() << '"'
-       << ",price=" << msg.fields.price.get().value()
+       << ",price=" << (msg.fields.price.get().has_value() ? std::to_string(msg.fields.price.get().value()) : std::string_view("null"))
        ;
     return os;
 }
@@ -156,7 +156,7 @@ inline std::ostream& operator<<(std::ostream& os, const order_added_with_attribu
        << ",quantity=" << msg.fields.quantity.get().value()
        << ",orderbook_id=\"" << msg.fields.orderbook_id.get_trimmed().value() << '"'
        << ",group=\"" << msg.fields.group.get_trimmed().value() << '"'
-       << ",price=" << msg.fields.price.get().value()
+       << ",price=" << (msg.fields.price.get().has_value() ? std::to_string(msg.fields.price.get().value()) : std::string_view("null"))
        << ",attribution=\"" << msg.fields.attribution.get_trimmed().value() << '"'
        << ",order_type=\"" << glimpse_pts::order_type::to_string(msg.fields.order_type.get().value()) << '"'
        ;

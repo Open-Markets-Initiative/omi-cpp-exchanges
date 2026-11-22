@@ -86,7 +86,7 @@ BOOST_AUTO_TEST_CASE(gateway_admits_fills_and_cancels_an_order) {
     // The first answer is the login admitted, read by the code the model selects it on.
     BOOST_CHECK_EQUAL(static_cast<std::uint64_t>(entry::message_header::parse(answer(0))->transaction_code.get().value()), static_cast<std::uint64_t>(2301));
     // Accepted and refused ride the same packet here, so the status is what says it was admitted.
-    BOOST_REQUIRE_EQUAL(static_cast<std::uint64_t>(entry::message_header::parse(answer(0))->error_code.get().value()), 0u);
+    BOOST_REQUIRE_EQUAL(static_cast<std::uint64_t>(entry::message_header::parse(answer(0))->error_code.get().value_or(decltype(entry::message_header::parse(answer(0))->error_code)::null_value)), 0u);
 
     // An order the gateway admits, answered before the engine sees it
     entry::order_entry_request_message order{};

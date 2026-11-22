@@ -36,7 +36,8 @@ int main(int argc, char** argv) {
         sim::MessageRing from_requests("requests -> gatewayrequests", sim::MessageRing::End::Writes);
 
         auto requests_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_requests, b, n); };
-        sim::traders::Trader<decltype(requests_send)> requests("Requests", "DAVE01", "dave000001", requests_send);
+        sim::traders::Trader<decltype(requests_send)> requests("Requests", "ASKER1", "asker10000", requests_send);
+        requests.orders().trade(sim::instruments[0]);
         // Requests takes its orders from a capture of this venue's own order entry: the requests a
         // client sent, replayed here as this trader's own. A capture it cannot read leaves it quiet.
         sim::traders::Capture requests_capture("captures/Ouch.pcap");
@@ -53,6 +54,7 @@ int main(int argc, char** argv) {
         // A step a trader does not take is a step it had nothing to do: it reads what the
         // venue said, and acts only once it is admitted.
         auto paced = std::chrono::steady_clock::now();   // when it next orders
+        sim::reading();   // launch.sh starts the next component once this one reads its links
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
             worked = to_requests.read([&](std::string_view bytes) { requests.on_bytes(bytes.data(), bytes.size()); }) || worked;

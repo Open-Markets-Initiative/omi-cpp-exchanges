@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
         sim::MessageSocket from_replay("replay -> gatewayreplay", sim::MessageSocket::End::Writes, cfg.from_replay_link.host, cfg.from_replay_link.port);
 
         auto replay_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_replay, b, n); };
-        sim::traders::Trader<decltype(replay_send)> replay("Replay", "CAROL1", "carol00001", replay_send);
+        sim::traders::Trader<decltype(replay_send)> replay("Replay", "REPLAY", "replay0000", replay_send);
         // Replay takes its orders from a capture of Nasdaq.NsmEquities.TotalView.Itch.v5.0.2026: what that market showed,
         // posted here as this trader's own orders. A capture it cannot read leaves it quiet.
         sim::traders::Capture replay_capture("captures/TotalView.pcap");

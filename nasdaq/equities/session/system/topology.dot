@@ -18,6 +18,10 @@ digraph nasdaq {
     gatewaytakerbasic [label = "gatewaytakerbasic\norder entry"];
     gatewayreplay [label = "gatewayreplay\norder entry"];
     gatewayrequests [label = "gatewayrequests\norder entry"];
+    gatewaymakersecond [label = "gatewaymakersecond\norder entry"];
+    gatewaytakersecond [label = "gatewaytakersecond\norder entry"];
+    gatewayfixmaker [label = "gatewayfixmaker\norder entry"];
+    gatewayfixtaker [label = "gatewayfixtaker\norder entry"];
     engine [label = "engine\nmatching"];
     sequencer [label = "sequencer\nsequencer"];
     day [label = "day\ntrading day"];
@@ -28,24 +32,40 @@ digraph nasdaq {
     takerbasic [label = "takerbasic\ntrader"];
     replay [label = "replay\ntrader"];
     requests [label = "requests\ntrader"];
+    makersecond [label = "makersecond\ntrader"];
+    takersecond [label = "takersecond\ntrader"];
+    fixmaker [label = "fixmaker\ntrader"];
+    fixtaker [label = "fixtaker\ntrader"];
 
     // Order entry arrives over Tcp, whichever version is running.
     clients -> gatewaymakerbasic [label = "SoupBin Tcp"];
     clients -> gatewaytakerbasic [label = "SoupBin Tcp"];
     clients -> gatewayreplay [label = "SoupBin Tcp"];
     clients -> gatewayrequests [label = "SoupBin Tcp"];
+    clients -> gatewaymakersecond [label = "SoupBin Tcp"];
+    clients -> gatewaytakersecond [label = "SoupBin Tcp"];
+    clients -> gatewayfixmaker [label = "SoupBin Tcp"];
+    clients -> gatewayfixtaker [label = "SoupBin Tcp"];
 
     // Between the components: a queue in one process, a ring across several, a socket across machines.
     gatewaymakerbasic -> sequencer [label = "ipc ring"];
     gatewaytakerbasic -> sequencer [label = "ipc ring"];
     gatewayreplay -> sequencer [label = "ipc ring"];
     gatewayrequests -> sequencer [label = "ipc ring"];
+    gatewaymakersecond -> sequencer [label = "ipc ring"];
+    gatewaytakersecond -> sequencer [label = "ipc ring"];
+    gatewayfixmaker -> sequencer [label = "ipc ring"];
+    gatewayfixtaker -> sequencer [label = "ipc ring"];
     day -> sequencer [label = "ipc ring"];
     sequencer -> engine [label = "ipc ring"];
     engine -> gatewaymakerbasic [label = "ipc ring"];
     engine -> gatewaytakerbasic [label = "ipc ring"];
     engine -> gatewayreplay [label = "ipc ring"];
     engine -> gatewayrequests [label = "ipc ring"];
+    engine -> gatewaymakersecond [label = "ipc ring"];
+    engine -> gatewaytakersecond [label = "ipc ring"];
+    engine -> gatewayfixmaker [label = "ipc ring"];
+    engine -> gatewayfixtaker [label = "ipc ring"];
     engine -> totalview [label = "ipc ring"];
     totalview -> glimpse [label = "messages ring"];
     totalview -> totalviewtcp [label = "messages ring"];
@@ -57,6 +77,14 @@ digraph nasdaq {
     replay -> gatewayreplay [label = "messages ring"];
     gatewayrequests -> requests [label = "messages ring"];
     requests -> gatewayrequests [label = "messages ring"];
+    gatewaymakersecond -> makersecond [label = "messages ring"];
+    makersecond -> gatewaymakersecond [label = "messages ring"];
+    gatewaytakersecond -> takersecond [label = "messages ring"];
+    takersecond -> gatewaytakersecond [label = "messages ring"];
+    gatewayfixmaker -> fixmaker [label = "messages ring"];
+    fixmaker -> gatewayfixmaker [label = "messages ring"];
+    gatewayfixtaker -> fixtaker [label = "messages ring"];
+    fixtaker -> gatewayfixtaker [label = "messages ring"];
 
     // And out: each feed publishes and records what it is given.
     totalview -> totalview_out [style = dashed];

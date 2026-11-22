@@ -23,6 +23,8 @@
 #include "structs/BookRequestMessage.hpp"
 #include "structs/BookOrderMessage.hpp"
 #include "structs/BookEndMessage.hpp"
+#include "structs/BreakTradeMessage.hpp"
+#include "structs/TradeBrokenMessage.hpp"
 #include "structs/CancelPendingMessage.hpp"
 #include "structs/ReduceRefusedMessage.hpp"
 #include "structs/OrderRefusedMessage.hpp"
@@ -43,6 +45,15 @@ namespace ipc_ns = nasdaq::nsmequities::matchingengine::ipc::v2026;
 inline char auctioned(matching::Cross cross) {
     switch (cross) {
         case matching::Cross::None: return 'N';
+        default: break;
+    }
+    return '?';
+}
+
+// And an imbalance-only order's fill in a cross: the cross's own order, offset by it.
+inline char offset_auctioned(matching::Cross cross) {
+    switch (cross) {
+
         default: break;
     }
     return '?';
@@ -106,7 +117,7 @@ constexpr std::optional<matching::Cross> cross_of(Code code) {
 
 
 // Why the engine refused an order: its type, or how long it lives, is none the engine has.
-enum class Refusal { Lifetime, Phase, Cross, Peg, Type };
+enum class Refusal { Lifetime, Phase, Cross, Peg, Type, Slid, FatFinger, LimitProtection };
 
 // What a server built straight over a book - a test's - does with an order it refuses, with
 // nobody to tell: says so, as the engine does of an order for an instrument it does not trade.
@@ -150,6 +161,8 @@ struct IpcType {
     static constexpr char BookRequest        = 'O';
     static constexpr char BookOrder          = 'F';
     static constexpr char BookEnd            = 'V';
+    static constexpr char BreakTrade         = 'k';
+    static constexpr char TradeBroken        = 'b';
 };
 
 // The instrument the engine trades — stamped on the symbol field of every Ipc message.
@@ -170,6 +183,7 @@ inline bool stamp_sequence(char* frame, std::size_t length, std::uint64_t sequen
         case IpcType::ReduceOrder: { if (length < 3 + sizeof(ipc_ns::reduce_order_message)) return false; auto* m = ipc_ns::reduce_order_message::parse(data); m->sequence.set(sequence); m->timestamp.set(time); return true; }
         case IpcType::Clock: { if (length < 3 + sizeof(ipc_ns::clock_message)) return false; auto* m = ipc_ns::clock_message::parse(data); m->sequence.set(sequence); m->timestamp.set(time); return true; }
         case IpcType::BookRequest: { if (length < 3 + sizeof(ipc_ns::book_request_message)) return false; auto* m = ipc_ns::book_request_message::parse(data); m->sequence.set(sequence); m->timestamp.set(time); return true; }
+        case IpcType::BreakTrade: { if (length < 3 + sizeof(ipc_ns::break_trade_message)) return false; auto* m = ipc_ns::break_trade_message::parse(data); m->sequence.set(sequence); m->timestamp.set(time); return true; }
         default: return false;
     }
 }
@@ -188,6 +202,7 @@ inline std::uint64_t sequence_of(std::string_view bytes) {
         case IpcType::ReduceOrder: return bytes.size() < 3 + sizeof(ipc_ns::reduce_order_message) ? 0 : ipc_ns::reduce_order_message::parse(const_cast<std::byte*>(data))->sequence.get().value();
         case IpcType::Clock: return bytes.size() < 3 + sizeof(ipc_ns::clock_message) ? 0 : ipc_ns::clock_message::parse(const_cast<std::byte*>(data))->sequence.get().value();
         case IpcType::BookRequest: return bytes.size() < 3 + sizeof(ipc_ns::book_request_message) ? 0 : ipc_ns::book_request_message::parse(const_cast<std::byte*>(data))->sequence.get().value();
+        case IpcType::BreakTrade: return bytes.size() < 3 + sizeof(ipc_ns::break_trade_message) ? 0 : ipc_ns::break_trade_message::parse(const_cast<std::byte*>(data))->sequence.get().value();
         default: return 0;
     }
 }
@@ -206,6 +221,7 @@ inline std::int64_t time_of(std::string_view bytes) {
         case IpcType::ReduceOrder: return bytes.size() < 3 + sizeof(ipc_ns::reduce_order_message) ? 0 : static_cast<std::int64_t>(ipc_ns::reduce_order_message::parse(const_cast<std::byte*>(data))->timestamp.get().value());
         case IpcType::Clock: return bytes.size() < 3 + sizeof(ipc_ns::clock_message) ? 0 : static_cast<std::int64_t>(ipc_ns::clock_message::parse(const_cast<std::byte*>(data))->timestamp.get().value());
         case IpcType::BookRequest: return bytes.size() < 3 + sizeof(ipc_ns::book_request_message) ? 0 : static_cast<std::int64_t>(ipc_ns::book_request_message::parse(const_cast<std::byte*>(data))->timestamp.get().value());
+        case IpcType::BreakTrade: return bytes.size() < 3 + sizeof(ipc_ns::break_trade_message) ? 0 : static_cast<std::int64_t>(ipc_ns::break_trade_message::parse(const_cast<std::byte*>(data))->timestamp.get().value());
         default: return 0;
     }
 }
@@ -246,7 +262,7 @@ public:
         m.symbol.set(instrument_symbol);
         m.order_id.set(order.id);
         m.side.set(static_cast<std::remove_cvref_t<decltype(m.side.get().value())>>(order.side == matching::Side::Buy ? 'B' : 'S'));
-        m.price.set(order.peg == matching::Peg::None ? (order.price == matching::market(order.side) ? 2147483647 : order.price) : order.limit == matching::market(order.side) ? 2147483647 : order.limit);
+        m.price.set((order.peg == matching::Peg::None ? order.price : order.limit) == matching::market(order.side) ? std::nullopt : std::make_optional(static_cast<std::remove_cvref_t<decltype(m.price.get().value())>>((order.peg == matching::Peg::None ? order.price : order.limit))));
         m.quantity.set(static_cast<std::uint32_t>(order.qty));
         m.time_in_force.set(static_cast<std::remove_cvref_t<decltype(m.time_in_force.get().value())>>(order.lifetime == matching::Lifetime::Session ? '0' : order.lifetime == matching::Lifetime::Immediate ? '3' : order.lifetime == matching::Lifetime::Extended ? '5' : '6'));
         m.display.set(static_cast<std::remove_cvref_t<decltype(m.display.get().value())>>(order.shown ? 'Y' : 'N'));
@@ -299,21 +315,21 @@ public:
                 if (bytes.size() < 3 + sizeof(ipc_ns::new_order_message)) return false;
                 const auto* m = ipc_ns::new_order_message::parse(const_cast<std::byte*>(data));
                 const matching::Side side = static_cast<char>(m->side.get().value()) == 'B' ? matching::Side::Buy : matching::Side::Sell;
-                const bool market = m->price.get().value() == 2147483647 || m->price.get().value() == 2000000000;   // its price says so
+                const bool market = !m->price.get().has_value();   // it states no price
                 const std::optional<matching::Lifetime> lifetime = lifetime_of(m->time_in_force.get().value());
                 const std::optional<matching::Cross> only = cross_of(m->cross_type.get().value());
                 const std::optional<matching::Peg> peg = peg_of(m->peg.get().value());
                 const bool pegged = peg && *peg != matching::Peg::None;
-                if (!peg || (*peg != matching::Peg::None) != pegged || !lifetime || (!only || *only == matching::Cross::Opening || *only == matching::Cross::Intraday || *only == matching::Cross::Closing)) {
+                if (!peg || (*peg != matching::Peg::None) != pegged || !lifetime || (!only || *only == matching::Cross::Opening || *only == matching::Cross::Intraday || *only == matching::Cross::Closing) || static_cast<char>(m->discretion_type.get().value()) != 'L' || static_cast<char>(m->imbalance_only.get().value()) == 'Y' && (!only || (*only != matching::Cross::Opening && *only != matching::Cross::Closing))) {
                     matching::Order refused{};
                     refused.id    = m->order_id.get().value();
                     refused.side  = side;
-                    refused.price = m->price.get().value();
+                    refused.price = m->price.get().value_or(matching::market(side));
                     refused.qty   = m->quantity.get().value();
-                    on_refused_(refused, !peg || (*peg != matching::Peg::None) != pegged ? Refusal::Peg : !lifetime ? Refusal::Lifetime : Refusal::Cross);
+                    on_refused_(refused, !peg || (*peg != matching::Peg::None) != pegged ? Refusal::Peg : !lifetime ? Refusal::Lifetime : (!only || *only == matching::Cross::Opening || *only == matching::Cross::Intraday || *only == matching::Cross::Closing) ? Refusal::Cross : static_cast<char>(m->discretion_type.get().value()) != 'L' ? Refusal::Peg : Refusal::Cross);
                     return true;
                 }
-                engine_.on_new_order(matching::Order{
+                engine_.on_new_order([&] { matching::Order made = matching::Order{
                     m->order_id.get().value(),
                     side,
                     market ? matching::market(side) : m->price.get().value(),
@@ -325,7 +341,7 @@ public:
                     static_cast<std::int64_t>(m->peg_offset.get().value()),
                     (m->expire_time.get().value() == 0 ? std::int64_t{0} : static_cast<std::int64_t>(m->timestamp.get().value()) + static_cast<std::int64_t>(m->expire_time.get().value()) * 1000000000),
                     static_cast<std::uint64_t>(m->min_qty.get().value()),
-                    static_cast<char>(m->post_only.get().value()) == 'P',
+                    (static_cast<char>(m->post_only.get().value()) == 'P' || static_cast<char>(m->post_only.get().value()) == 'C'),
                     static_cast<char>(m->trade_now.get().value()) == 'Y',
                     static_cast<char>(m->short_sale.get().value()) == 'T',
                     static_cast<std::uint64_t>(m->max_floor.get().value()),
@@ -335,7 +351,7 @@ public:
                     static_cast<long long>(m->self_match_level.get().value()) == 'M' ? std::uint8_t{0} : static_cast<std::uint8_t>(m->self_match_level.get().value()),
                     prevention_of(m->self_match_strategy.get().value()).value_or(matching::Prevention::None),
                     static_cast<char>(m->aiq_strategy.get().value()),
-                });
+                }; made.withdraws = static_cast<char>(m->post_only.get().value()) == 'C'; made.discretion = static_cast<std::int64_t>(m->discretion_price.get().value()); made.random = static_cast<std::uint64_t>(m->random_reserve.get().value()); made.imbalance_only = static_cast<char>(m->imbalance_only.get().value()) == 'Y'; made.protection_percent = static_cast<std::uint32_t>(m->protection_percent.get().value()); made.protection_amount = static_cast<std::int64_t>(m->protection_amount.get().value()); return made; }());
                 return true;
             }
             case IpcType::CancelOrder: {
@@ -348,21 +364,21 @@ public:
                 if (bytes.size() < 3 + sizeof(ipc_ns::replace_order_message)) return false;
                 const auto* m = ipc_ns::replace_order_message::parse(const_cast<std::byte*>(data));
                 const matching::Side side = static_cast<char>(m->side.get().value()) == 'B' ? matching::Side::Buy : matching::Side::Sell;
-                const bool market = m->price.get().value() == 2147483647 || m->price.get().value() == 2000000000;   // its price says so
+                const bool market = !m->price.get().has_value();   // it states no price
                 const std::optional<matching::Lifetime> lifetime = lifetime_of(m->time_in_force.get().value());
                 const std::optional<matching::Cross> only = cross_of(m->cross_type.get().value());
                 const std::optional<matching::Peg> peg = peg_of(m->peg.get().value());
                 const bool pegged = peg && *peg != matching::Peg::None;
-                if (!peg || (*peg != matching::Peg::None) != pegged || !lifetime || (!only || *only == matching::Cross::Opening || *only == matching::Cross::Intraday || *only == matching::Cross::Closing)) {
+                if (!peg || (*peg != matching::Peg::None) != pegged || !lifetime || (!only || *only == matching::Cross::Opening || *only == matching::Cross::Intraday || *only == matching::Cross::Closing) || static_cast<char>(m->discretion_type.get().value()) != 'L' || static_cast<char>(m->imbalance_only.get().value()) == 'Y' && (!only || (*only != matching::Cross::Opening && *only != matching::Cross::Closing))) {
                     matching::Order refused{};
                     refused.id    = m->replacement_id.get().value();
                     refused.side  = side;
-                    refused.price = m->price.get().value();
+                    refused.price = m->price.get().value_or(matching::market(side));
                     refused.qty   = m->quantity.get().value();
-                    on_refused_(refused, !peg || (*peg != matching::Peg::None) != pegged ? Refusal::Peg : !lifetime ? Refusal::Lifetime : Refusal::Cross);
+                    on_refused_(refused, !peg || (*peg != matching::Peg::None) != pegged ? Refusal::Peg : !lifetime ? Refusal::Lifetime : (!only || *only == matching::Cross::Opening || *only == matching::Cross::Intraday || *only == matching::Cross::Closing) ? Refusal::Cross : static_cast<char>(m->discretion_type.get().value()) != 'L' ? Refusal::Peg : Refusal::Cross);
                     return true;
                 }
-                const matching::Order order = matching::Order{
+                const matching::Order order = [&] { matching::Order made = matching::Order{
                     m->replacement_id.get().value(),
                     side,
                     market ? matching::market(side) : m->price.get().value(),
@@ -374,7 +390,7 @@ public:
                     static_cast<std::int64_t>(m->peg_offset.get().value()),
                     0,
                     static_cast<std::uint64_t>(m->min_qty.get().value()),
-                    static_cast<char>(m->post_only.get().value()) == 'P',
+                    (static_cast<char>(m->post_only.get().value()) == 'P' || static_cast<char>(m->post_only.get().value()) == 'C'),
                     static_cast<char>(m->trade_now.get().value()) == 'Y',
                     static_cast<char>(m->short_sale.get().value()) == 'T',
                     static_cast<std::uint64_t>(m->max_floor.get().value()),
@@ -384,7 +400,7 @@ public:
                     static_cast<long long>(m->self_match_level.get().value()) == 'M' ? std::uint8_t{0} : static_cast<std::uint8_t>(m->self_match_level.get().value()),
                     prevention_of(m->self_match_strategy.get().value()).value_or(matching::Prevention::None),
                     static_cast<char>(m->aiq_strategy.get().value()),
-                };
+                }; made.withdraws = static_cast<char>(m->post_only.get().value()) == 'C'; made.discretion = static_cast<std::int64_t>(m->discretion_price.get().value()); made.random = static_cast<std::uint64_t>(m->random_reserve.get().value()); made.imbalance_only = static_cast<char>(m->imbalance_only.get().value()) == 'Y'; made.protection_percent = static_cast<std::uint32_t>(m->protection_percent.get().value()); made.protection_amount = static_cast<std::int64_t>(m->protection_amount.get().value()); return made; }();
                 // To the day, which replaces; an engine without one - a test's bare book - replaces nothing.
                 if constexpr (requires { engine_.on_replace(order, m->order_id.get().value()); })
                     engine_.on_replace(order, m->order_id.get().value());
@@ -434,9 +450,13 @@ public:
     // Why the change of phase being made is made, as its request said; nothing while none is.
     std::string_view phase_reason() const { return phase_reason_; }
 
+    // When the security of the change being made will be released, as its request said; 0 while none is.
+    std::uint64_t phase_release() const { return phase_release_; }
+
 private:
     Engine& engine_;
     std::string phase_reason_;   // why the change of phase being made is made
+    std::uint64_t phase_release_ = 0;   // when the security of the change being made will be released
     bool book_asked_ = false;   // the message just read asked for the engine's book
     OnRefused on_refused_;
     std::uint64_t sequenced_ = 0;   // the last place in its sequencer's order it read
@@ -546,7 +566,7 @@ inline void emit_trade(Emit& emit, const matching::Trade& trade) {
     m.execution_id.set(trade.match_id);
     m.price.set(trade.price);
     m.quantity.set(static_cast<std::uint32_t>(trade.qty));
-    m.auction.set(static_cast<std::remove_cvref_t<decltype(m.auction.get().value())>>(auctioned(trade.cross)));
+    m.auction.set(static_cast<std::remove_cvref_t<decltype(m.auction.get().value())>>(trade.offset ? offset_auctioned(trade.cross) : auctioned(trade.cross)));
     m.resting_display.set(static_cast<std::remove_cvref_t<decltype(m.resting_display.get().value())>>(trade.resting_shown ? 'Y' : 'N'));
     m.aggressor_display.set(static_cast<std::remove_cvref_t<decltype(m.aggressor_display.get().value())>>(trade.aggressor_shown ? 'Y' : 'N'));
     m.resting_midpoint.set(static_cast<std::remove_cvref_t<decltype(m.resting_midpoint.get().value())>>(trade.resting_midpoint ? 'Y' : 'N'));
@@ -560,11 +580,12 @@ inline void emit_rested(Emit& emit, const matching::Order& order) {
     m.symbol.set(instrument_symbol);
     m.order_id.set(order.id);
     m.side.set(static_cast<std::remove_cvref_t<decltype(m.side.get().value())>>(order.side == matching::Side::Buy ? 'B' : 'S'));
-    m.price.set(order.price);
+    m.price.set(order.price == matching::market(order.side) ? std::nullopt : std::make_optional(static_cast<std::remove_cvref_t<decltype(m.price.get().value())>>(order.price)));
     m.quantity.set(static_cast<std::uint32_t>(matching::showing(order)));
     m.display.set(static_cast<std::remove_cvref_t<decltype(m.display.get().value())>>(order.shown ? (order.attributed ? 'A' : 'Y') : 'N'));
     m.attribution.set(std::string_view{ order.attribution.data(), order.attribution.size() });
     m.refreshed_from.set(order.renamed);   // the id it stood under, where what it shows was refreshed
+    m.repriced.set(static_cast<std::remove_cvref_t<decltype(m.repriced.get().value())>>(order.repriced ? 'Y' : 'N'));
     detail_ipc::emit_framed(emit, IpcType::OrderRested, m);
 }
 
@@ -580,6 +601,7 @@ inline void emit_canceled(Emit& emit, const matching::Order& order) {
     m.prevented_quantity.set(static_cast<std::remove_cvref_t<decltype(m.prevented_quantity.get().value())>>(order.prevented.qty));
     m.prevented_price.set(static_cast<std::remove_cvref_t<decltype(m.prevented_price.get().value())>>(order.prevented.price));
     m.prevented_strategy.set(static_cast<std::remove_cvref_t<decltype(m.prevented_strategy.get().value())>>(order.prevented.strategy));
+    m.elimination_reason.set(static_cast<std::remove_cvref_t<decltype(m.elimination_reason.get().value())>>('N'));
     detail_ipc::emit_framed(emit, IpcType::OrderCanceled, m);
 }
 
@@ -589,7 +611,7 @@ inline void emit_accepted(Emit& emit, const matching::Order& order) {
     m.timestamp.set(send_time_nanos());
     m.order_id.set(order.id);
     m.symbol.set(instrument_symbol);
-    m.price.set(order.peg == matching::Peg::None ? (order.price == matching::market(order.side) ? 2147483647 : order.price) : order.limit == matching::market(order.side) ? 2147483647 : order.limit);
+    m.price.set((order.peg == matching::Peg::None ? order.price : order.limit) == matching::market(order.side) ? std::nullopt : std::make_optional(static_cast<std::remove_cvref_t<decltype(m.price.get().value())>>((order.peg == matching::Peg::None ? order.price : order.limit))));
     detail_ipc::emit_framed(emit, IpcType::OrderAccepted, m);
 }
 
@@ -601,10 +623,11 @@ inline void emit_eliminated(Emit& emit, const matching::Order& order) {
     m.order_id.set(order.id);
     m.symbol.set(instrument_symbol);
     m.side.set(static_cast<std::remove_cvref_t<decltype(m.side.get().value())>>(order.side == matching::Side::Buy ? 'B' : 'S'));
-    m.price.set(order.peg == matching::Peg::None ? (order.price == matching::market(order.side) ? 2147483647 : order.price) : order.limit == matching::market(order.side) ? 2147483647 : order.limit);
+    m.price.set((order.peg == matching::Peg::None ? order.price : order.limit) == matching::market(order.side) ? std::nullopt : std::make_optional(static_cast<std::remove_cvref_t<decltype(m.price.get().value())>>((order.peg == matching::Peg::None ? order.price : order.limit))));
     m.quantity.set(static_cast<std::uint32_t>(order.qty));
     m.display.set(static_cast<std::remove_cvref_t<decltype(m.display.get().value())>>(order.shown ? 'Y' : 'N'));
     m.time_in_force.set(static_cast<std::remove_cvref_t<decltype(m.time_in_force.get().value())>>(order.lifetime == matching::Lifetime::Session ? '0' : order.lifetime == matching::Lifetime::Immediate ? '3' : order.lifetime == matching::Lifetime::Extended ? '5' : '6'));
+    m.elimination_reason.set(static_cast<std::remove_cvref_t<decltype(m.elimination_reason.get().value())>>('N'));
     detail_ipc::emit_framed(emit, IpcType::OrderEliminated, m);
 }
 
@@ -617,7 +640,7 @@ inline void emit_replaced(Emit& emit, std::uint64_t replaced, const matching::Or
     m.replacement_id.set(order.id);
     m.symbol.set(instrument_symbol);
     m.side.set(static_cast<std::remove_cvref_t<decltype(m.side.get().value())>>(order.side == matching::Side::Buy ? 'B' : 'S'));
-    m.price.set(order.peg == matching::Peg::None ? (order.price == matching::market(order.side) ? 2147483647 : order.price) : order.limit == matching::market(order.side) ? 2147483647 : order.limit);
+    m.price.set((order.peg == matching::Peg::None ? order.price : order.limit) == matching::market(order.side) ? std::nullopt : std::make_optional(static_cast<std::remove_cvref_t<decltype(m.price.get().value())>>((order.peg == matching::Peg::None ? order.price : order.limit))));
     m.quantity.set(static_cast<std::uint32_t>(matching::showing(order)));
     m.open_quantity.set(static_cast<std::uint32_t>(order.qty));
     m.display.set(static_cast<std::remove_cvref_t<decltype(m.display.get().value())>>(order.shown ? 'Y' : 'N'));
@@ -659,7 +682,7 @@ inline void emit_book_order(Emit& emit, const matching::Order& order, char where
     m.order_id.set(order.id);
     m.symbol.set(instrument_symbol);
     m.side.set(static_cast<std::remove_cvref_t<decltype(m.side.get().value())>>(order.side == matching::Side::Buy ? 'B' : 'S'));
-    m.price.set(order.peg == matching::Peg::None ? (order.price == matching::market(order.side) ? 2147483647 : order.price) : order.limit == matching::market(order.side) ? 2147483647 : order.limit);
+    m.price.set((order.peg == matching::Peg::None ? order.price : order.limit) == matching::market(order.side) ? std::nullopt : std::make_optional(static_cast<std::remove_cvref_t<decltype(m.price.get().value())>>((order.peg == matching::Peg::None ? order.price : order.limit))));
     m.quantity.set(static_cast<std::uint32_t>(order.qty));
     m.display.set(static_cast<std::remove_cvref_t<decltype(m.display.get().value())>>(order.shown ? 'Y' : 'N'));
     m.book_sequence.set(static_cast<std::remove_cvref_t<decltype(m.book_sequence.get().value())>>(sequence));
@@ -692,7 +715,7 @@ inline void emit_refused(Emit& emit, const matching::Order& order, Refusal reaso
     m.timestamp.set(send_time_nanos());
     m.order_id.set(order.id);
     m.symbol.set(instrument_symbol);
-    m.refusal_reason.set(static_cast<std::remove_cvref_t<decltype(m.refusal_reason.get().value())>>(reason == Refusal::Phase ? 'E' : reason == Refusal::Peg ? 'P' : reason == Refusal::Type ? 'T' : reason == Refusal::Lifetime ? 'O' : 'C'));
+    m.refusal_reason.set(static_cast<std::remove_cvref_t<decltype(m.refusal_reason.get().value())>>(reason == Refusal::Phase ? 'E' : reason == Refusal::Peg ? 'P' : reason == Refusal::Type ? 'T' : reason == Refusal::Lifetime ? 'O' : reason == Refusal::Cross ? 'C' : reason == Refusal::Slid ? 'G' : reason == Refusal::FatFinger ? 'F' : 'L'));
     detail_ipc::emit_framed(emit, IpcType::OrderRefused, m);
 }
 

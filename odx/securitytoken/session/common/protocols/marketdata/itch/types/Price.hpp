@@ -41,8 +41,8 @@ struct price {
             set(null_value);
     }
 
-    constexpr void set_null() {
-        value = null_value;
+    void set_null() {
+        value = static_cast<std::uint32_t>(__builtin_bswap32(null_value));
     }
 
   protected:

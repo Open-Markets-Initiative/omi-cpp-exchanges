@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include "../cache/Required.hpp"
 
 namespace odx::odxequities::tcppts::itch::v2_2 {
@@ -11,20 +12,22 @@ struct price {
 
     static constexpr const char* name = "price";
     static constexpr std::size_t size = 4;
-    static constexpr bool is_optional = false;
+    static constexpr bool is_optional = true;
+    static constexpr std::uint32_t null_value = 2147483647;
     static constexpr int exponent = -1;
 
-    using result_type = required<std::uint32_t>;
+    using result_type = std::optional<std::uint32_t>;
     using storage_type = result_type;
 
-    constexpr price()
-     : value{ 0 } {}
+    price()
+     : value{ static_cast<std::uint32_t>(__builtin_bswap32(null_value)) } {}
 
     price(std::uint32_t v)
      : value{ static_cast<std::uint32_t>(__builtin_bswap32(v)) } {}
 
     [[nodiscard]] result_type get() const {
-        return result_type{static_cast<std::uint32_t>(__builtin_bswap32(value))};
+        auto host = static_cast<std::uint32_t>(__builtin_bswap32(value));
+        return host == null_value ? std::nullopt : result_type{host};
     }
 
     void set(std::uint32_t v) {
@@ -35,7 +38,11 @@ struct price {
         if (value.has_value())
             set(value.value());
         else
-            set(0);
+            set(null_value);
+    }
+
+    void set_null() {
+        value = static_cast<std::uint32_t>(__builtin_bswap32(null_value));
     }
 
   protected:

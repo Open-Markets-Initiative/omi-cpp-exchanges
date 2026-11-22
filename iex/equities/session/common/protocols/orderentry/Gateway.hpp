@@ -150,13 +150,15 @@ inline std::int64_t utc_nanos(std::string_view text) {
 
 
 // An order the gateway admitted: its id, the client's reference to it, the shares still open,
-// and the client that owns it.
+// the comp id's session that entered it, which its reports go to, and the Account that owns it -
+// its port's, whichever comp id entered it.
 // It also keeps what the client entered it with that its reports name: ExecInst, MinQty, MaxFloor, OrdType, OrderCapacity, Side, Symbol, Account, ExpireTime, AntiInternalizationQualifiersAIQID, TimeInForce.
 struct Order {
     std::uint64_t id = 0;
     std::string reference;
     std::uint64_t remaining = 0;
     std::size_t client = 0;
+    std::size_t account = 0;   // the Account that owns it: its port's
     std::string entered_exec_inst;
     std::string entered_min_qty;
     std::string entered_max_floor;
@@ -209,7 +211,7 @@ inline ipc_ns::new_order_message to_fix_new_order(std::string_view m, const Orde
     out.instruction.set(static_cast<value_of<decltype(out.instruction)>>([](char value) { switch (value) { case 'i': return 'i'; case 'u': return 'u'; case 'r': return 'u'; case 's': return 'u'; case 't': return 'u'; case 'f': return 'f'; case 'y': return 'y'; case 'j': return 'j'; case 'M': return 'i'; case 'R': return 'i'; case 'd': return 'i'; case 'z': return 'i'; case 'Q': return 'i'; case 'o': return 'i'; case 'P': return 'i'; case '\0': return 'i'; default: return '?'; } }([](std::string_view text) { return text.size() == 1 ? text.front() : text.empty() ? '\0' : '\x01'; }(protocol::field(m, Tag::ExecInst)))));
     out.cross_type.set(static_cast<value_of<decltype(out.cross_type)>>([](char value) { switch (value) { case '2': return 'O'; case '7': return 'C'; case '\0': return 'N'; default: return 'N'; } }(protocol::field_char(m, Tag::TimeInForce))));
     out.expire_time.set(static_cast<value_of<decltype(out.expire_time)>>(utc_nanos(protocol::field(m, Tag::ExpireTime))));
-    out.self_match_group.set(static_cast<value_of<decltype(out.self_match_group)>>([&]() -> std::uint64_t { std::uint64_t key = 14695981039346656037ull; const auto mix = [&key](std::string_view text) { for (const char c : text) { key ^= static_cast<unsigned char>(c); key *= 1099511628211ull; } key ^= 0x1f; key *= 1099511628211ull; }; mix(std::to_string(order.client)); { const auto held = protocol::field(m, Tag::AntiInternalizationQualifiersAIQID); std::string_view text{held}; if (text.size() >= 1) text = text.substr(0, 2); else text = {}; if (text.empty() || text == "--") return 0; mix(text); } return key == 0 ? 1 : key; }()));
+    out.self_match_group.set(static_cast<value_of<decltype(out.self_match_group)>>([&]() -> std::uint64_t { std::uint64_t key = 14695981039346656037ull; const auto mix = [&key](std::string_view text) { for (const char c : text) { key ^= static_cast<unsigned char>(c); key *= 1099511628211ull; } key ^= 0x1f; key *= 1099511628211ull; }; mix(std::to_string(order.account)); { const auto held = protocol::field(m, Tag::AntiInternalizationQualifiersAIQID); std::string_view text{held}; if (text.size() >= 1) text = text.substr(0, 2); else text = {}; if (text.empty() || text == "--") return 0; mix(text); } return key == 0 ? 1 : key; }()));
     out.timestamp.set(static_cast<value_of<decltype(out.timestamp)>>(send_time_nanos()));
     return out;
 }
@@ -244,7 +246,7 @@ inline ipc_ns::replace_order_message to_fix_replace_order(std::string_view m, co
     out.self_match_modifier.set(static_cast<value_of<decltype(out.self_match_modifier)>>([](char value) { switch (value) { case 'D': return 'S'; case '\0': return 'O'; default: return value; } }([](std::string_view text) { return text.size() >= 3 ? text[2] : '\0'; }(std::string_view{order.entered_anti_internalization_qualifiers_aiqid}))));
     out.instruction.set(static_cast<value_of<decltype(out.instruction)>>([](char value) { switch (value) { case 'i': return 'i'; case 'u': return 'u'; case 'r': return 'u'; case 's': return 'u'; case 't': return 'u'; case 'f': return 'f'; case 'y': return 'y'; case 'j': return 'j'; case 'M': return 'i'; case 'R': return 'i'; case 'd': return 'i'; case 'z': return 'i'; case 'Q': return 'i'; case 'o': return 'i'; case 'P': return 'i'; case '\0': return 'i'; default: return '?'; } }([](std::string_view text) { return text.size() == 1 ? text.front() : text.empty() ? '\0' : '\x01'; }(protocol::field(m, Tag::ExecInst)))));
     out.cross_type.set(static_cast<value_of<decltype(out.cross_type)>>([](char value) { switch (value) { case '2': return 'O'; case '7': return 'C'; case '\0': return 'N'; default: return 'N'; } }(protocol::field_char(m, Tag::TimeInForce))));
-    out.self_match_group.set(static_cast<value_of<decltype(out.self_match_group)>>([&]() -> std::uint64_t { std::uint64_t key = 14695981039346656037ull; const auto mix = [&key](std::string_view text) { for (const char c : text) { key ^= static_cast<unsigned char>(c); key *= 1099511628211ull; } key ^= 0x1f; key *= 1099511628211ull; }; mix(std::to_string(order.client)); { const auto held = std::string_view{order.entered_anti_internalization_qualifiers_aiqid}; std::string_view text{held}; if (text.size() >= 1) text = text.substr(0, 2); else text = {}; if (text.empty() || text == "--") return 0; mix(text); } return key == 0 ? 1 : key; }()));
+    out.self_match_group.set(static_cast<value_of<decltype(out.self_match_group)>>([&]() -> std::uint64_t { std::uint64_t key = 14695981039346656037ull; const auto mix = [&key](std::string_view text) { for (const char c : text) { key ^= static_cast<unsigned char>(c); key *= 1099511628211ull; } key ^= 0x1f; key *= 1099511628211ull; }; mix(std::to_string(order.account)); { const auto held = std::string_view{order.entered_anti_internalization_qualifiers_aiqid}; std::string_view text{held}; if (text.size() >= 1) text = text.substr(0, 2); else text = {}; if (text.empty() || text == "--") return 0; mix(text); } return key == 0 ? 1 : key; }()));
     out.timestamp.set(static_cast<value_of<decltype(out.timestamp)>>(send_time_nanos()));
     return out;
 }
@@ -1378,8 +1380,9 @@ public:
     // in an interleave of its own - the k-th of n gateways k, k + n, k + 2n ... - so no two of them
     // give one number, and none has to ask another what it gave: the simulator's own scheme. A
     // gateway on its own numbers from one, as the one gateway does.
+    // Its place in that interleave is its port's too, and so names the Account the port is bound to.
     explicit Gateway(Emit emit, std::uint64_t first = 1, std::uint64_t step = 1, Clock clock = {})
-        : emit_(emit), clock_(clock), next_id_(first), step_(step) {
+        : emit_(emit), clock_(clock), account_(first), next_id_(first), step_(step) {
         config_.comp_id = "IEXG";
         next_report_ = first;
     }
@@ -1453,7 +1456,7 @@ public:
 
     std::size_t open_orders() const { return orders_.size(); }
 
-    // The engine's trade_message: answered to the client owning each order it names, as the event leaves it.
+    // The engine's trade_message: answered to the session that entered each order it names, as the event leaves it.
     void on_event(const ipc_ns::trade_message& m) {
         const auto now = clock_();
 
@@ -1475,7 +1478,7 @@ public:
         fill(m.aggressor_order_id.get().value(), m.quantity.get().value());
     }
 
-    // The engine's order_canceled_message: answered to the client owning each order it names, as the event leaves it.
+    // The engine's order_canceled_message: answered to the session that entered each order it names, as the event leaves it.
     void on_event(const ipc_ns::order_canceled_message& m) {
         const auto now = clock_();
 
@@ -1487,7 +1490,7 @@ public:
         close(m.order_id.get().value());
     }
 
-    // The engine's order_eliminated_message: answered to the client owning each order it names, as the event leaves it.
+    // The engine's order_eliminated_message: answered to the session that entered each order it names, as the event leaves it.
     void on_event(const ipc_ns::order_eliminated_message& m) {
         const auto now = clock_();
 
@@ -1536,7 +1539,7 @@ public:
         }
     }
 
-    // The engine's cancel_refused_message: answered to the client owning each order it names, as the event leaves it.
+    // The engine's cancel_refused_message: answered to the session that entered each order it names, as the event leaves it.
     void on_event(const ipc_ns::cancel_refused_message& m) {
         const auto now = clock_();
 
@@ -1655,6 +1658,7 @@ private:
                 order.id = numbered();
                 order.reference = std::string(protocol::field(m, Tag::ClOrdID));
                 order.client = client;
+                order.account = account_;
                 order.requested = order.reference;
                 order.entered_exec_inst = std::string(protocol::field(m, Tag::ExecInst));
                 order.entered_min_qty = std::string(protocol::field(m, Tag::MinQty));
@@ -1692,7 +1696,7 @@ private:
             if (protocol::field(m, Tag::Side) == "5" && !(protocol::field(m, Tag::LocateReqd) == "N")) { rejected([&](protocol::Writer& out, const Order& order) { to_fix_invalid_locate_short(out, m, order, now, reported()); }, "8"); return; }
             if (protocol::field(m, Tag::Side) == "6" && !(protocol::field(m, Tag::LocateReqd) == "N")) { rejected([&](protocol::Writer& out, const Order& order) { to_fix_invalid_locate_exempt(out, m, order, now, reported()); }, "8"); return; }
             used_.insert({ client, std::string(protocol::field(m, Tag::ClOrdID)) });
-            Order order{ numbered(), std::string(protocol::field(m, Tag::ClOrdID)), 0, client, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 0, {}, 0, {}, {}, {}, 0, 0 };
+            Order order{ numbered(), std::string(protocol::field(m, Tag::ClOrdID)), 0, client, account_, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 0, {}, 0, {}, {}, {}, 0, 0 };
             auto ipc = to_fix_new_order(m, order);
             order.remaining = ipc.quantity.get().value();
             order.time_in_force = static_cast<char>(ipc.time_in_force.get().value());
@@ -1733,12 +1737,14 @@ private:
                     order.status = gone->second.status;
                     order.reference = named.second;
                     order.client = client;
+                    order.account = account_;
                     respond(client, "9", [&](protocol::Writer& out) { to_fix_cancel_too_late(out, m, order, now); }, now);
                     return;
                 }
                 Order unknown{};
                 unknown.reference = named.second;
                 unknown.client = client;
+                unknown.account = account_;
                 respond(client, "9", [&](protocol::Writer& out) { to_fix_cancel_unknown(out, m, unknown, now); }, now);
                 return;
             }
@@ -1771,12 +1777,14 @@ private:
                     order.status = gone->second.status;
                     order.reference = named.second;
                     order.client = client;
+                    order.account = account_;
                     respond(client, "9", [&](protocol::Writer& out) { to_fix_replace_too_late(out, m, order, now); }, now);
                     return;
                 }
                 Order unknown{};
                 unknown.reference = named.second;
                 unknown.client = client;
+                unknown.account = account_;
                 respond(client, "9", [&](protocol::Writer& out) { to_fix_replace_unknown(out, m, unknown, now); }, now);
                 return;
             }
@@ -1865,6 +1873,7 @@ private:
     std::size_t next_connection_ = 0;   // connection numbers, never reused
     std::map<std::string, std::size_t, std::less<>> comp_ids_;   // each comp id's session, by its number
     std::map<std::string, std::string, std::less<>> credentials_;
+    std::size_t account_;   // the Account its port is bound to: the gateway's place among the venue's gateways
     std::map<std::uint64_t, Order> orders_;
     std::map<std::pair<std::size_t, std::string>, std::uint64_t, std::less<>> references_;
     struct Closed { std::uint64_t id = 0; char status = 0; };   // an order that has left the book, and how it ended

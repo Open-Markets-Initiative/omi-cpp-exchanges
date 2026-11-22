@@ -34,6 +34,10 @@ int main(int argc, char** argv) {
         sim::IpcSocket to_clients_gatewaytakerbasic("engine -> gatewaytakerbasic", sim::IpcSocket::End::Writes, cfg.to_clients_gatewaytakerbasic_link.host, cfg.to_clients_gatewaytakerbasic_link.port);
         sim::IpcSocket to_clients_gatewayreplay("engine -> gatewayreplay", sim::IpcSocket::End::Writes, cfg.to_clients_gatewayreplay_link.host, cfg.to_clients_gatewayreplay_link.port);
         sim::IpcSocket to_clients_gatewayrequests("engine -> gatewayrequests", sim::IpcSocket::End::Writes, cfg.to_clients_gatewayrequests_link.host, cfg.to_clients_gatewayrequests_link.port);
+        sim::IpcSocket to_clients_gatewaymakersecond("engine -> gatewaymakersecond", sim::IpcSocket::End::Writes, cfg.to_clients_gatewaymakersecond_link.host, cfg.to_clients_gatewaymakersecond_link.port);
+        sim::IpcSocket to_clients_gatewaytakersecond("engine -> gatewaytakersecond", sim::IpcSocket::End::Writes, cfg.to_clients_gatewaytakersecond_link.host, cfg.to_clients_gatewaytakersecond_link.port);
+        sim::IpcSocket to_clients_gatewayfixmaker("engine -> gatewayfixmaker", sim::IpcSocket::End::Writes, cfg.to_clients_gatewayfixmaker_link.host, cfg.to_clients_gatewayfixmaker_link.port);
+        sim::IpcSocket to_clients_gatewayfixtaker("engine -> gatewayfixtaker", sim::IpcSocket::End::Writes, cfg.to_clients_gatewayfixtaker_link.host, cfg.to_clients_gatewayfixtaker_link.port);
         sim::IpcSocket to_totalview("engine -> totalview", sim::IpcSocket::End::Writes, cfg.to_totalview_link.host, cfg.to_totalview_link.port);
 
         std::atomic<std::uint64_t> trades{0}, events{0};
@@ -45,13 +49,17 @@ int main(int argc, char** argv) {
             sim::write_blocking(to_clients_gatewaytakerbasic, bytes, length);
             sim::write_blocking(to_clients_gatewayreplay, bytes, length);
             sim::write_blocking(to_clients_gatewayrequests, bytes, length);
+            sim::write_blocking(to_clients_gatewaymakersecond, bytes, length);
+            sim::write_blocking(to_clients_gatewaytakersecond, bytes, length);
+            sim::write_blocking(to_clients_gatewayfixmaker, bytes, length);
+            sim::write_blocking(to_clients_gatewayfixtaker, bytes, length);
             sim::write_blocking(to_totalview, bytes, length);
         };
 
-        sim::components::Engine<decltype(emit)> engine(emit, trades);
+        sim::components::Engine<decltype(emit), sim::instruments> engine(emit, trades);
         engine.dump(cfg.book_dump);   // its own book, also written out where the settings name a file
 
-        std::printf("nasdaq-engine: matching, 1 in, 5 out\n");
+        std::printf("nasdaq-engine: matching, 1 in, 9 out\n");
 
         // Nothing to do means nothing to do: back off rather than spin a core.
         while (running.load(std::memory_order_acquire)) {
@@ -61,6 +69,10 @@ int main(int argc, char** argv) {
             to_clients_gatewaytakerbasic.deliver();
             to_clients_gatewayreplay.deliver();
             to_clients_gatewayrequests.deliver();
+            to_clients_gatewaymakersecond.deliver();
+            to_clients_gatewaytakersecond.deliver();
+            to_clients_gatewayfixmaker.deliver();
+            to_clients_gatewayfixtaker.deliver();
             to_totalview.deliver();
             if (!worked) std::this_thread::sleep_for(std::chrono::microseconds(50));
         }

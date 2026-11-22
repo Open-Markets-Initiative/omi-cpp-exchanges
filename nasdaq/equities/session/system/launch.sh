@@ -27,6 +27,9 @@ cd "$build" || exit 1
 # are a cycle, so there is no start order that would let each component make its own.
 "./nasdaq_rings" create || exit 1
 
+# Where each component says it has begun reading its links: one file each, named for it.
+reading="$(mktemp -d)" || exit 1
+
 # One moment the venue's day began, for every component: what a simulated day counts its time from,
 # so the processes' clocks agree. One already set - a restart carrying the day on - is kept.
 export SIM_CLOCK_ANCHOR="${SIM_CLOCK_ANCHOR:-$(date +%s%N)}"
@@ -36,9 +39,17 @@ names=()
 
 start() {
     echo "launch: starting $1"
-    "./nasdaq_system_$1" "${@:2}" &
+    SIM_READING="$reading/$1" "./nasdaq_system_$1" "${@:2}" &
     pids+=($!)
     names+=("$1")
+
+    # It reads its links before the next one starts.
+    for _ in $(seq 1 1200); do
+        [ -e "$reading/$1" ] && return 0
+        kill -0 "${pids[-1]}" 2>/dev/null || return 0
+        sleep 0.1
+    done
+    echo "launch: $1 is not reading its links after 120 s - starting the rest anyway" >&2
 }
 
 # Consumers before producers, so nothing writes to a link nobody is reading yet.
@@ -46,6 +57,10 @@ start gatewaymakerbasic "$@"
 start gatewaytakerbasic "$@"
 start gatewayreplay "$@"
 start gatewayrequests "$@"
+start gatewaymakersecond "$@"
+start gatewaytakersecond "$@"
+start gatewayfixmaker "$@"
+start gatewayfixtaker "$@"
 start engine "$@"
 start sequencer "$@"
 start day "$@"
@@ -56,6 +71,10 @@ start makerbasic "$@"
 start takerbasic "$@"
 start replay "$@"
 start requests "$@"
+start makersecond "$@"
+start takersecond "$@"
+start fixmaker "$@"
+start fixtaker "$@"
 
 # Taking it down. Producer order: each one quiet before whoever reads from it goes, so that
 # nothing is still being written to a component that has already stopped.
@@ -65,7 +84,7 @@ start requests "$@"
 down() {
     trap - INT TERM
 
-    for index in 13 12 11 10 9 8 7 6 5 4 3 2 1 0; do
+    for index in 21 20 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0; do
         pid="${pids[$index]}"
         name="${names[$index]}"
         if kill -0 "$pid" 2>/dev/null; then
@@ -80,13 +99,17 @@ down() {
 
     # The rings go last, once nothing is holding them.
     "./nasdaq_rings" discard
+
+    # What the components said, each file by its own name, then the directory made for them.
+    for name in "${names[@]}"; do rm -f -- "$reading/$name"; done
+    rmdir -- "$reading" 2>/dev/null
     echo "launch: down"
     exit 0
 }
 
 trap down INT TERM
 
-echo "launch: 14 components up — Ctrl-C to stop"
+echo "launch: 22 components up — Ctrl-C to stop"
 
 while :; do
     # A component that dies on its own takes the venue with it: a venue missing one of its parts

@@ -40,10 +40,10 @@ int main(int argc, char** argv) {
         sim::MessageRing to_totalviewtcp("totalview -> totalviewtcp", sim::MessageRing::End::Reads);
 
         sim::replay::totalviewtcp::Server<std::function<void(const char*, std::size_t)>> totalviewtcp("NSMTV00001");
-        totalviewtcp.allow("ALICE1", "alice00001");
-        totalviewtcp.allow("BOB001", "bob0000001");
-        totalviewtcp.allow("CAROL1", "carol00001");
-        totalviewtcp.allow("DAVE01", "dave000001");
+        totalviewtcp.allow("MAKER1", "maker10000");
+        totalviewtcp.allow("TAKER1", "taker10000");
+        totalviewtcp.allow("REPLAY", "replay0000");
+        totalviewtcp.allow("ASKER1", "asker10000");
 
         // Its own socket: the clients that ask it for a replay dial this, not the gateway.
         net::TcpServer totalviewtcp_server(cfg.totalviewtcp_replay_host, cfg.totalviewtcp_replay_port);   // where its settings say: every interface in a container
@@ -52,20 +52,18 @@ int main(int argc, char** argv) {
         std::printf("nasdaq-totalviewtcp: serving stream of TotalView on port %u\n", (unsigned)cfg.totalviewtcp_replay_port);
 
         // Nothing to do means nothing to do: back off rather than spin a core.
+        sim::reading();   // launch.sh starts the next component once this one reads its links
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
             worked = to_totalviewtcp.read([&](std::string_view message) { totalviewtcp.on_message(message.data(), message.size()); }) || worked;
             worked = totalviewtcp_server.poll([&](int fd, std::string_view bytes) {
-                auto session = totalviewtcp_sessions.find(fd);
-                if (session == totalviewtcp_sessions.end())
-                    session = totalviewtcp_sessions.emplace(fd, totalviewtcp.connect([&server = totalviewtcp_server, fd](const char* b, std::size_t n) { server.send(fd, b, n); })).first;
-                totalviewtcp.on_bytes(session->second, bytes.data(), bytes.size());
+                totalviewtcp.on_bytes(totalviewtcp_sessions.at(fd), bytes.data(), bytes.size());
             }, [&](int fd) {
                 if (const auto gone = totalviewtcp_sessions.find(fd); gone != totalviewtcp_sessions.end()) {
                     totalviewtcp.disconnect(gone->second);
                     totalviewtcp_sessions.erase(gone);
                 }
-            }) || worked;
+            }, [&](int fd) { totalviewtcp_sessions.emplace(fd, totalviewtcp.connect([&server = totalviewtcp_server, fd](const char* b, std::size_t n) { server.send(fd, b, n); })); }) || worked;
             totalviewtcp.tick();
             for (auto session = totalviewtcp_sessions.begin(); session != totalviewtcp_sessions.end(); ) {
                 if (!totalviewtcp.ended(session->second)) { ++session; continue; }

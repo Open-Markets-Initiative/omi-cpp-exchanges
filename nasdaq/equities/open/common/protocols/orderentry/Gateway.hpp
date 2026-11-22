@@ -28,7 +28,9 @@
 #include "messages/ReplacedMessage.hpp"
 #include "messages/OrderModifiedMessage.hpp"
 #include "messages/OrderExecutedMessage.hpp"
+#include "messages/BrokenTradeMessage.hpp"
 #include "messages/OrderRestatedMessage.hpp"
+#include "messages/OrderPriorityUpdateMessage.hpp"
 #include "messages/CancelPendingMessage.hpp"
 #include "messages/CancelRejectMessage.hpp"
 #include "messages/AiqCanceledMessage.hpp"
@@ -46,6 +48,7 @@
 #include "../ipc/structs/ReduceOrderMessage.hpp"
 #include "../ipc/structs/ReplaceOrderMessage.hpp"
 #include "../ipc/structs/TradeMessage.hpp"
+#include "../ipc/structs/TradeBrokenMessage.hpp"
 #include "../ipc/structs/OrderRestedMessage.hpp"
 #include "../ipc/structs/CancelPendingMessage.hpp"
 #include "../ipc/structs/ReduceRefusedMessage.hpp"
@@ -160,12 +163,14 @@ constexpr std::size_t fixed_size() {
 }
 
 // An order the gateway admitted: its id, the client's reference to it, the shares still open,
-// and the client that owns it.
+// and the Account that owns it - its port's, whichever connection entered it.
 struct Order {
     std::uint64_t id = 0;
     std::uint64_t reference = 0;
     std::uint64_t remaining = 0;
-    std::size_t client = 0;
+    std::size_t account = 0;
+    std::uint64_t channel = 0;   // the order flow channel it was entered on, within which its reference names it
+    bool traded = false;   // has it traded, so that once closed it is kept for a broken trade's answer
     protocol::enter_order_message::fields_type entered{};   // what the client entered it with, which a response restates
     protocol::enter_order_message request{};   // the request that admitted it, answered once the engine has it
     std::string options{};   // the options it was entered with, as they arrived, less those a replace changed: what a response echoes
@@ -175,6 +180,7 @@ struct Order {
     std::int64_t price = 0;   // the price the engine took it at, as its acceptance says: the venue may reprice it on entry
     std::uint64_t executed = 0;   // the shares it has executed, which an intended size counts
     char pending = 0;   // the code of the request last acting on it, which tells its answers apart
+    std::uint32_t told = 0;   // the responses told at most once of it, a bit each, those told set
     std::uint64_t replaced_id = 0;   // the order a replacement replaces, its number; 0 for an order entered
     std::uint64_t replaced_reference{};   // and the reference it was known by
     protocol::replace_order_message replace{};   // the replace that gave it, answered once the engine has it
@@ -204,18 +210,25 @@ inline ipc_ns::new_order_message to_ouch_enter_order(const protocol::enter_order
     (void)order;
     ipc_ns::new_order_message out{};
     out.order_id.set(static_cast<value_of<decltype(out.order_id)>>(order.id));
+    out.late_limit.set(static_cast<value_of<decltype(out.late_limit)>>('R'));
+    out.extended_close.set(static_cast<value_of<decltype(out.extended_close)>>('N'));
     out.side.set(static_cast<value_of<decltype(out.side)>>([](char value) { switch (value) { case 'T': return 'S'; case 'E': return 'S'; default: return value; } }(static_cast<char>(m.fields.side.get().value()))));
     out.quantity.set(m.fields.quantity.get().value());
     out.symbol.set(m.fields.symbol.get().value());
-    out.price.set(static_cast<value_of<decltype(out.price)>>(m.fields.price.get().value()));
+    out.price.set(static_cast<long long>(m.fields.price.get().value()) == 2147483647 || static_cast<long long>(m.fields.price.get().value()) == 2000000000 ? std::nullopt : std::make_optional<value_of<decltype(out.price)>>(static_cast<value_of<decltype(out.price)>>(m.fields.price.get().value())));
     out.time_in_force.set(static_cast<value_of<decltype(out.time_in_force)>>(static_cast<char>(m.fields.time_in_force.get().value())));
     out.expire_time.set(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 15, 4).value_or(0));
     out.peg.set(static_cast<value_of<decltype(out.peg)>>(static_cast<char>(static_cast<char>(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 6, 1).value_or(static_cast<std::uint64_t>('L'))))));
     out.peg_offset.set(static_cast<std::int32_t>(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 7, 4).value_or(0)));
     out.min_qty.set(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 3, 4).value_or(0));
     out.post_only.set(static_cast<value_of<decltype(out.post_only)>>(static_cast<char>(static_cast<char>(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 12, 1).value_or(static_cast<std::uint64_t>('N'))))));
+    out.imbalance_only.set(static_cast<value_of<decltype(out.imbalance_only)>>([](char value) { switch (value) { case 'I': return 'Y'; case 'O': return 'N'; case 'T': return 'N'; case 'Q': return 'N'; case 'B': return 'N'; case 'D': return 'N'; default: return value; } }(static_cast<char>(static_cast<char>(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 17, 1).value_or(static_cast<std::uint64_t>('N')))))));
+    out.extended_life_book.set(static_cast<value_of<decltype(out.extended_life_book)>>([](char value) { switch (value) { case 'I': return 'N'; case 'O': return 'N'; case 'T': return 'N'; case 'Q': return 'N'; case 'B': return 'B'; case 'D': return 'N'; default: return value; } }(static_cast<char>(static_cast<char>(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 17, 1).value_or(static_cast<std::uint64_t>('N')))))));
     out.trade_now.set(static_cast<value_of<decltype(out.trade_now)>>(static_cast<char>(static_cast<char>(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 16, 1).value_or(static_cast<std::uint64_t>('N'))))));
     out.max_floor.set(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 5, 4).value_or(0));
+    out.random_reserve.set(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 13, 4).value_or(0));
+    out.discretion_price.set(static_cast<value_of<decltype(out.discretion_price)>>(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 9, 8).value_or(0)));
+    out.discretion_type.set(static_cast<value_of<decltype(out.discretion_type)>>(static_cast<char>(static_cast<char>(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 10, 1).value_or(static_cast<std::uint64_t>('L'))))));
     out.short_sale.set(static_cast<value_of<decltype(out.short_sale)>>(static_cast<char>(m.fields.side.get().value())));
     out.display.set(static_cast<value_of<decltype(out.display)>>([](char value) { switch (value) { case 'Z': return 'Y'; default: return value; } }(static_cast<char>(m.fields.display.get().value()))));
     { const std::optional<std::uint64_t> held = option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 2, 4); std::string text; if (held) { for (int at = 3; at >= 0; --at) text.push_back(static_cast<char>((*held >> (8 * at)) & 0xff)); } if (text.find_first_not_of(' ') == std::string::npos) text = order.firm.substr(0, 4); out.attribution.set(std::string_view{text}); }
@@ -223,7 +236,7 @@ inline ipc_ns::new_order_message to_ouch_enter_order(const protocol::enter_order
     out.self_match_strategy.set(static_cast<value_of<decltype(out.self_match_strategy)>>([](char value) { switch (value) { case 'Y': return 'D'; case 'D': return 'D'; case 'O': return 'O'; case 'W': return 'W'; case 'R': return 'R'; case 'y': return 'D'; case 'd': return 'D'; case 'o': return 'O'; case 'w': return 'W'; case 'r': return 'R'; case 'Z': return 'D'; case 'E': return 'D'; case 'P': return 'O'; case 'X': return 'W'; case 'S': return 'R'; case '0': return 'D'; case '1': return 'D'; case '2': return 'O'; case '4': return 'W'; case '5': return 'R'; case '*': return 'N'; default: return value; } }(static_cast<char>(static_cast<char>(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1).value_or(static_cast<std::uint64_t>('N')))))));
     out.self_match_level.set(static_cast<value_of<decltype(out.self_match_level)>>([](char value) { switch (value) { case 'Y': return 'F'; case 'D': return 'F'; case 'O': return 'F'; case 'W': return 'F'; case 'R': return 'F'; case 'y': return 'O'; case 'd': return 'O'; case 'o': return 'O'; case 'w': return 'O'; case 'r': return 'O'; case 'Z': return 'A'; case 'E': return 'A'; case 'P': return 'A'; case 'X': return 'A'; case 'S': return 'A'; case '0': return 'M'; case '1': return 'M'; case '2': return 'M'; case '4': return 'M'; case '5': return 'M'; case '*': return 'N'; default: return value; } }(static_cast<char>(static_cast<char>(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1).value_or(static_cast<std::uint64_t>('N')))))));
     out.aiq_strategy.set(static_cast<value_of<decltype(out.aiq_strategy)>>(static_cast<char>(static_cast<char>(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1).value_or(static_cast<std::uint64_t>('N'))))));
-    out.self_match_group.set(static_cast<value_of<decltype(out.self_match_group)>>([&]() -> std::uint64_t { std::uint64_t key = 14695981039346656037ull; const auto mix = [&key](std::string_view text) { for (const char c : text) { key ^= static_cast<unsigned char>(c); key *= 1099511628211ull; } key ^= 0x1f; key *= 1099511628211ull; }; mix(std::to_string(order.client)); { const std::optional<std::uint64_t> held = option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 2, 4); mix(held ? std::to_string(*held) : std::string{}); } { const std::optional<std::uint64_t> held = option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 30, 2); mix(held ? std::to_string(*held) : std::string{}); } return key == 0 ? 1 : key; }()));
+    out.self_match_group.set(static_cast<value_of<decltype(out.self_match_group)>>([&]() -> std::uint64_t { std::uint64_t key = 14695981039346656037ull; const auto mix = [&key](std::string_view text) { for (const char c : text) { key ^= static_cast<unsigned char>(c); key *= 1099511628211ull; } key ^= 0x1f; key *= 1099511628211ull; }; mix(std::to_string(order.account)); { const std::optional<std::uint64_t> held = option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 2, 4); mix(held ? std::to_string(*held) : std::string{}); } { const std::optional<std::uint64_t> held = option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 30, 2); mix(held ? std::to_string(*held) : std::string{}); } return key == 0 ? 1 : key; }()));
     out.timestamp.set(static_cast<value_of<decltype(out.timestamp)>>(send_time_nanos()));
     return out;
 }
@@ -275,20 +288,26 @@ inline ipc_ns::replace_order_message to_ouch_replace_order(const protocol::repla
     out.short_sale.set(static_cast<value_of<decltype(out.short_sale)>>(static_cast<char>(order.entered.side.get().value())));
     out.display.set(static_cast<value_of<decltype(out.display)>>(order.display));
     out.cross_type.set(static_cast<value_of<decltype(out.cross_type)>>(static_cast<char>(order.entered.cross_type.get().value())));
+    out.extended_close.set(static_cast<value_of<decltype(out.extended_close)>>('N'));
     out.quantity.set(liable(static_cast<std::uint64_t>(m.fields.quantity.get().value()), order));
-    out.price.set(static_cast<value_of<decltype(out.price)>>(m.fields.price.get().value()));
+    out.price.set(static_cast<long long>(m.fields.price.get().value()) == 2147483647 || static_cast<long long>(m.fields.price.get().value()) == 2000000000 ? std::nullopt : std::make_optional<value_of<decltype(out.price)>>(static_cast<value_of<decltype(out.price)>>(m.fields.price.get().value())));
     out.time_in_force.set(static_cast<value_of<decltype(out.time_in_force)>>(static_cast<char>(m.fields.time_in_force.get().value())));
-    out.peg.set(static_cast<value_of<decltype(out.peg)>>(static_cast<char>(static_cast<char>(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 6, 1).value_or(static_cast<std::uint64_t>('L'))))));
-    out.peg_offset.set(static_cast<std::int32_t>(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 7, 4).value_or(0)));
-    out.min_qty.set(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 3, 4).value_or(0));
-    out.post_only.set(static_cast<value_of<decltype(out.post_only)>>(static_cast<char>(static_cast<char>(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 12, 1).value_or(static_cast<std::uint64_t>('N'))))));
-    out.trade_now.set(static_cast<value_of<decltype(out.trade_now)>>(static_cast<char>(static_cast<char>(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 16, 1).value_or(static_cast<std::uint64_t>('N'))))));
-    out.max_floor.set(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 5, 4).value_or(0));
+    out.peg.set(static_cast<value_of<decltype(out.peg)>>(static_cast<char>(static_cast<char>(option(reinterpret_cast<const std::byte*>(order.options.data()), reinterpret_cast<const std::byte*>(order.options.data()) + order.options.size(), 6, 1).value_or(static_cast<std::uint64_t>('L'))))));
+    out.peg_offset.set(static_cast<std::int32_t>(option(reinterpret_cast<const std::byte*>(order.options.data()), reinterpret_cast<const std::byte*>(order.options.data()) + order.options.size(), 7, 4).value_or(0)));
+    out.min_qty.set(option(reinterpret_cast<const std::byte*>(order.options.data()), reinterpret_cast<const std::byte*>(order.options.data()) + order.options.size(), 3, 4).value_or(0));
+    out.post_only.set(static_cast<value_of<decltype(out.post_only)>>(static_cast<char>(static_cast<char>(option(reinterpret_cast<const std::byte*>(order.options.data()), reinterpret_cast<const std::byte*>(order.options.data()) + order.options.size(), 12, 1).value_or(static_cast<std::uint64_t>('N'))))));
+    out.trade_now.set(static_cast<value_of<decltype(out.trade_now)>>(static_cast<char>(static_cast<char>(option(reinterpret_cast<const std::byte*>(order.options.data()), reinterpret_cast<const std::byte*>(order.options.data()) + order.options.size(), 16, 1).value_or(static_cast<std::uint64_t>('N'))))));
+    out.max_floor.set(option(reinterpret_cast<const std::byte*>(order.options.data()), reinterpret_cast<const std::byte*>(order.options.data()) + order.options.size(), 5, 4).value_or(0));
+    out.random_reserve.set(option(reinterpret_cast<const std::byte*>(order.options.data()), reinterpret_cast<const std::byte*>(order.options.data()) + order.options.size(), 13, 4).value_or(0));
+    out.discretion_price.set(static_cast<value_of<decltype(out.discretion_price)>>(option(reinterpret_cast<const std::byte*>(order.options.data()), reinterpret_cast<const std::byte*>(order.options.data()) + order.options.size(), 9, 8).value_or(0)));
+    out.discretion_type.set(static_cast<value_of<decltype(out.discretion_type)>>(static_cast<char>(static_cast<char>(option(reinterpret_cast<const std::byte*>(order.options.data()), reinterpret_cast<const std::byte*>(order.options.data()) + order.options.size(), 10, 1).value_or(static_cast<std::uint64_t>('L'))))));
     { const std::optional<std::uint64_t> held = option(reinterpret_cast<const std::byte*>(order.options.data()), reinterpret_cast<const std::byte*>(order.options.data()) + order.options.size(), 2, 4); std::string text; if (held) { for (int at = 3; at >= 0; --at) text.push_back(static_cast<char>((*held >> (8 * at)) & 0xff)); } out.attribution.set(std::string_view{text}); }
-    out.self_match_strategy.set(static_cast<value_of<decltype(out.self_match_strategy)>>([](char value) { switch (value) { case 'Y': return 'D'; case 'D': return 'D'; case 'O': return 'O'; case 'W': return 'W'; case 'R': return 'R'; case 'y': return 'D'; case 'd': return 'D'; case 'o': return 'O'; case 'w': return 'W'; case 'r': return 'R'; case 'Z': return 'D'; case 'E': return 'D'; case 'P': return 'O'; case 'X': return 'W'; case 'S': return 'R'; case '0': return 'D'; case '1': return 'D'; case '2': return 'O'; case '4': return 'W'; case '5': return 'R'; case '*': return 'N'; default: return value; } }(static_cast<char>(static_cast<char>(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1).value_or(static_cast<std::uint64_t>('N')))))));
-    out.self_match_level.set(static_cast<value_of<decltype(out.self_match_level)>>([](char value) { switch (value) { case 'Y': return 'F'; case 'D': return 'F'; case 'O': return 'F'; case 'W': return 'F'; case 'R': return 'F'; case 'y': return 'O'; case 'd': return 'O'; case 'o': return 'O'; case 'w': return 'O'; case 'r': return 'O'; case 'Z': return 'A'; case 'E': return 'A'; case 'P': return 'A'; case 'X': return 'A'; case 'S': return 'A'; case '0': return 'M'; case '1': return 'M'; case '2': return 'M'; case '4': return 'M'; case '5': return 'M'; case '*': return 'N'; default: return value; } }(static_cast<char>(static_cast<char>(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1).value_or(static_cast<std::uint64_t>('N')))))));
-    out.aiq_strategy.set(static_cast<value_of<decltype(out.aiq_strategy)>>(static_cast<char>(static_cast<char>(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1).value_or(static_cast<std::uint64_t>('N'))))));
-    out.self_match_group.set(static_cast<value_of<decltype(out.self_match_group)>>([&]() -> std::uint64_t { std::uint64_t key = 14695981039346656037ull; const auto mix = [&key](std::string_view text) { for (const char c : text) { key ^= static_cast<unsigned char>(c); key *= 1099511628211ull; } key ^= 0x1f; key *= 1099511628211ull; }; mix(std::to_string(order.client)); { const std::optional<std::uint64_t> held = option(reinterpret_cast<const std::byte*>(order.options.data()), reinterpret_cast<const std::byte*>(order.options.data()) + order.options.size(), 2, 4); mix(held ? std::to_string(*held) : std::string{}); } { const std::optional<std::uint64_t> held = option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 30, 2); mix(held ? std::to_string(*held) : std::string{}); } return key == 0 ? 1 : key; }()));
+    out.imbalance_only.set(static_cast<value_of<decltype(out.imbalance_only)>>([](char value) { switch (value) { case 'I': return 'Y'; case 'O': return 'N'; case 'T': return 'N'; case 'Q': return 'N'; case 'B': return 'N'; case 'D': return 'N'; default: return value; } }(static_cast<char>(static_cast<char>(option(reinterpret_cast<const std::byte*>(order.options.data()), reinterpret_cast<const std::byte*>(order.options.data()) + order.options.size(), 17, 1).value_or(static_cast<std::uint64_t>('N')))))));
+    out.extended_life_book.set(static_cast<value_of<decltype(out.extended_life_book)>>([](char value) { switch (value) { case 'I': return 'N'; case 'O': return 'N'; case 'T': return 'N'; case 'Q': return 'N'; case 'B': return 'B'; case 'D': return 'N'; default: return value; } }(static_cast<char>(static_cast<char>(option(reinterpret_cast<const std::byte*>(order.options.data()), reinterpret_cast<const std::byte*>(order.options.data()) + order.options.size(), 17, 1).value_or(static_cast<std::uint64_t>('N')))))));
+    out.self_match_strategy.set(static_cast<value_of<decltype(out.self_match_strategy)>>([](char value) { switch (value) { case 'Y': return 'D'; case 'D': return 'D'; case 'O': return 'O'; case 'W': return 'W'; case 'R': return 'R'; case 'y': return 'D'; case 'd': return 'D'; case 'o': return 'O'; case 'w': return 'W'; case 'r': return 'R'; case 'Z': return 'D'; case 'E': return 'D'; case 'P': return 'O'; case 'X': return 'W'; case 'S': return 'R'; case '0': return 'D'; case '1': return 'D'; case '2': return 'O'; case '4': return 'W'; case '5': return 'R'; case '*': return 'N'; default: return value; } }(static_cast<char>(static_cast<char>(option(reinterpret_cast<const std::byte*>(order.options.data()), reinterpret_cast<const std::byte*>(order.options.data()) + order.options.size(), 29, 1).value_or(static_cast<std::uint64_t>('N')))))));
+    out.self_match_level.set(static_cast<value_of<decltype(out.self_match_level)>>([](char value) { switch (value) { case 'Y': return 'F'; case 'D': return 'F'; case 'O': return 'F'; case 'W': return 'F'; case 'R': return 'F'; case 'y': return 'O'; case 'd': return 'O'; case 'o': return 'O'; case 'w': return 'O'; case 'r': return 'O'; case 'Z': return 'A'; case 'E': return 'A'; case 'P': return 'A'; case 'X': return 'A'; case 'S': return 'A'; case '0': return 'M'; case '1': return 'M'; case '2': return 'M'; case '4': return 'M'; case '5': return 'M'; case '*': return 'N'; default: return value; } }(static_cast<char>(static_cast<char>(option(reinterpret_cast<const std::byte*>(order.options.data()), reinterpret_cast<const std::byte*>(order.options.data()) + order.options.size(), 29, 1).value_or(static_cast<std::uint64_t>('N')))))));
+    out.aiq_strategy.set(static_cast<value_of<decltype(out.aiq_strategy)>>(static_cast<char>(static_cast<char>(option(reinterpret_cast<const std::byte*>(order.options.data()), reinterpret_cast<const std::byte*>(order.options.data()) + order.options.size(), 29, 1).value_or(static_cast<std::uint64_t>('N'))))));
+    out.self_match_group.set(static_cast<value_of<decltype(out.self_match_group)>>([&]() -> std::uint64_t { std::uint64_t key = 14695981039346656037ull; const auto mix = [&key](std::string_view text) { for (const char c : text) { key ^= static_cast<unsigned char>(c); key *= 1099511628211ull; } key ^= 0x1f; key *= 1099511628211ull; }; mix(std::to_string(order.account)); { const std::optional<std::uint64_t> held = option(reinterpret_cast<const std::byte*>(order.options.data()), reinterpret_cast<const std::byte*>(order.options.data()) + order.options.size(), 2, 4); mix(held ? std::to_string(*held) : std::string{}); } { const std::optional<std::uint64_t> held = option(reinterpret_cast<const std::byte*>(order.options.data()), reinterpret_cast<const std::byte*>(order.options.data()) + order.options.size(), 30, 2); mix(held ? std::to_string(*held) : std::string{}); } return key == 0 ? 1 : key; }()));
     out.timestamp.set(static_cast<value_of<decltype(out.timestamp)>>(send_time_nanos()));
     return out;
 }
@@ -439,6 +458,28 @@ inline protocol::order_accepted_message to_ouch_order_accepted_closed(const prot
     return out;
 }
 
+// enter_order_message -> order_accepted_message  (NsmEquities.Ipc.Transforms.xml: ouch_order_accepted_slid)
+inline protocol::order_accepted_message to_ouch_order_accepted_slid(const protocol::enter_order_message& m, const Order& order) {
+    (void)m;
+    (void)order;
+    protocol::order_accepted_message out{};
+    out.fields.timestamp.set(static_cast<value_of<decltype(out.fields.timestamp)>>(nanoseconds_since_midnight(static_cast<std::uint64_t>(send_time_nanos()), new_york())));
+    out.fields.order_reference_number.set(static_cast<value_of<decltype(out.fields.order_reference_number)>>(order.id));
+    out.fields.order_state.set(static_cast<value_of<decltype(out.fields.order_state)>>('L'));
+    out.fields.user_ref_num.set(m.fields.user_ref_num.get().value());
+    out.fields.side.set(static_cast<value_of<decltype(out.fields.side)>>(static_cast<char>(m.fields.side.get().value())));
+    out.fields.quantity.set(m.fields.quantity.get().value());
+    out.fields.symbol.set(m.fields.symbol.get().value());
+    out.fields.price.set(m.fields.price.get().value());
+    out.fields.time_in_force.set(static_cast<value_of<decltype(out.fields.time_in_force)>>(static_cast<char>(m.fields.time_in_force.get().value())));
+    out.fields.display.set(static_cast<value_of<decltype(out.fields.display)>>(static_cast<char>(m.fields.display.get().value())));
+    out.fields.capacity.set(static_cast<value_of<decltype(out.fields.capacity)>>(static_cast<char>(m.fields.capacity.get().value())));
+    out.fields.inter_market_sweep_eligibility.set(static_cast<value_of<decltype(out.fields.inter_market_sweep_eligibility)>>(static_cast<char>(m.fields.inter_market_sweep_eligibility.get().value())));
+    out.fields.cross_type.set(static_cast<value_of<decltype(out.fields.cross_type)>>(static_cast<char>(m.fields.cross_type.get().value())));
+    out.fields.clordid.set(m.fields.clordid.get().value());
+    return out;
+}
+
 // trade_message -> order_executed_message  (NsmEquities.Ipc.Transforms.xml: ouch_executed_resting)
 inline protocol::order_executed_message to_ouch_executed_resting(const ipc_ns::trade_message& m, const Order& order) {
     (void)m;
@@ -447,8 +488,8 @@ inline protocol::order_executed_message to_ouch_executed_resting(const ipc_ns::t
     out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(order.reference));
     out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), new_york()));
     out.fields.quantity.set(m.quantity.get().value());
-    out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>(m.price.get().value()));
-    out.fields.liquidity_flag.set(static_cast<value_of<decltype(out.fields.liquidity_flag)>>([](char value) { switch (value) { case 'N': return 'A'; default: return value; } }(static_cast<char>(m.auction.get().value()))));
+    out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>(m.price.get().value_or(2147483647)));
+    out.fields.liquidity_flag.set(static_cast<value_of<decltype(out.fields.liquidity_flag)>>([](char value) { switch (value) { case 'N': return 'A'; case 'A': return 'i'; case 'E': return 'n'; default: return value; } }(static_cast<char>(m.auction.get().value()))));
     out.fields.match_number.set(m.execution_id.get().value());
     return out;
 }
@@ -461,8 +502,8 @@ inline protocol::order_executed_message to_ouch_executed_resting_retail(const ip
     out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(order.reference));
     out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), new_york()));
     out.fields.quantity.set(m.quantity.get().value());
-    out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>(m.price.get().value()));
-    out.fields.liquidity_flag.set(static_cast<value_of<decltype(out.fields.liquidity_flag)>>([](char value) { switch (value) { case 'N': return 'e'; default: return value; } }(static_cast<char>(m.auction.get().value()))));
+    out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>(m.price.get().value_or(2147483647)));
+    out.fields.liquidity_flag.set(static_cast<value_of<decltype(out.fields.liquidity_flag)>>([](char value) { switch (value) { case 'N': return 'e'; case 'A': return 'i'; case 'E': return 'n'; default: return value; } }(static_cast<char>(m.auction.get().value()))));
     out.fields.match_number.set(m.execution_id.get().value());
     return out;
 }
@@ -475,8 +516,8 @@ inline protocol::order_executed_message to_ouch_executed_hidden(const ipc_ns::tr
     out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(order.reference));
     out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), new_york()));
     out.fields.quantity.set(m.quantity.get().value());
-    out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>(m.price.get().value()));
-    out.fields.liquidity_flag.set(static_cast<value_of<decltype(out.fields.liquidity_flag)>>([](char value) { switch (value) { case 'N': return 'J'; default: return value; } }(static_cast<char>(m.auction.get().value()))));
+    out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>(m.price.get().value_or(2147483647)));
+    out.fields.liquidity_flag.set(static_cast<value_of<decltype(out.fields.liquidity_flag)>>([](char value) { switch (value) { case 'N': return 'J'; case 'A': return 'i'; case 'E': return 'n'; default: return value; } }(static_cast<char>(m.auction.get().value()))));
     out.fields.match_number.set(m.execution_id.get().value());
     return out;
 }
@@ -489,8 +530,8 @@ inline protocol::order_executed_message to_ouch_executed_midpoint(const ipc_ns::
     out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(order.reference));
     out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), new_york()));
     out.fields.quantity.set(m.quantity.get().value());
-    out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>(m.price.get().value()));
-    out.fields.liquidity_flag.set(static_cast<value_of<decltype(out.fields.liquidity_flag)>>([](char value) { switch (value) { case 'N': return 'k'; default: return value; } }(static_cast<char>(m.auction.get().value()))));
+    out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>(m.price.get().value_or(2147483647)));
+    out.fields.liquidity_flag.set(static_cast<value_of<decltype(out.fields.liquidity_flag)>>([](char value) { switch (value) { case 'N': return 'k'; case 'A': return 'i'; case 'E': return 'n'; default: return value; } }(static_cast<char>(m.auction.get().value()))));
     out.fields.match_number.set(m.execution_id.get().value());
     return out;
 }
@@ -503,8 +544,8 @@ inline protocol::order_executed_message to_ouch_executed_aggressor(const ipc_ns:
     out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(order.reference));
     out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), new_york()));
     out.fields.quantity.set(m.quantity.get().value());
-    out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>(m.price.get().value()));
-    out.fields.liquidity_flag.set(static_cast<value_of<decltype(out.fields.liquidity_flag)>>([](char value) { switch (value) { case 'N': return 'R'; default: return value; } }(static_cast<char>(m.auction.get().value()))));
+    out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>(m.price.get().value_or(2147483647)));
+    out.fields.liquidity_flag.set(static_cast<value_of<decltype(out.fields.liquidity_flag)>>([](char value) { switch (value) { case 'N': return 'R'; case 'A': return 'i'; case 'E': return 'n'; case 'M': return 'O'; case 'L': return 'C'; default: return value; } }(static_cast<char>(m.auction.get().value()))));
     out.fields.match_number.set(m.execution_id.get().value());
     return out;
 }
@@ -517,9 +558,35 @@ inline protocol::order_executed_message to_ouch_executed_aggressor_midpoint(cons
     out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(order.reference));
     out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), new_york()));
     out.fields.quantity.set(m.quantity.get().value());
-    out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>(m.price.get().value()));
-    out.fields.liquidity_flag.set(static_cast<value_of<decltype(out.fields.liquidity_flag)>>([](char value) { switch (value) { case 'N': return 'm'; default: return value; } }(static_cast<char>(m.auction.get().value()))));
+    out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>(m.price.get().value_or(2147483647)));
+    out.fields.liquidity_flag.set(static_cast<value_of<decltype(out.fields.liquidity_flag)>>([](char value) { switch (value) { case 'N': return 'm'; case 'A': return 'i'; case 'E': return 'n'; default: return value; } }(static_cast<char>(m.auction.get().value()))));
     out.fields.match_number.set(m.execution_id.get().value());
+    return out;
+}
+
+// trade_broken_message -> broken_trade_message  (NsmEquities.Ipc.Transforms.xml: ouch_broken_resting)
+inline protocol::broken_trade_message to_ouch_broken_resting(const ipc_ns::trade_broken_message& m, const Order& order) {
+    (void)m;
+    (void)order;
+    protocol::broken_trade_message out{};
+    out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(order.reference));
+    out.fields.clordid.set(order.entered.clordid.get().value());
+    out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), new_york()));
+    out.fields.match_number.set(m.execution_id.get().value());
+    out.fields.broken_trade_reason.set(static_cast<value_of<decltype(out.fields.broken_trade_reason)>>(static_cast<char>(m.break_reason.get().value())));
+    return out;
+}
+
+// trade_broken_message -> broken_trade_message  (NsmEquities.Ipc.Transforms.xml: ouch_broken_aggressor)
+inline protocol::broken_trade_message to_ouch_broken_aggressor(const ipc_ns::trade_broken_message& m, const Order& order) {
+    (void)m;
+    (void)order;
+    protocol::broken_trade_message out{};
+    out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(order.reference));
+    out.fields.clordid.set(order.entered.clordid.get().value());
+    out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), new_york()));
+    out.fields.match_number.set(m.execution_id.get().value());
+    out.fields.broken_trade_reason.set(static_cast<value_of<decltype(out.fields.broken_trade_reason)>>(static_cast<char>(m.break_reason.get().value())));
     return out;
 }
 
@@ -531,6 +598,19 @@ inline protocol::order_restated_message to_ouch_restated(const ipc_ns::order_res
     out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(order.reference));
     out.fields.order_restated_reason.set(static_cast<value_of<decltype(out.fields.order_restated_reason)>>('R'));
     out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), new_york()));
+    return out;
+}
+
+// order_rested_message -> order_priority_update_message  (NsmEquities.Ipc.Transforms.xml: ouch_priority_update)
+inline protocol::order_priority_update_message to_ouch_priority_update(const ipc_ns::order_rested_message& m, const Order& order) {
+    (void)m;
+    (void)order;
+    protocol::order_priority_update_message out{};
+    out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(order.reference));
+    out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), new_york()));
+    out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>(m.price.get().value_or(2147483647)));
+    out.fields.display.set(static_cast<value_of<decltype(out.fields.display)>>(static_cast<char>(m.display.get().value())));
+    out.fields.order_reference_number.set(m.order_id.get().value());
     return out;
 }
 
@@ -598,6 +678,18 @@ inline protocol::canceled_message to_ouch_canceled(const ipc_ns::order_canceled_
     return out;
 }
 
+// order_canceled_message -> canceled_message  (NsmEquities.Ipc.Transforms.xml: ouch_canceled_protected)
+inline protocol::canceled_message to_ouch_canceled_protected(const ipc_ns::order_canceled_message& m, const Order& order) {
+    (void)m;
+    (void)order;
+    protocol::canceled_message out{};
+    out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(order.reference));
+    out.fields.quantity.set(static_cast<value_of<decltype(out.fields.quantity)>>(order.remaining));
+    out.fields.cancel_order_reason.set(static_cast<value_of<decltype(out.fields.cancel_order_reason)>>('X'));
+    out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), new_york()));
+    return out;
+}
+
 // order_reduced_message -> canceled_message  (NsmEquities.Ipc.Transforms.xml: ouch_reduced)
 inline protocol::canceled_message to_ouch_reduced(const ipc_ns::order_reduced_message& m, const Order& order) {
     (void)m;
@@ -605,6 +697,18 @@ inline protocol::canceled_message to_ouch_reduced(const ipc_ns::order_reduced_me
     protocol::canceled_message out{};
     out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(order.reference));
     out.fields.cancel_order_reason.set(static_cast<value_of<decltype(out.fields.cancel_order_reason)>>('U'));
+    out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), new_york()));
+    out.fields.quantity.set(m.quantity.get().value());
+    return out;
+}
+
+// order_eliminated_message -> canceled_message  (NsmEquities.Ipc.Transforms.xml: ouch_eliminated_halted)
+inline protocol::canceled_message to_ouch_eliminated_halted(const ipc_ns::order_eliminated_message& m, const Order& order) {
+    (void)m;
+    (void)order;
+    protocol::canceled_message out{};
+    out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(order.reference));
+    out.fields.cancel_order_reason.set(static_cast<value_of<decltype(out.fields.cancel_order_reason)>>('H'));
     out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), new_york()));
     out.fields.quantity.set(m.quantity.get().value());
     return out;
@@ -682,6 +786,18 @@ inline protocol::canceled_message to_ouch_refused(const ipc_ns::order_refused_me
     return out;
 }
 
+// order_refused_message -> canceled_message  (NsmEquities.Ipc.Transforms.xml: ouch_slid)
+inline protocol::canceled_message to_ouch_slid(const ipc_ns::order_refused_message& m, const Order& order) {
+    (void)m;
+    (void)order;
+    protocol::canceled_message out{};
+    out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(order.reference));
+    out.fields.quantity.set(static_cast<value_of<decltype(out.fields.quantity)>>(order.remaining));
+    out.fields.cancel_order_reason.set(static_cast<value_of<decltype(out.fields.cancel_order_reason)>>('G'));
+    out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), new_york()));
+    return out;
+}
+
 // enter_order_message -> rejected_order_message  (NsmEquities.Ipc.Transforms.xml: ouch_rejected_quantity)
 inline protocol::rejected_order_message to_ouch_rejected_quantity(const protocol::enter_order_message& m, const Order& order) {
     (void)m;
@@ -737,6 +853,18 @@ inline protocol::rejected_order_message to_ouch_rejected_side(const protocol::en
     protocol::rejected_order_message out{};
     out.fields.timestamp.set(static_cast<value_of<decltype(out.fields.timestamp)>>(nanoseconds_since_midnight(static_cast<std::uint64_t>(send_time_nanos()), new_york())));
     out.fields.rejected_order_reason.set(static_cast<value_of<decltype(out.fields.rejected_order_reason)>>(9));
+    out.fields.user_ref_num.set(m.fields.user_ref_num.get().value());
+    out.fields.clordid.set(m.fields.clordid.get().value());
+    return out;
+}
+
+// enter_order_message -> rejected_order_message  (NsmEquities.Ipc.Transforms.xml: ouch_rejected_aiq)
+inline protocol::rejected_order_message to_ouch_rejected_aiq(const protocol::enter_order_message& m, const Order& order) {
+    (void)m;
+    (void)order;
+    protocol::rejected_order_message out{};
+    out.fields.timestamp.set(static_cast<value_of<decltype(out.fields.timestamp)>>(nanoseconds_since_midnight(static_cast<std::uint64_t>(send_time_nanos()), new_york())));
+    out.fields.rejected_order_reason.set(static_cast<value_of<decltype(out.fields.rejected_order_reason)>>(64));
     out.fields.user_ref_num.set(m.fields.user_ref_num.get().value());
     out.fields.clordid.set(m.fields.clordid.get().value());
     return out;
@@ -826,6 +954,54 @@ inline protocol::rejected_order_message to_ouch_rejected_cross(const ipc_ns::ord
     return out;
 }
 
+// order_refused_message -> rejected_order_message  (NsmEquities.Ipc.Transforms.xml: ouch_rejected_unreferenced)
+inline protocol::rejected_order_message to_ouch_rejected_unreferenced(const ipc_ns::order_refused_message& m, const Order& order) {
+    (void)m;
+    (void)order;
+    protocol::rejected_order_message out{};
+    out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(order.reference));
+    out.fields.rejected_order_reason.set(static_cast<value_of<decltype(out.fields.rejected_order_reason)>>(14));
+    out.fields.clordid.set(order.entered.clordid.get().value());
+    out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), new_york()));
+    return out;
+}
+
+// order_refused_message -> rejected_order_message  (NsmEquities.Ipc.Transforms.xml: ouch_rejected_aggressive)
+inline protocol::rejected_order_message to_ouch_rejected_aggressive(const ipc_ns::order_refused_message& m, const Order& order) {
+    (void)m;
+    (void)order;
+    protocol::rejected_order_message out{};
+    out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(order.reference));
+    out.fields.rejected_order_reason.set(static_cast<value_of<decltype(out.fields.rejected_order_reason)>>(25));
+    out.fields.clordid.set(order.entered.clordid.get().value());
+    out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), new_york()));
+    return out;
+}
+
+// order_refused_message -> rejected_order_message  (NsmEquities.Ipc.Transforms.xml: ouch_rejected_fat_finger)
+inline protocol::rejected_order_message to_ouch_rejected_fat_finger(const ipc_ns::order_refused_message& m, const Order& order) {
+    (void)m;
+    (void)order;
+    protocol::rejected_order_message out{};
+    out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(order.reference));
+    out.fields.rejected_order_reason.set(static_cast<value_of<decltype(out.fields.rejected_order_reason)>>(38));
+    out.fields.clordid.set(order.entered.clordid.get().value());
+    out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), new_york()));
+    return out;
+}
+
+// order_refused_message -> rejected_order_message  (NsmEquities.Ipc.Transforms.xml: ouch_rejected_limit_protection)
+inline protocol::rejected_order_message to_ouch_rejected_limit_protection(const ipc_ns::order_refused_message& m, const Order& order) {
+    (void)m;
+    (void)order;
+    protocol::rejected_order_message out{};
+    out.fields.user_ref_num.set(static_cast<value_of<decltype(out.fields.user_ref_num)>>(order.reference));
+    out.fields.rejected_order_reason.set(static_cast<value_of<decltype(out.fields.rejected_order_reason)>>(6));
+    out.fields.clordid.set(order.entered.clordid.get().value());
+    out.fields.timestamp.set(nanoseconds_since_midnight(m.timestamp.get().value(), new_york()));
+    return out;
+}
+
 // The order-entry gateway: SoupBin Tcp clients in, the Ipc to the engine out, and the engine's
 // events back to the client each order belongs to. `Emit` is a callable(const char*, std::size_t)
 // taking framed Ipc messages to the engine.
@@ -839,16 +1015,17 @@ public:
     // give one number, and none has to ask another what it gave. The simulator's own scheme:
     // Nasdaq's feeds show orders numbered by the engine as they arrive, not by any gateway.
     // A gateway on its own - a test's - numbers from one, as the one gateway does.
-    explicit Gateway(Emit emit, std::uint64_t first = 1, std::uint64_t step = 1) : emit_(emit), next_id_(first), step_(step) {}
+    // Its place in that interleave is its port's too, and so names the Account the port is bound to.
+    explicit Gateway(Emit emit, std::uint64_t first = 1, std::uint64_t step = 1) : emit_(emit), account_(first), next_id_(first), step_(step) {}
 
     // A login the gateway accepts; with none registered, any login is accepted.
     void allow(std::string username, std::string password) { credentials_[std::move(username)] = std::move(password); }
 
     // A new client connection, writing through `send`; returns the session's own number.
     // 
-    // Numbered once and never again: an order carries the number of the session that entered
-    // it, and so does the reference it was entered under. A number handed out twice would
-    // make one client's reference name another client's order.
+    // Numbered once and never again: the loop knows a connection by it, and a number handed out
+    // twice would close one client's connection for another's. Its orders are not the
+    // connection's: every connection on the port is the port's one Account.
     std::size_t connect(Send send) {
         const auto client = next_client_++;
         clients_.emplace(client, std::make_unique<Client>(*this, client, std::move(send)));
@@ -857,7 +1034,8 @@ public:
 
     // A client that has gone: its session is over, and what it held is let go. Whatever it
     // left resting stays in the book - a venue does not cancel an order because a line
-    // dropped - and answers about those orders find nobody, which is what has happened.
+    // dropped - and stays the Account's: answers about it reach whichever connections are
+    // logged in on the port, none while none is, and a client that logs in again finds it.
     void disconnect(std::size_t client) { clients_.erase(client); }
 
     void on_bytes(std::size_t client, const char* data, std::size_t length) {
@@ -881,79 +1059,94 @@ public:
 
     // The engine's trade_message: answered to the client owning each order it names.
     void on_event(const ipc_ns::trade_message& m) {
-        if (static_cast<char>(m.resting_display.get().value()) != 'N') if (auto found = orders_.find(m.resting_order_id.get().value()); found != orders_.end() && static_cast<char>((option(reinterpret_cast<const std::byte*>(found->second.options.data()), reinterpret_cast<const std::byte*>(found->second.options.data()) + found->second.options.size(), 4, 1)).value_or(0)) != 'R') respond(found->second.client, to_ouch_executed_resting(m, found->second));
-        if (static_cast<char>(m.resting_display.get().value()) != 'N') if (auto found = orders_.find(m.resting_order_id.get().value()); found != orders_.end() && static_cast<char>((option(reinterpret_cast<const std::byte*>(found->second.options.data()), reinterpret_cast<const std::byte*>(found->second.options.data()) + found->second.options.size(), 4, 1)).value_or(0)) == 'R') respond(found->second.client, to_ouch_executed_resting_retail(m, found->second));
-        if (static_cast<char>(m.resting_display.get().value()) == 'N' && static_cast<char>(m.resting_midpoint.get().value()) != 'Y') if (auto found = orders_.find(m.resting_order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_executed_hidden(m, found->second));
-        if (static_cast<char>(m.resting_midpoint.get().value()) == 'Y') if (auto found = orders_.find(m.resting_order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_executed_midpoint(m, found->second));
-        if (static_cast<char>(m.resting_midpoint.get().value()) != 'Y') if (auto found = orders_.find(m.aggressor_order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_executed_aggressor(m, found->second));
-        if (static_cast<char>(m.resting_midpoint.get().value()) == 'Y') if (auto found = orders_.find(m.aggressor_order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_executed_aggressor_midpoint(m, found->second));
+        if (static_cast<char>(m.resting_display.get().value()) != 'N') if (auto found = orders_.find(m.resting_order_id.get().value()); found != orders_.end() && static_cast<char>((option(reinterpret_cast<const std::byte*>(found->second.options.data()), reinterpret_cast<const std::byte*>(found->second.options.data()) + found->second.options.size(), 4, 1)).value_or(0)) != 'R') respond(to_ouch_executed_resting(m, found->second));
+        if (static_cast<char>(m.resting_display.get().value()) != 'N') if (auto found = orders_.find(m.resting_order_id.get().value()); found != orders_.end() && static_cast<char>((option(reinterpret_cast<const std::byte*>(found->second.options.data()), reinterpret_cast<const std::byte*>(found->second.options.data()) + found->second.options.size(), 4, 1)).value_or(0)) == 'R') respond(to_ouch_executed_resting_retail(m, found->second));
+        if (static_cast<char>(m.resting_display.get().value()) == 'N' && static_cast<char>(m.resting_midpoint.get().value()) != 'Y') if (auto found = orders_.find(m.resting_order_id.get().value()); found != orders_.end()) respond(to_ouch_executed_hidden(m, found->second));
+        if (static_cast<char>(m.resting_midpoint.get().value()) == 'Y') if (auto found = orders_.find(m.resting_order_id.get().value()); found != orders_.end()) respond(to_ouch_executed_midpoint(m, found->second));
+        if (static_cast<char>(m.resting_midpoint.get().value()) != 'Y') if (auto found = orders_.find(m.aggressor_order_id.get().value()); found != orders_.end()) respond(to_ouch_executed_aggressor(m, found->second));
+        if (static_cast<char>(m.resting_midpoint.get().value()) == 'Y') if (auto found = orders_.find(m.aggressor_order_id.get().value()); found != orders_.end()) respond(to_ouch_executed_aggressor_midpoint(m, found->second));
         if (auto found = orders_.find(m.resting_order_id.get().value()); found != orders_.end()) found->second.executed += m.quantity.get().value();
         fill(m.resting_order_id.get().value(), m.quantity.get().value());
         if (auto found = orders_.find(m.aggressor_order_id.get().value()); found != orders_.end()) found->second.executed += m.quantity.get().value();
         fill(m.aggressor_order_id.get().value(), m.quantity.get().value());
     }
 
+    // The engine's trade_broken_message: answered to the client owning each order it names.
+    void on_event(const ipc_ns::trade_broken_message& m) {
+        if (const Order* found = traded(m.resting_order_id.get().value()); found != nullptr) respond(to_ouch_broken_resting(m, *found), echoed(found->options, { 28 }, { 28 }));
+        if (const Order* found = traded(m.aggressor_order_id.get().value()); found != nullptr) respond(to_ouch_broken_aggressor(m, *found), echoed(found->options, { 28 }, { 28 }));
+    }
+
     // The engine's order_rested_message: answered to the client owning each order it names.
     void on_event(const ipc_ns::order_rested_message& m) {
-        if (static_cast<long long>(m.refreshed_from.get().value()) != 0) if (auto found = orders_.find(m.refreshed_from.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_restated(m, found->second), stated(1, 8, static_cast<std::uint64_t>(m.order_id.get().value())) + stated(22, 4, static_cast<std::uint64_t>(m.quantity.get().value())) + echoed(found->second.options, { 28 }, { 28 }));
-        if (auto found = orders_.find(m.refreshed_from.get().value()); found != orders_.end()) { auto held = orders_.extract(found); held.key() = m.order_id.get().value(); held.mapped().id = held.key(); references_[{ held.mapped().client, held.mapped().reference }] = held.key(); orders_.insert(std::move(held)); }
+        if (static_cast<char>(m.repriced.get().value()) == 'N' && static_cast<long long>(m.refreshed_from.get().value()) != 0) if (auto found = orders_.find(m.refreshed_from.get().value()); found != orders_.end()) respond(to_ouch_restated(m, found->second), stated(1, 8, static_cast<std::uint64_t>(m.order_id.get().value())) + stated(22, 4, static_cast<std::uint64_t>(m.quantity.get().value())) + echoed(found->second.options, { 28 }, { 28 }));
+        if (static_cast<char>(m.repriced.get().value()) == 'Y') if (auto found = orders_.find(m.refreshed_from.get().value()); found != orders_.end()) respond(to_ouch_priority_update(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (auto found = orders_.find(m.refreshed_from.get().value()); found != orders_.end()) { auto held = orders_.extract(found); held.key() = m.order_id.get().value(); held.mapped().id = held.key(); references_[Named{ held.mapped().channel, held.mapped().reference }] = held.key(); orders_.insert(std::move(held)); }
     }
 
     // The engine's cancel_pending_message: answered to the client owning each order it names.
     void on_event(const ipc_ns::cancel_pending_message& m) {
-        if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_cancel_pending(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(to_ouch_cancel_pending(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
     }
 
     // The engine's reduce_refused_message: answered to the client owning each order it names.
     void on_event(const ipc_ns::reduce_refused_message& m) {
-        if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_cancel_reject(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && !(found->second.told & 1u)) { found->second.told |= 1u; respond(to_ouch_cancel_reject(m, found->second), echoed(found->second.options, { 28 }, { 28 })); }
     }
 
     // The engine's order_canceled_message: answered to the client owning each order it names.
     void on_event(const ipc_ns::order_canceled_message& m) {
-        if (static_cast<char>(m.prevented.get().value()) == 'Y') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_aiq_canceled(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
-        if (static_cast<char>(m.prevented.get().value()) == 'N') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending != static_cast<char>('M')) respond(found->second.client, to_ouch_canceled(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (static_cast<char>(m.prevented.get().value()) == 'Y') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(to_ouch_aiq_canceled(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (static_cast<char>(m.prevented.get().value()) == 'N' && static_cast<char>(m.elimination_reason.get().value()) != 'X') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending != static_cast<char>('M')) respond(to_ouch_canceled(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (static_cast<char>(m.elimination_reason.get().value()) == 'X') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(to_ouch_canceled_protected(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
         close(m.order_id.get().value());
     }
 
     // The engine's order_reduced_message: answered to the client owning each order it names.
     void on_event(const ipc_ns::order_reduced_message& m) {
-        if (static_cast<char>(m.prevented.get().value()) == 'Y') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_aiq_reduced(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
-        if (static_cast<char>(m.prevented.get().value()) != 'Y') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending == static_cast<char>('X')) respond(found->second.client, to_ouch_reduced(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (static_cast<char>(m.prevented.get().value()) == 'Y') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(to_ouch_aiq_reduced(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (static_cast<char>(m.prevented.get().value()) != 'Y') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending == static_cast<char>('X')) respond(to_ouch_reduced(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
         fill(m.order_id.get().value(), m.quantity.get().value());
     }
 
     // The engine's order_eliminated_message: answered to the client owning each order it names.
     void on_event(const ipc_ns::order_eliminated_message& m) {
-        if (static_cast<char>(m.time_in_force.get().value()) == '3') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_eliminated(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
-        if (static_cast<long long>(m.price.get().value()) == 2147483647 && static_cast<char>(m.time_in_force.get().value()) != '3') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_eliminated_market(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
-        if (static_cast<char>(m.time_in_force.get().value()) == '0' && static_cast<long long>(m.price.get().value()) != 2147483647) if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_expired(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
-        if (static_cast<char>(m.time_in_force.get().value()) == '5' && static_cast<long long>(m.price.get().value()) != 2147483647) if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_expired_extended(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
-        if (static_cast<char>(m.time_in_force.get().value()) == '6' && static_cast<long long>(m.price.get().value()) != 2147483647) if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_expired_timed(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (static_cast<char>(m.elimination_reason.get().value()) == 'H') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(to_ouch_eliminated_halted(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (static_cast<char>(m.time_in_force.get().value()) == '3' && static_cast<char>(m.elimination_reason.get().value()) != 'H') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(to_ouch_eliminated(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (!m.price.get().has_value() && static_cast<char>(m.time_in_force.get().value()) != '3' && static_cast<char>(m.elimination_reason.get().value()) != 'H') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(to_ouch_eliminated_market(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (static_cast<char>(m.time_in_force.get().value()) == '0' && m.price.get().has_value() && static_cast<char>(m.elimination_reason.get().value()) != 'H') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(to_ouch_expired(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (static_cast<char>(m.time_in_force.get().value()) == '5' && m.price.get().has_value() && static_cast<char>(m.elimination_reason.get().value()) != 'H') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(to_ouch_expired_extended(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (static_cast<char>(m.time_in_force.get().value()) == '6' && m.price.get().has_value() && static_cast<char>(m.elimination_reason.get().value()) != 'H') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(to_ouch_expired_timed(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
         fill(m.order_id.get().value(), m.quantity.get().value());
     }
 
     // The engine's order_refused_message: answered to the client owning each order it names.
     void on_event(const ipc_ns::order_refused_message& m) {
-        if (static_cast<char>(m.refusal_reason.get().value()) == 'E') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending != static_cast<char>('U')) respond(found->second.client, to_ouch_order_accepted_closed(found->second.request, found->second), echoed(found->second.options, { 2, 3, 4, 5, 6, 12, 15, 16, 24, 29, 30, 28 }, { 28 }));
-        if (static_cast<char>(m.refusal_reason.get().value()) == 'E') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending != static_cast<char>('U')) respond(found->second.client, to_ouch_refused(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
-        if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending == static_cast<char>('U')) respond(found->second.client, to_ouch_replace_rejected(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
-        if (static_cast<char>(m.refusal_reason.get().value()) == 'O') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending != static_cast<char>('U')) respond(found->second.client, to_ouch_rejected(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
-        if (static_cast<char>(m.refusal_reason.get().value()) == 'P') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending != static_cast<char>('U')) respond(found->second.client, to_ouch_rejected_peg(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
-        if (static_cast<char>(m.refusal_reason.get().value()) == 'T') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending != static_cast<char>('U')) respond(found->second.client, to_ouch_rejected_type(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
-        if (static_cast<char>(m.refusal_reason.get().value()) == 'C') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending != static_cast<char>('U')) respond(found->second.client, to_ouch_rejected_cross(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (static_cast<char>(m.refusal_reason.get().value()) == 'E') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending != static_cast<char>('U')) respond(to_ouch_order_accepted_closed(found->second.request, found->second), echoed(found->second.options, { 2, 3, 4, 5, 13, 9, 10, 6, 12, 15, 16, 24, 29, 30, 28 }, { 28 }));
+        if (static_cast<char>(m.refusal_reason.get().value()) == 'G') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending != static_cast<char>('U')) respond(to_ouch_order_accepted_slid(found->second.request, found->second), echoed(found->second.options, { 2, 3, 4, 5, 13, 9, 10, 6, 12, 15, 16, 24, 29, 30, 28 }, { 28 }));
+        if (static_cast<char>(m.refusal_reason.get().value()) == 'E') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending != static_cast<char>('U')) respond(to_ouch_refused(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (static_cast<char>(m.refusal_reason.get().value()) == 'G') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending != static_cast<char>('U')) respond(to_ouch_slid(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending == static_cast<char>('U')) respond(to_ouch_replace_rejected(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (static_cast<char>(m.refusal_reason.get().value()) == 'O') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending != static_cast<char>('U')) respond(to_ouch_rejected(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (static_cast<char>(m.refusal_reason.get().value()) == 'P') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending != static_cast<char>('U')) respond(to_ouch_rejected_peg(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (static_cast<char>(m.refusal_reason.get().value()) == 'T') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending != static_cast<char>('U')) respond(to_ouch_rejected_type(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (static_cast<char>(m.refusal_reason.get().value()) == 'C') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending != static_cast<char>('U')) respond(to_ouch_rejected_cross(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (static_cast<char>(m.refusal_reason.get().value()) == 'N') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending != static_cast<char>('U')) respond(to_ouch_rejected_unreferenced(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (static_cast<char>(m.refusal_reason.get().value()) == 'A') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending != static_cast<char>('U')) respond(to_ouch_rejected_aggressive(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (static_cast<char>(m.refusal_reason.get().value()) == 'F') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending != static_cast<char>('U')) respond(to_ouch_rejected_fat_finger(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
+        if (static_cast<char>(m.refusal_reason.get().value()) == 'L') if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end() && found->second.pending != static_cast<char>('U')) respond(to_ouch_rejected_limit_protection(m, found->second), echoed(found->second.options, { 28 }, { 28 }));
         close(m.order_id.get().value());
     }
 
     // The engine's order_accepted_message: answered to the client owning each order it names.
     void on_event(const ipc_ns::order_accepted_message& m) {
-        if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) found->second.price = m.price.get().value();
-        if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_order_accepted(found->second.request, found->second), echoed(found->second.options, { 2, 3, 4, 5, 6, 12, 15, 16, 24, 29, 30, 28 }, { 28 }));
+        if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) found->second.price = m.price.get().value_or(2147483647);
+        if (auto found = orders_.find(m.order_id.get().value()); found != orders_.end()) respond(to_ouch_order_accepted(found->second.request, found->second), echoed(found->second.options, { 2, 3, 4, 5, 13, 9, 10, 11, 6, 7, 12, 15, 16, 17, 24, 25, 29, 30, 28 }, { 28 }));
     }
 
     // The engine's order_replaced_message: answered to the client owning each order it names.
     void on_event(const ipc_ns::order_replaced_message& m) {
-        if (auto found = orders_.find(m.replacement_id.get().value()); found != orders_.end()) respond(found->second.client, to_ouch_replaced(found->second.replace, found->second), echoed(found->second.options, { 2, 3, 5, 6, 12, 15, 16, 29, 30, 28 }, { 28 }));
+        if (auto found = orders_.find(m.replacement_id.get().value()); found != orders_.end()) respond(to_ouch_replaced(found->second.replace, found->second), echoed(found->second.options, { 2, 3, 5, 6, 12, 15, 16, 17, 29, 30, 28 }, { 28 }));
         if (auto found = orders_.find(m.replacement_id.get().value()); found != orders_.end()) found->second.remaining = m.open_quantity.get().value();
         if (m.order_id.get().value() != m.replacement_id.get().value()) close(m.order_id.get().value());
     }
@@ -977,8 +1170,6 @@ private:
         void logout() { lost = true; }   // the session is over: logged out, or its login refused
         void silent() { lost = true; }   // heard nothing for longer than the session allows
         bool lost = false;
-        bool blocked = false;   // does it take no new orders, having asked not to?
-        std::uint64_t last_reference{};   // the last reference a request admitted or replaced an order under
     };
 
     // A login is refused with the reason the exchange states, or the first the model gives.
@@ -1003,17 +1194,20 @@ private:
             case static_cast<decltype(selector)>('O'): {
                 if (packet.size() < fixed_size<protocol::enter_order_message>()) return;
                 const auto& m = *protocol::enter_order_message::parse(bytes);
-                if (auto& last = clients_.at(client)->last_reference; static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()) <= last) return;   // a retransmission
+                const std::uint64_t channel = option(m.tail_begin(), m.tail_begin() + appendage(m, packet).size(), 28, 1).value_or(0);   // the order flow channel it names, 0 where it names none
+                if (auto& last = last_reference_[channel]; static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()) <= last) return;   // a retransmission
                 else last = static_cast<std::uint64_t>(m.fields.user_ref_num.get().value());
-                if (clients_.at(client)->blocked) { respond(client, to_ouch_rejected_disabled(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, client }), echoed(appendage(m, packet), { 28 }, { 28 })); return; }
-                if (!((static_cast<long long>(m.fields.quantity.get().value()) >= 1 && static_cast<long long>(m.fields.quantity.get().value()) <= 999999))) { respond(client, to_ouch_rejected_quantity(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, client }), echoed(appendage(m, packet), { 28 }, { 28 })); return; }
-                if (!((static_cast<long long>(m.fields.price.get().value()) >= 0 && static_cast<long long>(m.fields.price.get().value()) <= 1999999900) || static_cast<long long>(m.fields.price.get().value()) == 2000000000 || static_cast<long long>(m.fields.price.get().value()) == 2147483647)) { respond(client, to_ouch_rejected_price(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, client }), echoed(appendage(m, packet), { 28 }, { 28 })); return; }
-                if (!(true && static_cast<long long>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 3, 4)).value_or(0)) % 100 == 0)) { respond(client, to_ouch_rejected_min_qty(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, client }), echoed(appendage(m, packet), { 28 }, { 28 })); return; }
-                if (!(true && static_cast<long long>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 5, 4)).value_or(0)) % 100 == 0)) { respond(client, to_ouch_rejected_max_floor(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, client }), echoed(appendage(m, packet), { 28 }, { 28 })); return; }
-                if (!(static_cast<char>(m.fields.side.get().value()) == 'B' || static_cast<char>(m.fields.side.get().value()) == 'S' || static_cast<char>(m.fields.side.get().value()) == 'T' || static_cast<char>(m.fields.side.get().value()) == 'E')) { respond(client, to_ouch_rejected_side(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, client }), echoed(appendage(m, packet), { 28 }, { 28 })); return; }
-                if (!(static_cast<char>(m.fields.display.get().value()) == 'Y' || static_cast<char>(m.fields.display.get().value()) == 'N' || static_cast<char>(m.fields.display.get().value()) == 'A')) { respond(client, to_ouch_rejected_display(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, client }), echoed(appendage(m, packet), { 28 }, { 28 })); return; }
-                if (!([](std::string_view named) { while (!named.empty() && named.back() == ' ') named.remove_suffix(1); return named == "ZVZZT"; }(m.fields.symbol.get().value()))) { respond(client, to_ouch_rejected_symbol(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, client }), echoed(appendage(m, packet), { 28 }, { 28 })); return; }
-                Order order{ numbered(), static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, client };
+                if (blocked_) { respond(to_ouch_rejected_disabled(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, account_ }), echoed(appendage(m, packet), { 28 }, { 28 })); return; }
+                if (!((static_cast<long long>(m.fields.quantity.get().value()) >= 1 && static_cast<long long>(m.fields.quantity.get().value()) <= 999999))) { respond(to_ouch_rejected_quantity(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, account_ }), echoed(appendage(m, packet), { 28 }, { 28 })); return; }
+                if (!((static_cast<long long>(m.fields.price.get().value()) >= 0 && static_cast<long long>(m.fields.price.get().value()) <= 1999999900) || static_cast<long long>(m.fields.price.get().value()) == 2000000000 || static_cast<long long>(m.fields.price.get().value()) == 2147483647)) { respond(to_ouch_rejected_price(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, account_ }), echoed(appendage(m, packet), { 28 }, { 28 })); return; }
+                if (!(true && static_cast<long long>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 3, 4)).value_or(0)) % 100 == 0)) { respond(to_ouch_rejected_min_qty(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, account_ }), echoed(appendage(m, packet), { 28 }, { 28 })); return; }
+                if (!(true && static_cast<long long>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 5, 4)).value_or(0)) % 100 == 0)) { respond(to_ouch_rejected_max_floor(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, account_ }), echoed(appendage(m, packet), { 28 }, { 28 })); return; }
+                if (!(static_cast<char>(m.fields.side.get().value()) == 'B' || static_cast<char>(m.fields.side.get().value()) == 'S' || static_cast<char>(m.fields.side.get().value()) == 'T' || static_cast<char>(m.fields.side.get().value()) == 'E')) { respond(to_ouch_rejected_side(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, account_ }), echoed(appendage(m, packet), { 28 }, { 28 })); return; }
+                if (!((!(option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).has_value() || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == '*' || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == 'N' || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == 'Y' || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == 'D' || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == 'O' || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == 'W' || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == 'R' || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == 'y' || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == 'd' || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == 'o' || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == 'w' || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == 'r' || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == 'Z' || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == 'E' || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == 'P' || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == 'X' || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == 'S' || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == '0' || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == '1' || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == '2' || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == '4' || static_cast<char>((option(m.tail_begin(), m.tail_begin() + std::min<std::size_t>(m.fields.appendage_length.get().value(), static_cast<std::size_t>(m.tail_end() - m.tail_begin())), 29, 1)).value_or(0)) == '5'))) { respond(to_ouch_rejected_aiq(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, account_ }), echoed(appendage(m, packet), { 28 }, { 28 })); return; }
+                if (!(static_cast<char>(m.fields.display.get().value()) == 'Y' || static_cast<char>(m.fields.display.get().value()) == 'N' || static_cast<char>(m.fields.display.get().value()) == 'A')) { respond(to_ouch_rejected_display(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, account_ }), echoed(appendage(m, packet), { 28 }, { 28 })); return; }
+                if (!([](std::string_view named) { while (!named.empty() && named.back() == ' ') named.remove_suffix(1); return named == "ZVZZT"; }(m.fields.symbol.get().value()))) { respond(to_ouch_rejected_symbol(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, account_ }), echoed(appendage(m, packet), { 28 }, { 28 })); return; }
+                Order order{ numbered(), static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, account_ };
+                order.channel = channel;
                 order.firm = clients_.at(client)->firm;
                 auto ipc = to_ouch_enter_order(m, order);
                 order.remaining = ipc.quantity.get().value();
@@ -1023,16 +1217,17 @@ private:
                 order.options.assign(appendage(m, packet));
                 std::memcpy(&order.request, packet.data(), std::min(packet.size(), sizeof order.request));   // as much of it as arrived
                 orders_[order.id] = order;
-                references_[{ client, order.reference }] = order.id;
+                references_[Named{ order.channel, order.reference }] = order.id;
                 detail_ipc::emit_framed(emit_, 'N', ipc);
                 return;
             }
             case static_cast<decltype(selector)>('X'): {
                 if (packet.size() < fixed_size<protocol::cancel_order_message>() - 2) return;   // its last 2 bytes may be left out
                 const auto& m = *protocol::cancel_order_message::parse(bytes);
+                const std::uint64_t channel = option(m.tail_begin(), m.tail_begin() + appendage(m, packet).size(), 28, 1).value_or(0);   // the order flow channel it names, 0 where it names none
                 if (m.fields.quantity.get().value() == 0) {
-                    const auto key = std::make_pair(client, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()));
-                    const auto found = references_.find(key);
+                    const auto key = static_cast<std::uint64_t>(m.fields.user_ref_num.get().value());
+                    const auto found = references_.find(Named{ channel, key });
                     if (found == references_.end()) return;
                     Order& order = orders_.at(found->second);
                     order.pending = static_cast<char>('X');
@@ -1041,8 +1236,8 @@ private:
                     return;
                 }
                 if (m.fields.quantity.get().value() != 0) {
-                    const auto key = std::make_pair(client, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()));
-                    const auto found = references_.find(key);
+                    const auto key = static_cast<std::uint64_t>(m.fields.user_ref_num.get().value());
+                    const auto found = references_.find(Named{ channel, key });
                     if (found == references_.end()) return;
                     Order& order = orders_.at(found->second);
                     order.pending = static_cast<char>('X');
@@ -1055,23 +1250,25 @@ private:
             case static_cast<decltype(selector)>('M'): {
                 if (packet.size() < fixed_size<protocol::modify_order_message>() - 2) return;   // its last 2 bytes may be left out
                 const auto& m = *protocol::modify_order_message::parse(bytes);
-                const auto key = std::make_pair(client, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()));
-                const auto found = references_.find(key);
+                const std::uint64_t channel = option(m.tail_begin(), m.tail_begin() + appendage(m, packet).size(), 28, 1).value_or(0);   // the order flow channel it names, 0 where it names none
+                const auto key = static_cast<std::uint64_t>(m.fields.user_ref_num.get().value());
+                const auto found = references_.find(Named{ channel, key });
                 if (found == references_.end()) return;
                 Order& order = orders_.at(found->second);
                 order.pending = static_cast<char>('M');
                 auto ipc = to_ouch_modify_order(m, order);
-                respond(client, to_ouch_modified(m, order), echoed(order.options, { 28 }, { 28 }));
+                respond(to_ouch_modified(m, order), echoed(order.options, { 28 }, { 28 }));
                 detail_ipc::emit_framed(emit_, 'D', ipc);
                 return;
             }
             case static_cast<decltype(selector)>('U'): {
                 if (packet.size() < fixed_size<protocol::replace_order_message>()) return;
                 const auto& m = *protocol::replace_order_message::parse(bytes);
-                const auto key = std::make_pair(client, static_cast<std::uint64_t>(m.fields.orig_user_ref_num.get().value()));
-                const auto found = references_.find(key);
+                const std::uint64_t channel = option(m.tail_begin(), m.tail_begin() + appendage(m, packet).size(), 28, 1).value_or(0);   // the order flow channel it names, 0 where it names none
+                const auto key = static_cast<std::uint64_t>(m.fields.orig_user_ref_num.get().value());
+                const auto found = references_.find(Named{ channel, key });
                 if (found == references_.end()) return;
-                if (auto& last = clients_.at(client)->last_reference; static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()) <= last) return;   // a retransmission, or a number already used
+                if (auto& last = last_reference_[channel]; static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()) <= last) return;   // a retransmission, or a number already used
                 else last = static_cast<std::uint64_t>(m.fields.user_ref_num.get().value());
                 const Order& replaced = orders_.at(found->second);
                 Order order = replaced;
@@ -1085,18 +1282,19 @@ private:
                 auto ipc = to_ouch_replace_order(m, order);
                 order.remaining = ipc.quantity.get().value();
                 orders_[order.id] = order;
-                references_[{ client, order.reference }] = order.id;
+                references_[Named{ order.channel, order.reference }] = order.id;
                 detail_ipc::emit_framed(emit_, 'M', ipc);
                 return;
             }
             case static_cast<decltype(selector)>('C'): {
                 if (packet.size() < fixed_size<protocol::mass_cancel_request_message>()) return;
                 const auto& m = *protocol::mass_cancel_request_message::parse(bytes);
-                if (auto& last = clients_.at(client)->last_reference; static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()) <= last) return;   // a retransmission
+                const std::uint64_t channel = option(m.tail_begin(), m.tail_begin() + appendage(m, packet).size(), 28, 1).value_or(0);   // the order flow channel it names, 0 where it names none
+                if (auto& last = last_reference_[channel]; static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()) <= last) return;   // a retransmission
                 else last = static_cast<std::uint64_t>(m.fields.user_ref_num.get().value());
-                respond(client, to_ouch_mass_canceled(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, client }), echoed(appendage(m, packet), { 27, 24, 28 }, { 28 }));
+                respond(to_ouch_mass_canceled(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, account_ }), echoed(appendage(m, packet), { 27, 24, 28 }, { 28 }));
                 std::vector<std::uint64_t> taken;   // found first: an order the engine answers at once may close as it is handed over
-                for (const auto& [id, order] : orders_) if (order.client == client && (std::string_view(m.fields.symbol.get().value()).find_first_not_of(' ') == std::string_view::npos || std::string_view(m.fields.symbol.get().value()) == std::string_view(order.entered.symbol.get().value())) && (!option(m.tail_begin(), m.tail_begin() + appendage(m, packet).size(), 27, 1) || static_cast<char>(*option(m.tail_begin(), m.tail_begin() + appendage(m, packet).size(), 27, 1)) == static_cast<char>(order.entered.side.get().value())) && (!option(m.tail_begin(), m.tail_begin() + appendage(m, packet).size(), 24, 2) || *option(m.tail_begin(), m.tail_begin() + appendage(m, packet).size(), 24, 2) == option(reinterpret_cast<const std::byte*>(order.options.data()), reinterpret_cast<const std::byte*>(order.options.data()) + order.options.size(), 24, 2).value_or(0))) taken.push_back(id);
+                for (const auto& [id, order] : orders_) if ((std::string_view(m.fields.symbol.get().value()).find_first_not_of(' ') == std::string_view::npos || std::string_view(m.fields.symbol.get().value()) == std::string_view(order.entered.symbol.get().value())) && (!option(m.tail_begin(), m.tail_begin() + appendage(m, packet).size(), 27, 1) || static_cast<char>(*option(m.tail_begin(), m.tail_begin() + appendage(m, packet).size(), 27, 1)) == static_cast<char>(order.entered.side.get().value())) && (!option(m.tail_begin(), m.tail_begin() + appendage(m, packet).size(), 24, 2) || *option(m.tail_begin(), m.tail_begin() + appendage(m, packet).size(), 24, 2) == option(reinterpret_cast<const std::byte*>(order.options.data()), reinterpret_cast<const std::byte*>(order.options.data()) + order.options.size(), 24, 2).value_or(0))) taken.push_back(id);
                 for (const auto id : taken) {
                     const auto held = orders_.find(id);
                     if (held == orders_.end()) continue;
@@ -1110,27 +1308,30 @@ private:
                 if (packet.size() < fixed_size<protocol::disable_order_entry_request_message>()) return;
                 const auto& m = *protocol::disable_order_entry_request_message::parse(bytes);
                 (void)m;
-                if (auto& last = clients_.at(client)->last_reference; static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()) <= last) return;   // a retransmission
+                const std::uint64_t channel = option(m.tail_begin(), m.tail_begin() + appendage(m, packet).size(), 28, 1).value_or(0);   // the order flow channel it names, 0 where it names none
+                if (auto& last = last_reference_[channel]; static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()) <= last) return;   // a retransmission
                 else last = static_cast<std::uint64_t>(m.fields.user_ref_num.get().value());
-                respond(client, to_ouch_disabled(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, client }), echoed(appendage(m, packet), { 28 }, { 28 }));
-                clients_.at(client)->blocked = true;   // it takes no new orders
+                respond(to_ouch_disabled(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, account_ }), echoed(appendage(m, packet), { 28 }, { 28 }));
+                blocked_ = true;   // it takes no new orders
                 return;
             }
             case static_cast<decltype(selector)>('E'): {
                 if (packet.size() < fixed_size<protocol::enable_order_entry_request_message>()) return;
                 const auto& m = *protocol::enable_order_entry_request_message::parse(bytes);
                 (void)m;
-                if (auto& last = clients_.at(client)->last_reference; static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()) <= last) return;   // a retransmission
+                const std::uint64_t channel = option(m.tail_begin(), m.tail_begin() + appendage(m, packet).size(), 28, 1).value_or(0);   // the order flow channel it names, 0 where it names none
+                if (auto& last = last_reference_[channel]; static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()) <= last) return;   // a retransmission
                 else last = static_cast<std::uint64_t>(m.fields.user_ref_num.get().value());
-                respond(client, to_ouch_enabled(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, client }), echoed(appendage(m, packet), { 28 }, { 28 }));
-                clients_.at(client)->blocked = false;   // it takes new orders again
+                respond(to_ouch_enabled(m, Order{ 0, static_cast<std::uint64_t>(m.fields.user_ref_num.get().value()), 0, account_ }), echoed(appendage(m, packet), { 28 }, { 28 }));
+                blocked_ = false;   // it takes new orders again
                 return;
             }
             case static_cast<decltype(selector)>('Q'): {
                 if (packet.size() < fixed_size<protocol::account_query_message>() - 2) return;   // its last 2 bytes may be left out
                 const auto& m = *protocol::account_query_message::parse(bytes);
                 (void)m;
-                respond(client, to_ouch_account_query(m, Order{ 0, clients_.at(client)->last_reference + 1, 0, client }), echoed((packet.size() >= fixed_size<protocol::account_query_message>() ? appendage(m, packet) : std::string_view{}), { 28 }, { 28 }));
+                const std::uint64_t channel = option(m.tail_begin(), m.tail_begin() + appendage(m, packet).size(), 28, 1).value_or(0);   // the order flow channel it names, 0 where it names none
+                respond(to_ouch_account_query(m, Order{ 0, last_reference_[channel] + 1, 0, account_ }), echoed((packet.size() >= fixed_size<protocol::account_query_message>() ? appendage(m, packet) : std::string_view{}), { 28 }, { 28 }));
                 return;
             }
             default:
@@ -1138,27 +1339,24 @@ private:
         }
     }
 
-    // A response to a client, as the body of the message its session publishes.
+    // A response to the port's Account, as the body of the message each session publishes.
+    // Every connection logged in on the port is told it, mirroring the Account (OUCH 5.0, 1.3); one
+    // that has gone is not, and what the venue tells the Account while none is logged in goes nowhere.
     template <typename Response>
-    void respond(std::size_t client, const Response& response) {
+    void respond(const Response& response) {
         const auto* bytes = reinterpret_cast<const char*>(&response) + sizeof(protocol::server_packet_header);
-        // A client that has gone is not written to: the order it left may still trade, and what
-        // the venue would have told it goes nowhere.
-        const auto held = clients_.find(client);
-        if (held == clients_.end()) { return; }
-
-        held->second->session.sequenced(bytes, response.header.packet_length.get().value() + 2 - sizeof(protocol::server_packet_header));
+        for (const auto& held : clients_) held.second->session.sequenced(bytes, response.header.packet_length.get().value() + 2 - sizeof(protocol::server_packet_header));
     }
 
     // A response with options in its appendage: written after its fixed part, as much as its
     // message has room for, and counted by its appendage's length and by its packet's.
     template <typename Response>
-    void respond(std::size_t client, Response response, std::string_view options) {
+    void respond(Response response, std::string_view options) {
         const std::size_t size = std::min<std::size_t>(options.size(), Response::tail_capacity);
         std::memcpy(response.tail, options.data(), size);
         response.fields.appendage_length.set(static_cast<std::remove_cvref_t<decltype(response.fields.appendage_length.get().value())>>(size));
         response.header.packet_length.set(static_cast<std::remove_cvref_t<decltype(response.header.packet_length.get().value())>>(response.header.packet_length.get().value() + size));
-        respond(client, response);
+        respond(response);
     }
 
     // Shares executed on an order; a filled order is no longer open.
@@ -1166,14 +1364,23 @@ private:
         auto found = orders_.find(id);
         if (found == orders_.end()) return;
         found->second.remaining -= std::min(shares, found->second.remaining);
+        found->second.traded = true;
         if (found->second.remaining == 0) close(id);
     }
 
     void close(std::uint64_t id) {
         auto found = orders_.find(id);
         if (found == orders_.end()) return;
-        references_.erase({ found->second.client, found->second.reference });
+        references_.erase(Named{ found->second.channel, found->second.reference });
+        if (found->second.traded) { traded_.insert(orders_.extract(found)); return; }   // kept the day, for a broken trade's answer
         orders_.erase(found);
+    }
+
+    // An order the gateway holds open, or closed after it traded; none where it holds neither.
+    const Order* traded(std::uint64_t id) const {
+        if (const auto open = orders_.find(id); open != orders_.end()) return &open->second;
+        if (const auto kept = traded_.find(id); kept != traded_.end()) return &kept->second;
+        return nullptr;
     }
 
     // The number of the next order admitted, and the gateway's next after it.
@@ -1187,8 +1394,13 @@ private:
     std::map<std::size_t, std::unique_ptr<Client>> clients_;
     std::size_t next_client_ = 0;   // session numbers, never reused
     std::map<std::string, std::string, std::less<>> credentials_;
+    std::size_t account_;   // the Account its port is bound to: the gateway's place among the venue's gateways
+    bool blocked_ = false;   // does the Account take no new orders, having asked not to?
+    std::map<std::uint64_t, std::uint64_t> last_reference_;   // the last reference a request of the Account admitted or replaced an order under, on each order flow channel
     std::map<std::uint64_t, Order> orders_;
-    std::map<std::pair<std::size_t, std::uint64_t>, std::uint64_t> references_;
+    std::map<std::uint64_t, Order> traded_;   // orders that traded and have closed, kept the day: a broken trade is told their owners
+    using Named = std::pair<std::uint64_t, std::uint64_t>;   // what names an order: the order flow channel it was entered on, and its reference there
+    std::map<Named, std::uint64_t> references_;   // each open order, by the channel and the reference the Account entered it under
     std::uint64_t next_id_;   // the number the next order admitted is given
     std::uint64_t step_;      // how many gateways number in turn
 };

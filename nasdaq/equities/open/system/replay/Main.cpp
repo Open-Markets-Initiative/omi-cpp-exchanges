@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
         sim::MessageRing from_replay("replay -> gatewayreplay", sim::MessageRing::End::Writes);
 
         auto replay_send = [&](const char* b, std::size_t n) { sim::write_blocking(from_replay, b, n); };
-        sim::traders::Trader<decltype(replay_send)> replay("Replay", "CAROL1", "carol00001", replay_send);
+        sim::traders::Trader<decltype(replay_send)> replay("Replay", "REPLAY", "replay0000", replay_send);
         // Replay takes its orders from a capture of Nasdaq.NsmEquities.TotalView.Itch.v5.0.2026: what that market showed,
         // posted here as this trader's own orders. A capture it cannot read leaves it quiet.
         sim::traders::Capture replay_capture("captures/TotalView.pcap");
@@ -53,6 +53,7 @@ int main(int argc, char** argv) {
         // A step a trader does not take is a step it had nothing to do: it reads what the
         // venue said, and acts only once it is admitted.
         auto paced = std::chrono::steady_clock::now();   // when it next orders
+        sim::reading();   // launch.sh starts the next component once this one reads its links
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
             worked = to_replay.read([&](std::string_view bytes) { replay.on_bytes(bytes.data(), bytes.size()); }) || worked;

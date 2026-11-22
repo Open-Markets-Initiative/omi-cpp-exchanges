@@ -20,7 +20,9 @@
 #include "../protocols/orderentry/messages/ReplacedMessage.hpp"
 #include "../protocols/orderentry/messages/OrderModifiedMessage.hpp"
 #include "../protocols/orderentry/messages/OrderExecutedMessage.hpp"
+#include "../protocols/orderentry/messages/BrokenTradeMessage.hpp"
 #include "../protocols/orderentry/messages/OrderRestatedMessage.hpp"
+#include "../protocols/orderentry/messages/OrderPriorityUpdateMessage.hpp"
 #include "../protocols/orderentry/messages/CancelPendingMessage.hpp"
 #include "../protocols/orderentry/messages/CancelRejectMessage.hpp"
 #include "../protocols/orderentry/messages/AiqCanceledMessage.hpp"
@@ -60,7 +62,9 @@ struct Answers {
     std::uint64_t replaced_message = 0;
     std::uint64_t order_modified_message = 0;
     std::uint64_t order_executed_message = 0;
+    std::uint64_t broken_trade_message = 0;
     std::uint64_t order_restated_message = 0;
+    std::uint64_t order_priority_update_message = 0;
     std::uint64_t cancel_pending_message = 0;
     std::uint64_t cancel_reject_message = 0;
     std::uint64_t aiq_canceled_message = 0;
@@ -240,7 +244,7 @@ public:
     // silent. A trader the venue has gone silent on logs in again, asking to resume at the next
     // number it is owed, once a second until it is let in. What the venue sent in between is not
     // sent again: the venue's order entry keeps no stream to serve it from, and an order this
-    // trader left resting is reported, if at all, to the session it was entered on.
+    // trader left resting is reported to whichever connection is logged in on its port when it is told.
     void tick() {
         session_.tick();
         if (!lost_ || logged_in()) return;
@@ -269,7 +273,9 @@ public:
             case static_cast<decltype(selector)>('U'): ++answers_.replaced_message; return;
             case static_cast<decltype(selector)>('M'): ++answers_.order_modified_message; return;
             case static_cast<decltype(selector)>('E'): ++answers_.order_executed_message; return;
+            case static_cast<decltype(selector)>('B'): ++answers_.broken_trade_message; return;
             case static_cast<decltype(selector)>('R'): ++answers_.order_restated_message; return;
+            case static_cast<decltype(selector)>('T'): ++answers_.order_priority_update_message; return;
             case static_cast<decltype(selector)>('P'): ++answers_.cancel_pending_message; return;
             case static_cast<decltype(selector)>('I'): ++answers_.cancel_reject_message; return;
             case static_cast<decltype(selector)>('D'): ++answers_.aiq_canceled_message; return;

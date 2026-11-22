@@ -107,8 +107,8 @@ private:
                     case static_cast<code>(2301): {
                         if (length < sizeof(protocol::sign_on_request_out_message)) break;
                         const auto& reply = *protocol::sign_on_request_out_message::parse(reinterpret_cast<const std::byte*>(packet));
-                        if (reply.header.error_code.get().value() != static_cast<std::remove_cvref_t<decltype(reply.header.error_code.get().value())>>(0)) {
-                            handler_.rejected(reply.header.error_code.get().value());
+                        if (reply.header.error_code.get().value_or(decltype(reply.header.error_code)::null_value) != static_cast<std::remove_cvref_t<decltype(reply.header.error_code.get().value_or(decltype(reply.header.error_code)::null_value))>>(0)) {
+                            handler_.rejected(reply.header.error_code.get().value_or(decltype(reply.header.error_code)::null_value));
                             state_ = ClientState::NotLoggedIn;
                             break;
                         }

@@ -3,16 +3,18 @@
 #include "../marketdata/totalview/messages/AddOrderNoMpidAttributionMessage.hpp"
 #include "../marketdata/totalview/messages/AddOrderWithMpidAttributionMessage.hpp"
 #include "../marketdata/totalview/messages/OrderExecutedMessage.hpp"
+#include "../marketdata/totalview/messages/OrderCancelMessage.hpp"
 #include "../marketdata/totalview/messages/NonCrossTradeMessage.hpp"
 #include "../marketdata/totalview/messages/OrderDeleteMessage.hpp"
 #include "../marketdata/totalview/messages/OrderReplaceMessage.hpp"
-#include "../marketdata/totalview/messages/OrderCancelMessage.hpp"
+#include "../marketdata/totalview/messages/BrokenTradeMessage.hpp"
 #include "structs/OrderRestedMessage.hpp"
 #include "structs/TradeMessage.hpp"
 #include "structs/OrderCanceledMessage.hpp"
 #include "structs/OrderReplacedMessage.hpp"
 #include "structs/OrderReducedMessage.hpp"
 #include "structs/OrderEliminatedMessage.hpp"
+#include "structs/TradeBrokenMessage.hpp"
 #include <type_traits>
 #include <utility>
 #include <chrono>
@@ -79,6 +81,17 @@ inline nasdaq::nsmequities::totalview::itch::v5_0_2026::order_executed_message t
     return out;
 }
 
+// trade_message -> totalview:order_cancel_message  (NsmEquities.Ipc.Transforms.xml: totalview_discretion_taken)
+inline nasdaq::nsmequities::totalview::itch::v5_0_2026::order_cancel_message to_totalview_discretion_taken(const ipc_ns::trade_message& m) {
+    nasdaq::nsmequities::totalview::itch::v5_0_2026::order_cancel_message out{};
+    out.fields.stock_locate.set(static_cast<value_of<decltype(out.fields.stock_locate)>>(1));
+    out.fields.tracking_number.set(static_cast<value_of<decltype(out.fields.tracking_number)>>(0));
+    out.fields.timestamp.set(static_cast<value_of<decltype(out.fields.timestamp)>>(nanoseconds_since_midnight(m.timestamp.get().value(), new_york())));
+    out.fields.order_reference_number.set(m.aggressor_order_id.get().value());
+    out.fields.canceled_shares.set(m.quantity.get().value());
+    return out;
+}
+
 // trade_message -> totalview:non_cross_trade_message  (NsmEquities.Ipc.Transforms.xml: totalview_hidden_executed)
 inline nasdaq::nsmequities::totalview::itch::v5_0_2026::non_cross_trade_message to_totalview_hidden_executed(const ipc_ns::trade_message& m) {
     nasdaq::nsmequities::totalview::itch::v5_0_2026::non_cross_trade_message out{};
@@ -117,6 +130,19 @@ inline nasdaq::nsmequities::totalview::itch::v5_0_2026::order_replace_message to
     return out;
 }
 
+// order_rested_message -> totalview:order_replace_message  (NsmEquities.Ipc.Transforms.xml: totalview_order_repriced)
+inline nasdaq::nsmequities::totalview::itch::v5_0_2026::order_replace_message to_totalview_order_repriced(const ipc_ns::order_rested_message& m) {
+    nasdaq::nsmequities::totalview::itch::v5_0_2026::order_replace_message out{};
+    out.fields.stock_locate.set(static_cast<value_of<decltype(out.fields.stock_locate)>>(1));
+    out.fields.tracking_number.set(static_cast<value_of<decltype(out.fields.tracking_number)>>(0));
+    out.fields.timestamp.set(static_cast<value_of<decltype(out.fields.timestamp)>>(nanoseconds_since_midnight(m.timestamp.get().value(), new_york())));
+    out.fields.original_order_reference_number.set(m.refreshed_from.get().value());
+    out.fields.new_order_reference_number.set(m.order_id.get().value());
+    out.fields.shares.set(m.quantity.get().value());
+    out.fields.price.set(static_cast<value_of<decltype(out.fields.price)>>(m.price.get().value()));
+    return out;
+}
+
 // order_replaced_message -> totalview:order_delete_message  (NsmEquities.Ipc.Transforms.xml: totalview_order_replaced_away)
 inline nasdaq::nsmequities::totalview::itch::v5_0_2026::order_delete_message to_totalview_order_replaced_away(const ipc_ns::order_replaced_message& m) {
     nasdaq::nsmequities::totalview::itch::v5_0_2026::order_delete_message out{};
@@ -145,6 +171,16 @@ inline nasdaq::nsmequities::totalview::itch::v5_0_2026::order_delete_message to_
     out.fields.tracking_number.set(static_cast<value_of<decltype(out.fields.tracking_number)>>(0));
     out.fields.timestamp.set(static_cast<value_of<decltype(out.fields.timestamp)>>(nanoseconds_since_midnight(m.timestamp.get().value(), new_york())));
     out.fields.order_reference_number.set(m.order_id.get().value());
+    return out;
+}
+
+// trade_broken_message -> totalview:broken_trade_message  (NsmEquities.Ipc.Transforms.xml: totalview_broken_trade)
+inline nasdaq::nsmequities::totalview::itch::v5_0_2026::broken_trade_message to_totalview_broken_trade(const ipc_ns::trade_broken_message& m) {
+    nasdaq::nsmequities::totalview::itch::v5_0_2026::broken_trade_message out{};
+    out.fields.stock_locate.set(static_cast<value_of<decltype(out.fields.stock_locate)>>(1));
+    out.fields.tracking_number.set(static_cast<value_of<decltype(out.fields.tracking_number)>>(0));
+    out.fields.timestamp.set(static_cast<value_of<decltype(out.fields.timestamp)>>(nanoseconds_since_midnight(m.timestamp.get().value(), new_york())));
+    out.fields.match_number.set(m.execution_id.get().value());
     return out;
 }
 

@@ -1,0 +1,15 @@
+Generate Omi C++ Exchanges GitHub Repository
+  Exchanges:    5, as 12 simulators
+  Exchange:   Investors Exchange Equities Basic
+  Exchange:   Investors Exchange Equities Open
+  Exchange:   Investors Exchange Equities Session
+  Exchange:   Nse Futures and Options Basic
+  Exchange:   Nse Futures and Options
+  Exchange:   Nasdaq Stock Market Basic
+  Exchange:   Nasdaq Stock Market Open
+  Exchange:   Nasdaq Stock Market Session
+  Exchange:   Odx Equities Open
+  Exchange:   Odx Equities Session
+  Exchange:   Odx Security Token Open
+  Exchange:   Odx Security Token Session
+  Done:         6006 generated files across 12 simulators of 5 exchanges + ReadMe.md + .github/workflows/build.yml

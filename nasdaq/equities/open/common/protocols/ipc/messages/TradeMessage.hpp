@@ -10,6 +10,9 @@
 #include "../types/Price.hpp"
 #include "../types/Quantity.hpp"
 #include "../types/Auction.hpp"
+#include "../types/RestingDisplay.hpp"
+#include "../types/AggressorDisplay.hpp"
+#include "../types/RestingMidpoint.hpp"
 
 namespace nasdaq::nsmequities::matchingengine::ipc::v2026 {
 
@@ -29,6 +32,9 @@ struct trade_message {
         ipc_matchingengine::price price;
         ipc_matchingengine::quantity quantity;
         ipc_matchingengine::auction auction;
+        ipc_matchingengine::resting_display resting_display;
+        ipc_matchingengine::aggressor_display aggressor_display;
+        ipc_matchingengine::resting_midpoint resting_midpoint;
     };
 
     ipc_matchingengine::message_header header = {std::uint16_t(sizeof(ipc_matchingengine::message_header) + sizeof(fields_type) - 2), {}};
@@ -56,8 +62,11 @@ static_assert(offsetof(trade_message::fields_type, symbol) == 32, "unexpected of
 static_assert(offsetof(trade_message::fields_type, price) == 40, "unexpected offset of trade_message::fields_type::price");
 static_assert(offsetof(trade_message::fields_type, quantity) == 48, "unexpected offset of trade_message::fields_type::quantity");
 static_assert(offsetof(trade_message::fields_type, auction) == 52, "unexpected offset of trade_message::fields_type::auction");
-static_assert(sizeof(trade_message::fields_type) == 53, "unexpected sizeof trade_message::fields_type");
-static_assert(sizeof(trade_message) == sizeof(ipc_matchingengine::message_header) + 53, "unexpected sizeof trade_message");
+static_assert(offsetof(trade_message::fields_type, resting_display) == 53, "unexpected offset of trade_message::fields_type::resting_display");
+static_assert(offsetof(trade_message::fields_type, aggressor_display) == 54, "unexpected offset of trade_message::fields_type::aggressor_display");
+static_assert(offsetof(trade_message::fields_type, resting_midpoint) == 55, "unexpected offset of trade_message::fields_type::resting_midpoint");
+static_assert(sizeof(trade_message::fields_type) == 56, "unexpected sizeof trade_message::fields_type");
+static_assert(sizeof(trade_message) == sizeof(ipc_matchingengine::message_header) + 56, "unexpected sizeof trade_message");
 
 #pragma pack(pop)
 }

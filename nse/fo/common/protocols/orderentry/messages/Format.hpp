@@ -73,7 +73,7 @@ inline std::ostream& operator<<(std::ostream& os, const message_header& value) {
        << ",log_time=" << (value.log_time.get().has_value() ? std::to_string(value.log_time.get().value()) : std::string_view("null"))
        << ",alpha_char=\"" << value.alpha_char.get_trimmed().value() << '"'
        << ",trader_id=" << value.trader_id.get().value()
-       << ",error_code=\"" << nnf_orderentry::error_code::to_string(value.error_code.get().value()) << '"'
+       << ",error_code=\"" << (value.error_code.get().has_value() ? nnf_orderentry::error_code::to_string(value.error_code.get().value()) : std::string_view("null")) << '"'
        << ",header_timestamp=" << value.header_timestamp.get().value()
        << ",time_stamp_1=\"" << (value.time_stamp_1.get_trimmed().has_value() ? value.time_stamp_1.get_trimmed().value() : std::string_view("null")) << '"'
        << ",time_stamp_2=\"" << (value.time_stamp_2.get_trimmed().has_value() ? value.time_stamp_2.get_trimmed().value() : std::string_view("null")) << '"'
@@ -149,7 +149,7 @@ inline std::ostream& operator<<(std::ostream& os, const download_request_message
 }
 
 inline std::ostream& operator<<(std::ostream& os, const order_entry_request_message& msg) {
-    os << "order_entry_body.participant_type=\"" << nnf_orderentry::participant_type::to_string(msg.fields.order_entry_body.participant_type.get().value()) << '"'
+    os << "order_entry_body.participant_type=\"" << (msg.fields.order_entry_body.participant_type.get().has_value() ? nnf_orderentry::participant_type::to_string(msg.fields.order_entry_body.participant_type.get().value()) : std::string_view("null")) << '"'
        << ",order_entry_body.competitor_period=" << msg.fields.order_entry_body.competitor_period.get().value()
        << ",order_entry_body.solicitor_period=" << msg.fields.order_entry_body.solicitor_period.get().value()
        << ",order_entry_body.modified_cancelled_by=\"" << nnf_orderentry::modified_cancelled_by::to_string(msg.fields.order_entry_body.modified_cancelled_by.get().value()) << '"'
@@ -199,7 +199,7 @@ inline std::ostream& operator<<(std::ostream& os, const order_entry_request_mess
 }
 
 inline std::ostream& operator<<(std::ostream& os, const order_modification_request_message& msg) {
-    os << "order_entry_body.participant_type=\"" << nnf_orderentry::participant_type::to_string(msg.fields.order_entry_body.participant_type.get().value()) << '"'
+    os << "order_entry_body.participant_type=\"" << (msg.fields.order_entry_body.participant_type.get().has_value() ? nnf_orderentry::participant_type::to_string(msg.fields.order_entry_body.participant_type.get().value()) : std::string_view("null")) << '"'
        << ",order_entry_body.competitor_period=" << msg.fields.order_entry_body.competitor_period.get().value()
        << ",order_entry_body.solicitor_period=" << msg.fields.order_entry_body.solicitor_period.get().value()
        << ",order_entry_body.modified_cancelled_by=\"" << nnf_orderentry::modified_cancelled_by::to_string(msg.fields.order_entry_body.modified_cancelled_by.get().value()) << '"'
@@ -249,7 +249,7 @@ inline std::ostream& operator<<(std::ostream& os, const order_modification_reque
 }
 
 inline std::ostream& operator<<(std::ostream& os, const order_cancellation_request_message& msg) {
-    os << "order_entry_body.participant_type=\"" << nnf_orderentry::participant_type::to_string(msg.fields.order_entry_body.participant_type.get().value()) << '"'
+    os << "order_entry_body.participant_type=\"" << (msg.fields.order_entry_body.participant_type.get().has_value() ? nnf_orderentry::participant_type::to_string(msg.fields.order_entry_body.participant_type.get().value()) : std::string_view("null")) << '"'
        << ",order_entry_body.competitor_period=" << msg.fields.order_entry_body.competitor_period.get().value()
        << ",order_entry_body.solicitor_period=" << msg.fields.order_entry_body.solicitor_period.get().value()
        << ",order_entry_body.modified_cancelled_by=\"" << nnf_orderentry::modified_cancelled_by::to_string(msg.fields.order_entry_body.modified_cancelled_by.get().value()) << '"'
@@ -299,7 +299,7 @@ inline std::ostream& operator<<(std::ostream& os, const order_cancellation_reque
 }
 
 inline std::ostream& operator<<(std::ostream& os, const kill_switch_request_message& msg) {
-    os << "order_entry_body.participant_type=\"" << nnf_orderentry::participant_type::to_string(msg.fields.order_entry_body.participant_type.get().value()) << '"'
+    os << "order_entry_body.participant_type=\"" << (msg.fields.order_entry_body.participant_type.get().has_value() ? nnf_orderentry::participant_type::to_string(msg.fields.order_entry_body.participant_type.get().value()) : std::string_view("null")) << '"'
        << ",order_entry_body.competitor_period=" << msg.fields.order_entry_body.competitor_period.get().value()
        << ",order_entry_body.solicitor_period=" << msg.fields.order_entry_body.solicitor_period.get().value()
        << ",order_entry_body.modified_cancelled_by=\"" << nnf_orderentry::modified_cancelled_by::to_string(msg.fields.order_entry_body.modified_cancelled_by.get().value()) << '"'
@@ -648,7 +648,7 @@ inline std::ostream& operator<<(std::ostream& os, const message_record_message& 
 }
 
 inline std::ostream& operator<<(std::ostream& os, const order_confirmation_message& msg) {
-    os << "order_entry_body.participant_type=\"" << nnf_orderentry::participant_type::to_string(msg.fields.order_entry_body.participant_type.get().value()) << '"'
+    os << "order_entry_body.participant_type=\"" << (msg.fields.order_entry_body.participant_type.get().has_value() ? nnf_orderentry::participant_type::to_string(msg.fields.order_entry_body.participant_type.get().value()) : std::string_view("null")) << '"'
        << ",order_entry_body.competitor_period=" << msg.fields.order_entry_body.competitor_period.get().value()
        << ",order_entry_body.solicitor_period=" << msg.fields.order_entry_body.solicitor_period.get().value()
        << ",order_entry_body.modified_cancelled_by=\"" << nnf_orderentry::modified_cancelled_by::to_string(msg.fields.order_entry_body.modified_cancelled_by.get().value()) << '"'
@@ -698,7 +698,7 @@ inline std::ostream& operator<<(std::ostream& os, const order_confirmation_messa
 }
 
 inline std::ostream& operator<<(std::ostream& os, const order_modification_confirmation_message& msg) {
-    os << "order_entry_body.participant_type=\"" << nnf_orderentry::participant_type::to_string(msg.fields.order_entry_body.participant_type.get().value()) << '"'
+    os << "order_entry_body.participant_type=\"" << (msg.fields.order_entry_body.participant_type.get().has_value() ? nnf_orderentry::participant_type::to_string(msg.fields.order_entry_body.participant_type.get().value()) : std::string_view("null")) << '"'
        << ",order_entry_body.competitor_period=" << msg.fields.order_entry_body.competitor_period.get().value()
        << ",order_entry_body.solicitor_period=" << msg.fields.order_entry_body.solicitor_period.get().value()
        << ",order_entry_body.modified_cancelled_by=\"" << nnf_orderentry::modified_cancelled_by::to_string(msg.fields.order_entry_body.modified_cancelled_by.get().value()) << '"'
@@ -748,7 +748,7 @@ inline std::ostream& operator<<(std::ostream& os, const order_modification_confi
 }
 
 inline std::ostream& operator<<(std::ostream& os, const order_response_message& msg) {
-    os << "order_entry_body.participant_type=\"" << nnf_orderentry::participant_type::to_string(msg.fields.order_entry_body.participant_type.get().value()) << '"'
+    os << "order_entry_body.participant_type=\"" << (msg.fields.order_entry_body.participant_type.get().has_value() ? nnf_orderentry::participant_type::to_string(msg.fields.order_entry_body.participant_type.get().value()) : std::string_view("null")) << '"'
        << ",order_entry_body.competitor_period=" << msg.fields.order_entry_body.competitor_period.get().value()
        << ",order_entry_body.solicitor_period=" << msg.fields.order_entry_body.solicitor_period.get().value()
        << ",order_entry_body.modified_cancelled_by=\"" << nnf_orderentry::modified_cancelled_by::to_string(msg.fields.order_entry_body.modified_cancelled_by.get().value()) << '"'

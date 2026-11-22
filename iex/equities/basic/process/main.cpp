@@ -267,16 +267,13 @@ int main(int argc, char** argv) {
         bool worked = to_clients_gatewaymakerbasic.read([&](std::string_view message) { gatewaymakerbasic_events.on_message(message); });
         worked = from_makerbasic.read([&](std::string_view bytes) { gatewaymakerbasic.on_bytes(makerbasic_client, bytes.data(), bytes.size()); }) || worked;
         if (gatewaymakerbasic_order_entry) worked = gatewaymakerbasic_order_entry->poll([&](int fd, std::string_view bytes) {
-            auto session = gatewaymakerbasic_sessions.find(fd);
-            if (session == gatewaymakerbasic_sessions.end())
-                session = gatewaymakerbasic_sessions.emplace(fd, gatewaymakerbasic.connect([server = gatewaymakerbasic_order_entry.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })).first;
-            gatewaymakerbasic.on_bytes(session->second, bytes.data(), bytes.size());
+            gatewaymakerbasic.on_bytes(gatewaymakerbasic_sessions.at(fd), bytes.data(), bytes.size());
         }, [&](int fd) {
             if (const auto gone = gatewaymakerbasic_sessions.find(fd); gone != gatewaymakerbasic_sessions.end()) {
                 gatewaymakerbasic.disconnect(gone->second);
                 gatewaymakerbasic_sessions.erase(gone);
             }
-        }) || worked;
+        }, [&](int fd) { gatewaymakerbasic_sessions.emplace(fd, gatewaymakerbasic.connect([server = gatewaymakerbasic_order_entry.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })); }) || worked;
         gatewaymakerbasic.tick();
         if (gatewaymakerbasic.ended(makerbasic_client)) {
             gatewaymakerbasic.disconnect(makerbasic_client);
@@ -296,16 +293,13 @@ int main(int argc, char** argv) {
         bool worked = to_clients_gatewaytakerbasic.read([&](std::string_view message) { gatewaytakerbasic_events.on_message(message); });
         worked = from_takerbasic.read([&](std::string_view bytes) { gatewaytakerbasic.on_bytes(takerbasic_client, bytes.data(), bytes.size()); }) || worked;
         if (gatewaytakerbasic_order_entry) worked = gatewaytakerbasic_order_entry->poll([&](int fd, std::string_view bytes) {
-            auto session = gatewaytakerbasic_sessions.find(fd);
-            if (session == gatewaytakerbasic_sessions.end())
-                session = gatewaytakerbasic_sessions.emplace(fd, gatewaytakerbasic.connect([server = gatewaytakerbasic_order_entry.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })).first;
-            gatewaytakerbasic.on_bytes(session->second, bytes.data(), bytes.size());
+            gatewaytakerbasic.on_bytes(gatewaytakerbasic_sessions.at(fd), bytes.data(), bytes.size());
         }, [&](int fd) {
             if (const auto gone = gatewaytakerbasic_sessions.find(fd); gone != gatewaytakerbasic_sessions.end()) {
                 gatewaytakerbasic.disconnect(gone->second);
                 gatewaytakerbasic_sessions.erase(gone);
             }
-        }) || worked;
+        }, [&](int fd) { gatewaytakerbasic_sessions.emplace(fd, gatewaytakerbasic.connect([server = gatewaytakerbasic_order_entry.get(), fd](const char* b, std::size_t n) { server->send(fd, b, n); })); }) || worked;
         gatewaytakerbasic.tick();
         if (gatewaytakerbasic.ended(takerbasic_client)) {
             gatewaytakerbasic.disconnect(takerbasic_client);

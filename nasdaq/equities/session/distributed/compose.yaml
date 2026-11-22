@@ -67,6 +67,46 @@ services:
         ports:
             - "15114:15114"   # Requests's order entry
 
+    # MakerSecond's order entry: a gateway for each trader, each publishing a port of
+    # its own to the host, their orders meeting only in the engine's sequencer.
+    gatewaymakersecond:
+        <<: *component
+        entrypoint: ["./nasdaq_distributed_gatewaymakersecond"]
+        labels:
+            nasdaq.tier: "entry"
+        ports:
+            - "15115:15115"   # MakerSecond's order entry
+
+    # TakerSecond's order entry: a gateway for each trader, each publishing a port of
+    # its own to the host, their orders meeting only in the engine's sequencer.
+    gatewaytakersecond:
+        <<: *component
+        entrypoint: ["./nasdaq_distributed_gatewaytakersecond"]
+        labels:
+            nasdaq.tier: "entry"
+        ports:
+            - "15116:15116"   # TakerSecond's order entry
+
+    # FixMaker's order entry: a gateway for each trader, each publishing a port of
+    # its own to the host, their orders meeting only in the engine's sequencer.
+    gatewayfixmaker:
+        <<: *component
+        entrypoint: ["./nasdaq_distributed_gatewayfixmaker"]
+        labels:
+            nasdaq.tier: "entry"
+        ports:
+            - "15117:15117"   # FixMaker's order entry
+
+    # FixTaker's order entry: a gateway for each trader, each publishing a port of
+    # its own to the host, their orders meeting only in the engine's sequencer.
+    gatewayfixtaker:
+        <<: *component
+        entrypoint: ["./nasdaq_distributed_gatewayfixtaker"]
+        labels:
+            nasdaq.tier: "entry"
+        ports:
+            - "15118:15118"   # FixTaker's order entry
+
     # The book, on its own: what the venue matches should fail by itself.
     engine:
         <<: *component
@@ -148,6 +188,38 @@ services:
     requests:
         <<: *component
         entrypoint: ["./nasdaq_distributed_requests"]
+        labels:
+            nasdaq.tier: "clients"
+
+    # A trader of the venue's own: MakerSecond, a makerbasic. It reaches the gateway over a link
+    # like any other component, rather than dialling order entry as an outside firm would.
+    makersecond:
+        <<: *component
+        entrypoint: ["./nasdaq_distributed_makersecond"]
+        labels:
+            nasdaq.tier: "clients"
+
+    # A trader of the venue's own: TakerSecond, a takerbasic. It reaches the gateway over a link
+    # like any other component, rather than dialling order entry as an outside firm would.
+    takersecond:
+        <<: *component
+        entrypoint: ["./nasdaq_distributed_takersecond"]
+        labels:
+            nasdaq.tier: "clients"
+
+    # A trader of the venue's own: FixMaker, a makerbasic. It reaches the gateway over a link
+    # like any other component, rather than dialling order entry as an outside firm would.
+    fixmaker:
+        <<: *component
+        entrypoint: ["./nasdaq_distributed_fixmaker"]
+        labels:
+            nasdaq.tier: "clients"
+
+    # A trader of the venue's own: FixTaker, a takerbasic. It reaches the gateway over a link
+    # like any other component, rather than dialling order entry as an outside firm would.
+    fixtaker:
+        <<: *component
+        entrypoint: ["./nasdaq_distributed_fixtaker"]
         labels:
             nasdaq.tier: "clients"
 

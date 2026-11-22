@@ -1,0 +1,6 @@
+# What the nse image is not built from: the outputs of having built or run
+# this tree already. The image builds the tree itself, so none of them are inputs.
+build/
+recordings/
+captures/
+.git/

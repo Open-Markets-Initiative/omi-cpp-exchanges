@@ -67,13 +67,15 @@ struct Tag {
 };
 
 // An order the gateway admitted: its id, the client's reference to it, the shares still open,
-// and the client that owns it.
+// the comp id's session that entered it, which its reports go to, and the Account that owns it -
+// its port's, whichever comp id entered it.
 // It also keeps what the client entered it with that its reports name: ExecInst, MinQty, OrdType, OrderCapacity, Side, Symbol, TimeInForce, Account, ExpireTime.
 struct Order {
     std::uint64_t id = 0;
     std::string reference;
     std::uint64_t remaining = 0;
     std::size_t client = 0;
+    std::size_t account = 0;   // the Account that owns it: its port's
     std::string entered_exec_inst;
     std::string entered_min_qty;
     std::string entered_ord_type;
@@ -533,8 +535,9 @@ public:
     // in an interleave of its own - the k-th of n gateways k, k + n, k + 2n ... - so no two of them
     // give one number, and none has to ask another what it gave: the simulator's own scheme. A
     // gateway on its own numbers from one, as the one gateway does.
+    // Its place in that interleave is its port's too, and so names the Account the port is bound to.
     explicit Gateway(Emit emit, std::uint64_t first = 1, std::uint64_t step = 1, Clock clock = {})
-        : emit_(emit), clock_(clock), next_id_(first), step_(step) {
+        : emit_(emit), clock_(clock), account_(first), next_id_(first), step_(step) {
         config_.comp_id = "IEXG";
         next_report_ = first;
     }
@@ -608,7 +611,7 @@ public:
 
     std::size_t open_orders() const { return orders_.size(); }
 
-    // The engine's trade_message: answered to the client owning each order it names, as the event leaves it.
+    // The engine's trade_message: answered to the session that entered each order it names, as the event leaves it.
     void on_event(const ipc_ns::trade_message& m) {
         const auto now = clock_();
 
@@ -630,7 +633,7 @@ public:
         fill(m.aggressor_order_id.get().value(), m.quantity.get().value());
     }
 
-    // The engine's order_canceled_message: answered to the client owning each order it names, as the event leaves it.
+    // The engine's order_canceled_message: answered to the session that entered each order it names, as the event leaves it.
     void on_event(const ipc_ns::order_canceled_message& m) {
         const auto now = clock_();
 
@@ -723,6 +726,7 @@ private:
                 order.id = numbered();
                 order.reference = std::string(protocol::field(m, Tag::ClOrdID));
                 order.client = client;
+                order.account = account_;
                 order.entered_exec_inst = std::string(protocol::field(m, Tag::ExecInst));
                 order.entered_min_qty = std::string(protocol::field(m, Tag::MinQty));
                 order.entered_ord_type = std::string(protocol::field(m, Tag::OrdType));
@@ -743,7 +747,7 @@ private:
             if (!(protocol::field(m, Tag::Symbol) == "ZIEXT")) { rejected([&](protocol::Writer& out, const Order& order) { to_fix_invalid_symbol(out, m, order, now, reported()); }, "8"); return; }
             if (protocol::field(m, Tag::OrdType) == "2" && !(!protocol::field(m, Tag::Price).empty())) { rejected([&](protocol::Writer& out, const Order& order) { to_fix_invalid_price(out, m, order, now, reported()); }, "8"); return; }
             used_.insert({ client, std::string(protocol::field(m, Tag::ClOrdID)) });
-            Order order{ numbered(), std::string(protocol::field(m, Tag::ClOrdID)), 0, client, {}, {}, {}, {}, {}, {}, {}, {}, {}, 0, {}, 0 };
+            Order order{ numbered(), std::string(protocol::field(m, Tag::ClOrdID)), 0, client, account_, {}, {}, {}, {}, {}, {}, {}, {}, {}, 0, {}, 0 };
             auto ipc = to_fix_new_order(m, order);
             order.remaining = ipc.quantity.get().value();
             order.quantity = order.remaining;
@@ -773,12 +777,14 @@ private:
                     order.status = gone->second.status;
                     order.reference = named.second;
                     order.client = client;
+                    order.account = account_;
                     respond(client, "9", [&](protocol::Writer& out) { to_fix_cancel_too_late(out, m, order, now); }, now);
                     return;
                 }
                 Order unknown{};
                 unknown.reference = named.second;
                 unknown.client = client;
+                unknown.account = account_;
                 respond(client, "9", [&](protocol::Writer& out) { to_fix_cancel_unknown(out, m, unknown, now); }, now);
                 return;
             }
@@ -832,6 +838,7 @@ private:
     std::size_t next_connection_ = 0;   // connection numbers, never reused
     std::map<std::string, std::size_t, std::less<>> comp_ids_;   // each comp id's session, by its number
     std::map<std::string, std::string, std::less<>> credentials_;
+    std::size_t account_;   // the Account its port is bound to: the gateway's place among the venue's gateways
     std::map<std::uint64_t, Order> orders_;
     std::map<std::pair<std::size_t, std::string>, std::uint64_t, std::less<>> references_;
     struct Closed { std::uint64_t id = 0; char status = 0; };   // an order that has left the book, and how it ended

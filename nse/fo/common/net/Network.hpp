@@ -78,8 +78,13 @@ public:
     // kernel hands out again, so whoever keeps state per connection - a session, a parse buffer -
     // must forget it before that number comes round. A session inherited by the next client
     // reads its first bytes as the end of whatever the last one left half-said.
-    template <typename Handler, typename Gone>
-    bool poll(Handler handler, Gone gone) {
+    //
+    // `opened` is told about a client as it is accepted, before it has said anything. A session
+    // that times its client from the start - a SoupBin server lets go of a client that never logs
+    // in - has to exist from the connection, not from its first bytes, or a silent client is never
+    // timed at all.
+    template <typename Handler, typename Gone, typename Opened>
+    bool poll(Handler handler, Gone gone, Opened opened) {
         if (fd_ < 0) return false;
 
         bool worked = flush();
@@ -98,6 +103,7 @@ public:
         for (int client; (client = ::accept(fd_, nullptr, nullptr)) >= 0; ) {
             set_nonblocking(client);
             clients_.push_back(client);
+            opened(client);
             worked = true;
         }
 
@@ -122,6 +128,10 @@ public:
         }
         return worked;
     }
+
+    // For a caller that starts nothing as a client connects.
+    template <typename Handler, typename Gone>
+    bool poll(Handler handler, Gone gone) { return poll(handler, gone, [](int) {}); }
 
     // For a caller that keeps nothing per connection.
     template <typename Handler>

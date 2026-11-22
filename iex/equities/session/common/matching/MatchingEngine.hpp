@@ -295,7 +295,11 @@ public:
     // locked in, and refused. Returns false, and nothing changes, for one it holds.
     bool take_replaced_trading(std::uint64_t id) {
         Order removed{};
-        if (!erase(bids_, id, removed) && !erase(asks_, id, removed) && !unparked(id, removed) && !unqueued(id, removed)) return false;
+        replaced_waiting_ = false;
+        if (!erase(bids_, id, removed) && !erase(asks_, id, removed) && !unparked(id, removed) && !unqueued(id, removed)) {
+            if (!waited(id, removed)) return false;   // nor waiting aside for its cross
+            replaced_waiting_ = true;
+        }
         replacing_ = id;
         expires_replaced_ = removed.expires;
         return true;
@@ -312,7 +316,11 @@ public:
     // such order rests.
     bool take_replaced(std::uint64_t id) {
         Order removed{};
-        if (!erase(bids_, id, removed) && !erase(asks_, id, removed) && !erase(held_bids_, id, removed) && !erase(held_asks_, id, removed) && !unparked(id, removed) && !unqueued(id, removed)) return false;
+        replaced_waiting_ = false;
+        if (!erase(bids_, id, removed) && !erase(asks_, id, removed) && !erase(held_bids_, id, removed) && !erase(held_asks_, id, removed) && !unparked(id, removed) && !unqueued(id, removed)) {
+            if (!waited(id, removed)) return false;   // nor waiting aside for its cross
+            replaced_waiting_ = true;
+        }
         replacing_ = id;
         expires_replaced_ = removed.expires;
         return true;
@@ -321,6 +329,19 @@ public:
     // When the order a replace took out expires: its replacement keeps it, as IEX's ExpireTime is
     // the original's on a replace (IEX FIX Specification v2.91, p. 78).
     std::int64_t expires_replaced() const { return expires_replaced_; }
+
+    // Was the order a replace took out waiting aside for its cross, its cross not collecting yet? Its
+    // replacement then waits there again, behind what waits already, and the replace is told as one:
+    // a MOC entered in the morning may be replaced before the Closing Cross collects (OUCH 5.0 refuses
+    // a replace only in a cross's late period, which a phase's guard states).
+    bool replaced_waiting() const { return replaced_waiting_; }
+    void rewait(Order order) {
+        waiting_.push_back(order);
+        replaced_waiting_ = false;
+        const std::uint64_t id = replacing_;
+        replacing_ = 0;
+        on_replaced_(id, order);
+    }
 
     // A replacement that rested nothing - it traded away as it arrived, or was never to rest - is the
     // order replaced with nothing left of it.
@@ -890,6 +911,7 @@ private:
     std::uint64_t replacing_ = 0;   // the order a replace takes the place of, while its replacement is given; 0 when none is
     std::deque<Order> waiting_;               // orders for one cross alone, until it collects
     std::array<bool, 4> done_{};              // the crosses done for the day, by Cross
+    bool          replaced_waiting_ = false;   // did the order a replace took out wait aside for its cross
     std::uint64_t matches_ = 0;
     std::map<std::int64_t, std::deque<Order>, std::greater<std::int64_t>> bids_;  // best = highest
     std::map<std::int64_t, std::deque<Order>>                            asks_;  // best = lowest

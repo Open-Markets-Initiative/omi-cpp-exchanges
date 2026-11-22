@@ -47,6 +47,10 @@ start gatewaymakerbasic "$@"
 start gatewaytakerbasic "$@"
 start gatewayreplay "$@"
 start gatewayrequests "$@"
+start gatewaymakersecond "$@"
+start gatewaytakersecond "$@"
+start gatewayfixmaker "$@"
+start gatewayfixtaker "$@"
 start engine "$@"
 start sequencer "$@"
 start day "$@"
@@ -57,6 +61,10 @@ start makerbasic "$@"
 start takerbasic "$@"
 start replay "$@"
 start requests "$@"
+start makersecond "$@"
+start takersecond "$@"
+start fixmaker "$@"
+start fixtaker "$@"
 
 # Taking it down. Producer order: each one quiet before whoever reads from it goes, so that
 # nothing is still being written to a component that has already stopped.
@@ -66,7 +74,7 @@ start requests "$@"
 down() {
     trap - INT TERM
 
-    for index in 13 12 11 10 9 8 7 6 5 4 3 2 1 0; do
+    for index in 21 20 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0; do
         pid="${pids[$index]}"
         name="${names[$index]}"
         if kill -0 "$pid" 2>/dev/null; then
@@ -85,7 +93,7 @@ down() {
 
 trap down INT TERM
 
-echo "launch: 14 components up — Ctrl-C to stop"
+echo "launch: 22 components up — Ctrl-C to stop"
 
 while :; do
     # A component that dies on its own takes the venue with it: a venue missing one of its parts

@@ -15,11 +15,13 @@ struct cross {
     enum class enum_type : char {
         opening = 'O',
         intraday = 'I',
-        closing = 'C'
+        closing = 'C',
+        extended = 'A'
     };
 
-    static constexpr std::array<std::pair<std::string_view, enum_type>, 3> from_string_map = {{
+    static constexpr std::array<std::pair<std::string_view, enum_type>, 4> from_string_map = {{
         {"Closing", enum_type::closing},
+        {"Extended", enum_type::extended},
         {"Intraday", enum_type::intraday},
         {"Opening", enum_type::opening}
     }};
@@ -29,6 +31,7 @@ struct cross {
             case enum_type::opening: return "Opening";
             case enum_type::intraday: return "Intraday";
             case enum_type::closing: return "Closing";
+            case enum_type::extended: return "Extended";
             default: return "unknown";
         }
     }
@@ -71,7 +74,7 @@ struct cross {
         if (value.has_value())
             set(value.value());
         else
-            set(enum_type::closing);
+            set(enum_type::extended);
     }
 
   protected:

@@ -18,6 +18,7 @@ struct phase_change {
         halt = 'H',
         resume = 'R',
         quote = 'Q',
+        postpone = 'W',
         opening_lock_in = 'I',
         opening_lock_out = 'K',
         opening_late = 'J',
@@ -25,19 +26,22 @@ struct phase_change {
         closing_freeze = 'F',
         pre_close = 'L',
         close = 'C',
+        extended_trading_close_end = 'A',
         end = 'E'
     };
 
-    static constexpr std::array<std::pair<std::string_view, enum_type>, 13> from_string_map = {{
+    static constexpr std::array<std::pair<std::string_view, enum_type>, 15> from_string_map = {{
         {"Close", enum_type::close},
         {"Closing Freeze", enum_type::closing_freeze},
         {"Closing Lock Out", enum_type::closing_lock_out},
         {"End", enum_type::end},
+        {"Extended Trading Close End", enum_type::extended_trading_close_end},
         {"Halt", enum_type::halt},
         {"Open", enum_type::open},
         {"Opening Late", enum_type::opening_late},
         {"Opening Lock In", enum_type::opening_lock_in},
         {"Opening Lock Out", enum_type::opening_lock_out},
+        {"Postpone", enum_type::postpone},
         {"Pre Close", enum_type::pre_close},
         {"Pre Open", enum_type::pre_open},
         {"Quote", enum_type::quote},
@@ -51,6 +55,7 @@ struct phase_change {
             case enum_type::halt: return "Halt";
             case enum_type::resume: return "Resume";
             case enum_type::quote: return "Quote";
+            case enum_type::postpone: return "Postpone";
             case enum_type::opening_lock_in: return "Opening Lock In";
             case enum_type::opening_lock_out: return "Opening Lock Out";
             case enum_type::opening_late: return "Opening Late";
@@ -58,6 +63,7 @@ struct phase_change {
             case enum_type::closing_freeze: return "Closing Freeze";
             case enum_type::pre_close: return "Pre Close";
             case enum_type::close: return "Close";
+            case enum_type::extended_trading_close_end: return "Extended Trading Close End";
             case enum_type::end: return "End";
             default: return "unknown";
         }

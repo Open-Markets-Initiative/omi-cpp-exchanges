@@ -1,13 +1,16 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <vector>
 #include "Capture.hpp"
+#include "../protocols/ipc/IpcBus.hpp"
 #include "../protocols/marketdata/totalview/structs/PacketHeader.hpp"
 #include "../protocols/marketdata/totalview/structs/MessageHeader.hpp"
 #include "../protocols/marketdata/totalview/messages/AddOrderNoMpidAttributionMessage.hpp"
@@ -22,6 +25,7 @@ struct Quote {
     char          side     = 'B';
     std::int64_t  price    = 0;
     std::uint64_t quantity = 0;
+    std::string_view instrument = {};   // posted on this instrument
 };
 
 // The quotes a capture of Nasdaq.NsmEquities.TotalView.Itch.v5.0.2026 showed: each packet's messages, walked as
@@ -52,19 +56,21 @@ private:
             switch (static_cast<char>(head->message_type.get().value())) {
                 case 'A': {
                     const auto& m = *captured_totalview::add_order_no_mpid_attribution_message::parse(bytes + at);
-                    quotes_.push_back(Quote{
+                    add(Quote{
                         /*side*/ static_cast<char>(m.fields.buy_sell_indicator.get().value()),
                         /*price*/ static_cast<std::int64_t>(m.fields.price.get().value()),
                         /*quantity*/ static_cast<std::uint64_t>(m.fields.shares.get().value()),
+                        /*instrument*/ static_cast<std::string_view>(m.fields.stock.get().value()),
                     });
                     break;
                 }
                 case 'F': {
                     const auto& m = *captured_totalview::add_order_with_mpid_attribution_message::parse(bytes + at);
-                    quotes_.push_back(Quote{
+                    add(Quote{
                         /*side*/ static_cast<char>(m.fields.buy_sell_indicator.get().value()),
                         /*price*/ static_cast<std::int64_t>(m.fields.price.get().value()),
                         /*quantity*/ static_cast<std::uint64_t>(m.fields.shares.get().value()),
+                        /*instrument*/ static_cast<std::string_view>(m.fields.stock.get().value()),
                     });
                     break;
                 }
@@ -74,6 +80,11 @@ private:
         }
     }
 
+    // A quote of an instrument the venue lists; one of any other is let go.
+    void add(const Quote& quote) {
+        if (std::find(std::begin(sim::instruments), std::end(sim::instruments), quote.instrument) == std::end(sim::instruments)) return;
+        quotes_.push_back(quote);
+    }
     std::vector<Quote> quotes_;
 };
 
@@ -93,6 +104,7 @@ public:
 
         for (int i = 0; i < per_step_; ++i) {
             const Quote& quote = quotes_[at_++ % quotes_.size()];
+            orders.trade(quote.instrument);
             posted_.push_back(quote.side == 'B' ? orders.buy (quote.price, quote.quantity)
                                                 : orders.sell(quote.price, quote.quantity));
         }

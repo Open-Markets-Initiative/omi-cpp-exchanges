@@ -54,6 +54,7 @@ int main(int argc, char** argv) {
         std::printf("nasdaq-engine: matching, 1 in, 5 out\n");
 
         // Nothing to do means nothing to do: back off rather than spin a core.
+        sim::reading();   // launch.sh starts the next component once this one reads its links
         while (running.load(std::memory_order_acquire)) {
             bool worked = false;
             worked = engine.step(sequenced) || worked;
